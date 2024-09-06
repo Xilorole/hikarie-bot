@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "hikarie_bot"
+version = "0.1.0"
+description = "hikarie is GOD bot"
+authors = [{ name = "Xilorole" }]
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = []
+
+[tool.uv]
+dev-dependencies = ["pytest>=8.3.2", "pre-commit>=3.8.0", "ruff>=0.6.3"]
+
+[tool.setuptools.packages.find]
+exclude = ["build", "tests"]
+
+[tool.setuptools.dynamic]
+version = { attr = "hikarie_bot.version" }
+
+[tool.setuptools_scm]
+write_to = "hikarie_bot/_version.py"
