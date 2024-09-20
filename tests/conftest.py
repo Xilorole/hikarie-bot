@@ -18,7 +18,7 @@ class DatabaseExistsError(Exception):
 
 
 @pytest.fixture
-def local_session() -> Generator[Any, Any, Any]:
+def temp_db() -> Generator[Any, Any, Any]:
     """Create a test database and tables."""
     # settings of test database
     TEST_SQLALCHEMY_DATABASE_URL = "sqlite:///./test_temp.db"  # noqa: N806

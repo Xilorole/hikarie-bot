@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
 from .database import BaseSchema
 
@@ -57,3 +57,7 @@ class User(BaseSchema):
     update_datetime = Column(DateTime, default=datetime.now(UTC))
     level = Column(Integer)
     level_name = Column(String)
+    level_uped = Column(Boolean)
+    point_to_next_level = Column(Integer)
+    point_range_to_next_level = Column(Integer)
+    current_level_point = Column(Integer)
