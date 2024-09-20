@@ -20,7 +20,7 @@ repos:
         description: Runs hadolint to lint Dockerfiles
         language: system
         types: ["dockerfile"]
-        entry: bash -c 'find . -maxdepth 1 -name "Dockerfile*" | xargs hadolint'
+        entry: bash -c 'find . -maxdepth 2 -name "Dockerfile*" | xargs hadolint'
 
   - repo: local
     hooks:
