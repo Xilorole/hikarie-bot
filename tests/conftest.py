@@ -1,0 +1,40 @@
+from collections.abc import Generator
+from typing import Any, Self
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy_utils import database_exists, drop_database
+
+from hikarie_bot.database import BaseSchema
+
+
+class DatabaseExistsError(Exception):
+    """Raised when the test database already exists."""
+
+    def __init__(self: Self, url: str) -> None:
+        """Initialize the DatabaseExistsError class."""
+        super().__init__(f"Test database; {url} already exists. Aborting tests.")
+
+
+@pytest.fixture
+def local_session() -> Generator[Any, Any, Any]:
+    """Create a test database and tables."""
+    # settings of test database
+    TEST_SQLALCHEMY_DATABASE_URL = "sqlite:///./test_temp.db"  # noqa: N806
+    engine = create_engine(
+        TEST_SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+
+    if database_exists(TEST_SQLALCHEMY_DATABASE_URL):
+        raise DatabaseExistsError(TEST_SQLALCHEMY_DATABASE_URL)
+
+    # Create test database and tables
+    BaseSchema.metadata.create_all(engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    # Run the tests
+    yield session
+
+    # Drop the test database
+    drop_database(TEST_SQLALCHEMY_DATABASE_URL)
