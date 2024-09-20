@@ -21,3 +21,12 @@ repos:
         language: system
         types: ["dockerfile"]
         entry: hadolint
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run pytest
+        entry: uv run pytest
+        language: system
+        types: [python]
+        args: [--maxfail=1, --disable-warnings, tests/]  # Specify the directory or files where your tests are located

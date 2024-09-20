@@ -115,7 +115,7 @@ def get_point_range_to_next_level(point: int) -> int:
             )
             return level_info["point"] - previous_level_point
     # if the point is greater than the last level point, return undefined
-    raise InvalidPointError
+    raise InvalidPointError(point=point)
 
 
 def get_current_level_point(point: int) -> int:
@@ -140,7 +140,7 @@ def get_current_level_point(point: int) -> int:
                 level_map[idx - 1]["point"] if level_map.get(idx - 1) else 0
             )
             return point - previous_level_point
-    raise ValueError
+    raise InvalidPointError(point=point)
 
 
 def unix_timestamp_to_jst(unix_timestamp: float) -> datetime:
