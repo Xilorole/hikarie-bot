@@ -4,7 +4,15 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from .models import GuestArrivalInfo, GuestArrivalRaw, User
-from .utils import get_level, get_level_name, get_time_score
+from .utils import (
+    get_current_level_point,
+    get_level,
+    get_level_name,
+    get_point_range_to_next_level,
+    get_point_to_next_level,
+    get_time_score,
+    is_level_uped,
+)
 
 
 def insert_arrival_action(
@@ -82,27 +90,44 @@ def insert_arrival_action(
 
     # Update user score
     user_score_entry = session.query(User).filter_by(id=user_id).one_or_none()
+
+    # calculate_attribute
     if user_score_entry:
         previous_score = user_score_entry.current_score
         current_score = user_score_entry.current_score + time_score + rank_score
-
-        user_score_entry.previous_score = previous_score
-        user_score_entry.current_score = current_score
-        user_score_entry.update_datetime = jst_datetime
-        user_score_entry.level = get_level(current_score)
-        user_score_entry.level_name = get_level_name(current_score)
     else:
         previous_score = 0
         current_score = time_score + rank_score
+    level = get_level(current_score)
+    level_name = get_level_name(current_score)
+    level_uped = is_level_uped(previous_score, current_score)
+    point_to_next_level = get_point_to_next_level(current_score)
+    point_range_to_next_level = get_point_range_to_next_level(current_score)
+    current_level_point = get_current_level_point(current_score)
 
+    if user_score_entry:
+        user_score_entry.previous_score = previous_score
+        user_score_entry.current_score = current_score
+        user_score_entry.update_datetime = jst_datetime
+        user_score_entry.level = level
+        user_score_entry.level_name = level_name
+        user_score_entry.level_uped = level_uped
+        user_score_entry.point_to_next_level = point_to_next_level
+        user_score_entry.point_range_to_next_level = point_range_to_next_level
+        user_score_entry.current_level_point = current_level_point
+    else:
         # Create a new entry if the user doesn't exist in user_score table
         new_user_score = User(
             id=user_id,
             current_score=current_score,
             previous_score=previous_score,
             update_datetime=jst_datetime,
-            level=get_level(current_score),
-            level_name=get_level_name(current_score),
+            level=level,
+            level_name=level_name,
+            level_uped=level_uped,
+            point_to_next_level=point_to_next_level,
+            point_range_to_next_level=point_range_to_next_level,
+            current_level_point=current_level_point,
         )
         session.add(new_user_score)
 
