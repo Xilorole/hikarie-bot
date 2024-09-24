@@ -47,7 +47,7 @@
             }
         }
     },
-    "postCreateCommand": "uv sync --dev",
+    "postCreateCommand": "uv sync --dev && uv run jupyter --paths",
     "postStartCommand": "uv run pre-commit install",
     "remoteUser": "vscode"
 }
