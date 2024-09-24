@@ -6,8 +6,8 @@ WORKDIR /opt
 # hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl
+    ca-certificates \
+    curl
 
 SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
 
@@ -25,6 +25,7 @@ ENV PATH="$CARGO_HOME/:$PATH"
 
 ENV PYTHONUNBUFFERED=True
 ENV UV_LINK_MODE=copy
+ENV JUPYTER_PLATFORM_DIRS=1
 
 WORKDIR /opt
 
@@ -33,4 +34,5 @@ COPY ./.python-version ./
 
 RUN uv python pin "$(cat .python-version)"
 
-RUN chown -R vscode $CARGO_HOME
+RUN git config --global --add safe.directory "*" && \
+    chown -R vscode $CARGO_HOME
