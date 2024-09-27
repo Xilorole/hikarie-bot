@@ -40,17 +40,19 @@ class InitialMessage(BaseMessage):
     def __init__(self) -> None:
         """Initialize the InitialMessage with a question and a button."""
         super().__init__()
-        self.blocks.append(blocks.SectionBlock(text=Text.QUESTION))
-        self.blocks.append(
-            blocks.ActionsBlock(
-                elements=[
-                    block_elements.ButtonElement(
-                        text=Text.FASTEST_ARRIVAL,
-                        action_id=ActionId.FASTEST_ARRIVAL,
-                        style="primary",
-                    )
-                ]
-            )
+        self.blocks.extend(
+            [
+                blocks.SectionBlock(text=Text.QUESTION),
+                blocks.ActionsBlock(
+                    elements=[
+                        block_elements.ButtonElement(
+                            text=Text.FASTEST_ARRIVAL,
+                            action_id=ActionId.FASTEST_ARRIVAL,
+                            style="primary",
+                        )
+                    ]
+                ),
+            ]
         )
 
 
@@ -60,16 +62,18 @@ class RegistryMessage(BaseMessage):
     def __init__(self) -> None:
         """Initialize the RegistryMessage with a question and a button."""
         super().__init__()
-        self.blocks.append(blocks.SectionBlock(text=Text.QUESTION))
-        self.blocks.append(
-            blocks.ActionsBlock(
-                elements=[
-                    block_elements.ButtonElement(
-                        text=Text.ARRIVED_OFFICE,
-                        action_id=ActionId.ARRIVED_OFFICE,
-                    )
-                ]
-            )
+        self.blocks.extend(
+            [
+                blocks.SectionBlock(text=Text.QUESTION),
+                blocks.ActionsBlock(
+                    elements=[
+                        block_elements.ButtonElement(
+                            text=Text.ARRIVED_OFFICE,
+                            action_id=ActionId.ARRIVED_OFFICE,
+                        )
+                    ]
+                ),
+            ]
         )
 
 
@@ -79,10 +83,12 @@ class FastestArrivalMessage(BaseMessage):
     def __init__(self, user_id: str, jst_datetime: datetime) -> None:
         """Initialize the FastestArrivalMessage with the fastest arrival user ID and time."""  # noqa: E501
         super().__init__()
-        self.blocks.append(
-            blocks.SectionBlock(
-                text=f"本日の最速出社: <@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}"
-            )
+        self.blocks.extend(
+            [
+                blocks.SectionBlock(
+                    text=f"本日の最速出社: <@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}"  # noqa: E501
+                )
+            ]
         )
 
 
@@ -106,7 +112,7 @@ class PointGetMessage(BaseMessage):
             .filter(GuestArrivalInfo.user_id == user_id)
             .filter(GuestArrivalInfo.arrival_time >= start_of_day)
             .filter(GuestArrivalInfo.arrival_time < end_of_day)
-            .first()
+            .one()
         )
 
         arrive_time = score.update_datetime
@@ -116,12 +122,14 @@ class PointGetMessage(BaseMessage):
         time_score = arrival.acquired_score_time
         fastest_score = arrival.acquired_score_rank
 
+        # get the variables
         level_name = get_level_name(current_point)
         point_to_next_level = get_point_to_next_level(current_point)
         level_up_flag = is_level_uped(previous_point, current_point)
         current_level_point = get_current_level_point(current_point)
         point_range = get_point_range_to_next_level(current_point)
 
+        # calculate the experience rate
         experience_rate = int(100 * current_level_point / point_range)
         experience_add_up_rate = int(100 * score_addup / point_range)
         point_rate_text = "█" * (experience_rate // 10) + " " * (
