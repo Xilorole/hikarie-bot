@@ -1,8 +1,11 @@
+import asyncio
+import os
 import re
 from datetime import UTC, datetime, timedelta, timezone
 
 from loguru import logger
 from slack_bolt import App
+from slack_bolt.app.async_app import AsyncApp
 
 
 class ActionId:
@@ -115,3 +118,48 @@ def fetch_todays_initial_message(
             -1
         ].get("ts")
     return None
+
+
+async def send_daily_message(
+    app: AsyncApp, at_hour: int = 6, at_minute: int = 0
+) -> None:
+    "Run task every weekday 06:00 JST."
+    # タイムゾーンの生成
+    JST = timezone(timedelta(hours=+9), "JST")  # noqa: N806
+    channel_id = os.environ.get("DEV")
+
+    logger.info("started task")
+    while True:
+        # check if the time is 06:00 JST
+        now = datetime.now(JST)
+        next_day = now + timedelta(days=1)
+        logger.info(f"now is {now}")
+        if now.hour == at_hour and now.minute == at_minute:
+            logger.info("tring to fetch message")
+            # check if the BOT already sent to channel
+            messages = await app.client.conversations_history(
+                channel=channel_id,
+                oldest=datetime(
+                    year=now.year,
+                    month=now.month,
+                    day=now.day,
+                    tzinfo=JST,
+                ).timestamp(),
+                latest=datetime(
+                    year=next_day.year,
+                    month=next_day.month,
+                    day=next_day.day,
+                    tzinfo=JST,
+                ).timestamp(),
+            )
+
+            app_user_id = os.environ.get("BOT_ID")
+            if any(app_user_id == message["user"] for message in messages["messages"]):
+                logger.info("message already sent")
+            else:
+                logger.info("sending message to channel")
+                await app.client.chat_postMessage(
+                    channel=channel_id,
+                    text="Hi there!",
+                )
+        await asyncio.sleep(5)
