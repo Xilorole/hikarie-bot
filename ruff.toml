@@ -26,7 +26,8 @@ exclude = [
     "node_modules",
     "site-packages",
     "venv",
-    "hikarie_bot/_version.py"
+    "hikarie_bot/_version.py",
+    "notebook"
 ]
 
 # Same as Black.
