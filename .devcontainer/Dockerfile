@@ -13,9 +13,11 @@ SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
 
 # Download the latest installer
 ADD https://astral.sh/uv/install.sh uv-installer.sh
+ADD https://starship.rs/install.sh  starship-installer.sh
 
 # Run the installer then remove it
-RUN sh uv-installer.sh
+RUN sh uv-installer.sh \
+    && sh starship-installer.sh -y
 
 
 FROM mcr.microsoft.com/vscode/devcontainers/base:bookworm
@@ -29,10 +31,9 @@ ENV JUPYTER_PLATFORM_DIRS=1
 
 WORKDIR /opt
 
+COPY --from=builder /usr/local/bin/starship /usr/local/bin/starship
 COPY --from=builder /root/.cargo/bin/uv $CARGO_HOME/uv
 COPY ./.python-version ./
 
 RUN uv python pin "$(cat .python-version)"
-
-RUN git config --global --add safe.directory "*" && \
-    chown -R vscode $CARGO_HOME
+RUN chown -R vscode $CARGO_HOME
