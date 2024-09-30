@@ -154,8 +154,8 @@ class PointGetMessage(BaseMessage):
         # calculate the experience rate
         experience_rate = int(100 * current_level_point / point_range)
         experience_add_up_rate = int(100 * score_addup / point_range)
-        point_rate_text = "█" * (experience_rate // 10) + " " * (
-            10 - experience_rate // 10
+        point_rate_text = (
+            "█" + "█" * (experience_rate // 10) + " " * (10 - experience_rate // 10)
         )
 
         time_score_text = {
