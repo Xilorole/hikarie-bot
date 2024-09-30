@@ -7,35 +7,13 @@ from loguru import logger
 from slack_bolt import App
 from slack_bolt.app.async_app import AsyncApp
 
-
-class ActionId:
-    """Class for storing the action IDs used in the Slack app."""
-
-    ARRIVED_OFFICE = "ARRIVED_OFFICE"
-    FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
-    POINT_GET = "POINT_GET"
-
-
-class BlockId:
-    """Class for storing the block IDs used in the Slack app."""
-
-    ARRIVED_OFFICE = "ARRIVED_OFFICE"
-
-
-class Text:
-    """Class for storing the text used in the Slack app."""
-
-    QUESTION = "ヒカリエに出社してる？"  # noqa: RUF001
-    ARRIVED_OFFICE = "出社ポイント獲得"
-    FASTEST_ARRIVAL = "最速出社"
+from hikarie_bot.modals import InitialMessage
 
 
 class Pattern:
     """Class for storing the regular expression patterns used in the Slack app."""
 
-    QUESTION = r"ヒカリエに出社してる？"  # noqa: RUF001
-    ARRIVED_OFFICE = r"\d{2}:\d{2} 出社登録しました！"  # noqa: RUF001
-    FASTEST_ARRIVAL = r"本日の最速出社: <@\w+>"
+    v1_message = r"<@([A-Z0-9]+)>(?!.*\bclicked\b)"
 
 
 def filter_question_message(message: dict) -> bool:
@@ -120,8 +98,59 @@ def fetch_todays_initial_message(
     return None
 
 
+class MessageFilter:
+    """Class for filtering Slack messages."""
+
+    @classmethod
+    def run(cls, message: dict) -> bool:
+        """Run the message filters.
+
+        If any of the filters return True, the message passes the filter.
+
+        Parameters
+        ----------
+        message : dict
+            The Slack message to filter.
+
+        Returns
+        -------
+            bool: True if the message passes ANY filters, False otherwise.
+
+        """
+        filters = [
+            cls.filter_v1,
+        ]
+        return any(filter_func(message) for filter_func in filters)
+
+    @classmethod
+    def filter_v1(cls, message: dict) -> bool:
+        """Filter question messages from a Slack message.
+
+        Parameters
+        ----------
+        message : dict
+            The Slack message to filter.
+
+        Returns
+        -------
+            bool: True if the message is a question message, False otherwise.
+
+        Description
+        -----------
+        This method filters the messages based on the following criteria:
+            - The message is sent by the bot.
+            - The message includes the mentioned user's ID.
+
+        """
+        logger.info(f"message: {message}")
+        logger.info(os.environ.get("BOT_ID"))
+        return message.get("bot_id") == os.environ.get("BOT_ID") and re.search(
+            Pattern.v1_message, message.get("text")
+        )
+
+
 async def send_daily_message(
-    app: AsyncApp, at_hour: int = 6, at_minute: int = 0
+    app: AsyncApp, at_hour: int = 6, at_minute: int = 0, check_interval: int = 5
 ) -> None:
     "Run task every weekday 06:00 JST."
     # タイムゾーンの生成
@@ -154,12 +183,14 @@ async def send_daily_message(
             )
 
             app_user_id = os.environ.get("BOT_ID")
+            logger.debug(messages["messages"])
             if any(app_user_id == message["user"] for message in messages["messages"]):
                 logger.info("message already sent")
             else:
                 logger.info("sending message to channel")
                 await app.client.chat_postMessage(
                     channel=channel_id,
-                    text="Hi there!",
+                    blocks=InitialMessage().render(),
+                    text=InitialMessage().to_text(),
                 )
-        await asyncio.sleep(5)
+        await asyncio.sleep(check_interval)
