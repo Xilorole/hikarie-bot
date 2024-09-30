@@ -174,3 +174,9 @@ def get_time_score(t: datetime.time) -> int:
     else:
         time_score = 0
     return time_score
+
+
+def get_current_jst_datetime() -> datetime:
+    "Get the current time in JST."
+    tz_jst = timezone(timedelta(hours=+9), "JST")
+    return datetime.now(tz_jst)
