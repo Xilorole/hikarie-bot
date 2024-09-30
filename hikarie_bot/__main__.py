@@ -23,7 +23,7 @@ from hikarie_bot.modals import (
 from hikarie_bot.slack_helper import send_daily_message
 from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
 
-load_dotenv()
+load_dotenv(override=True)
 app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 

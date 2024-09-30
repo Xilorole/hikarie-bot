@@ -166,6 +166,7 @@ async def send_daily_message(
         if now.hour == at_hour and now.minute == at_minute:
             logger.info("tring to fetch message")
             # check if the BOT already sent to channel
+            logger.debug(f"channel_id: {channel_id}")
             messages = await app.client.conversations_history(
                 channel=channel_id,
                 oldest=datetime(

@@ -175,7 +175,7 @@ class PointGetMessage(BaseMessage):
                 blocks.SectionBlock(
                     text=f"*{arrive_time:%H:%M}* 出社登録しました！"  # noqa: RUF001
                     f"\n<@{user_id}>さんのポイント "
-                    "{previous_point} → *{current_point}* "
+                    f"{previous_point} → *{current_point}* "
                     f"(*+{score_addup}{' レベルアップ！' if level_up_flag else ''}*)"  # noqa: RUF001
                 ),
                 blocks.DividerBlock(),
