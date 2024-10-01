@@ -49,6 +49,7 @@ ignore = [
     "Q000", "Q001", "Q002", "Q003",
     "W191",
     "ANN101", # typing for self
+    "ANN102", # typing for self
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
