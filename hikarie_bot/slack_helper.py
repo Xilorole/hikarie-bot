@@ -144,10 +144,10 @@ class MessageFilter:
 
         """
         logger.debug(f"message: {message}, user: {os.environ.get('BOT_ID')}")
-        if message.get("user") == os.environ.get("BOT_ID"):
-            logger.debug(Pattern.v1_message)
-            if match := re.search(Pattern.v1_message, message.get("text")):
-                return match.group(1)
+        if message.get("user") == os.environ.get("BOT_ID") and (
+            match := re.search(Pattern.v1_message, message.get("text"))
+        ):
+            return match.group(1)
         return None
 
     @classmethod
