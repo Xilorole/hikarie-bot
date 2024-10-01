@@ -20,7 +20,7 @@ from hikarie_bot.modals import (
     PointGetMessage,
     RegistryMessage,
 )
-from hikarie_bot.slack_helper import send_daily_message
+from hikarie_bot.slack_helper import MessageFilter, send_daily_message
 from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
 
 load_dotenv(override=True)
@@ -37,6 +37,66 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+async def initially_create_db(app: AsyncApp) -> None:
+    """Asynchronously initializes the database by fetching and processing messages from a Slack channel.
+
+    This function retrieves the message history from a specified Slack channel, including threaded messages,
+    and processes them to filter and insert relevant data into the database.
+
+    Args:
+    ----
+        app (AsyncApp): The Slack application instance used to interact with the Slack API.
+
+    Returns:
+    -------
+        None
+    Raises:
+        SlackApiError: If there is an error with the Slack API request.
+        asyncio.TimeoutError: If the request to the Slack API times out.
+
+    """  # noqa: E501
+    messages = []
+
+    _messages = await app.client.conversations_history(
+        channel=os.environ.get("DEV"),
+    )
+    messages += _messages["messages"]
+    while _messages["has_more"]:
+        logger.info("loading more messages.")
+        jst_message_datetime = unix_timestamp_to_jst(
+            float(_messages["messages"][-1]["ts"])
+        )
+        logger.debug(f"latest message: {jst_message_datetime}")
+        _messages = await app.client.conversations_history(
+            channel=os.environ.get("DEV"),
+            cursor=_messages["response_metadata"]["next_cursor"],
+        )
+        messages += _messages["messages"]
+        await asyncio.sleep(0.1)
+
+    # get the threading messages
+    thread_messages = []
+    for message in messages:
+        logger.debug(f"message: {message}")
+        if message.get("thread_ts"):
+            _thread_messages = await app.client.conversations_replies(
+                channel=os.environ.get("DEV"), ts=message["ts"], limit=100
+            )
+            thread_messages += _thread_messages["messages"]
+            await asyncio.sleep(0.1)
+    messages += thread_messages
+
+    message_filter = MessageFilter()
+    for message in sorted(messages, key=lambda x: x["ts"]):
+        if (user_id := message_filter.filter_v1(message)) and message.get(
+            "subtype"
+        ) != "channel_join":
+            if user_id == "U069VLFF7EV":
+                logger.debug(f"THIS MESSAGE: {message}")
+            jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
+            insert_arrival_action(get_db().__next__(), jst_message_datetime, user_id)
 
 
 @click.command()
@@ -63,6 +123,8 @@ async def main(*, dev: bool = False) -> None:
 
     # makes a strong reference not to GC
     background_task.add(a)
+
+    await initially_create_db(app)
 
     handler = AsyncSocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
     await handler.start_async()

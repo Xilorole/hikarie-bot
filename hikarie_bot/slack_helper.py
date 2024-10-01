@@ -13,7 +13,8 @@ from hikarie_bot.modals import InitialMessage
 class Pattern:
     """Class for storing the regular expression patterns used in the Slack app."""
 
-    v1_message = r"<@([A-Z0-9]+)>(?!.*\bclicked\b)"
+    v1_message = r"<@([A-Z0-9]+)>(?!.*\bclicked\b)(?!.*\b参加しました\b)"
+    v2_message = r"ヒカリエに出社してる？"  # noqa: RUF001
 
 
 def filter_question_message(message: dict) -> bool:
@@ -123,7 +124,7 @@ class MessageFilter:
         return any(filter_func(message) for filter_func in filters)
 
     @classmethod
-    def filter_v1(cls, message: dict) -> bool:
+    def filter_v1(cls, message: dict) -> str | None:
         """Filter question messages from a Slack message.
 
         Parameters
@@ -142,10 +143,36 @@ class MessageFilter:
             - The message includes the mentioned user's ID.
 
         """
-        logger.info(f"message: {message}")
-        logger.info(os.environ.get("BOT_ID"))
-        return message.get("bot_id") == os.environ.get("BOT_ID") and re.search(
-            Pattern.v1_message, message.get("text")
+        logger.debug(f"message: {message}, user: {os.environ.get('BOT_ID')}")
+        if message.get("user") == os.environ.get("BOT_ID"):
+            logger.debug(Pattern.v1_message)
+            if match := re.search(Pattern.v1_message, message.get("text")):
+                return match.group(1)
+        return None
+
+    @classmethod
+    def filter_v2(cls, message: dict) -> bool:
+        """Filter question messages from a Slack message.
+
+        Parameters
+        ----------
+        message : dict
+            The Slack message to filter.
+
+        Returns
+        -------
+            bool: True if the message is a question message, False otherwise.
+
+        Description
+        -----------
+        This method filters the messages based on the following criteria:
+            - The message is sent by the bot.
+            - The message includes the mentioned user's ID.
+
+        """
+        logger.debug(f"message: {message}")
+        return message.get("user") == os.environ.get("BOT_ID") and re.search(
+            Pattern.v2_message, message.get("text")
         )
 
 

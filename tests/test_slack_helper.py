@@ -10,20 +10,23 @@ def test_filter(monkeypatch: Generator) -> None:
     monkeypatch.setenv("BOT_ID", "TST")
 
     message = {
-        "bot_id": "TST",
+        "user": "TST",
+        "bot_id": "BOT_TEST",
         "text": "ヒカリエは正義 :hikarie:¥n"
         "本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
     }
     assert MessageFilter.run(message) is True
 
     message = {
-        "bot_id": "TST",
+        "user": "TST",
+        "bot_id": "BOT_TEST",
         "text": "<@USRIDTST0123> clicked *出社してる*",
     }
     assert MessageFilter.run(message) is False
 
     message = {
-        "bot_id": "FAIL",
+        "user": "TST_FAIL",
+        "bot_id": "BOT_TEST",
         "text": "ヒカリエは正義 :hikarie:¥n"
         "本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
     }
