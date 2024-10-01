@@ -162,7 +162,7 @@ async def send_daily_message(
         # check if the time is 06:00 JST
         now = datetime.now(JST)
         next_day = now + timedelta(days=1)
-        logger.info(f"now is {now}")
+        logger.debug(f"now is {now}")
         if now.hour == at_hour and now.minute == at_minute:
             logger.info("tring to fetch message")
             # check if the BOT already sent to channel

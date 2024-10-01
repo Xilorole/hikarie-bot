@@ -47,8 +47,8 @@ def insert_arrival_action(
         .filter(GuestArrivalInfo.arrival_time < end_of_day)
         .first()
     )
-    logger.info(f"existing arrival: {existing_arrival}")
-    if existing_arrival:
+    if existing_arrival is not None:
+        logger.info(f"existing arrival @ {existing_arrival.arrival_time}")
         return False
 
     # Calculate the arrival rank

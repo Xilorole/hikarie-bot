@@ -68,33 +68,30 @@ async def main(*, dev: bool = False) -> None:
     await handler.start_async()
 
 
+@app.action(ActionID.ARRIVED_OFFICE)
 @app.action(ActionID.FASTEST_ARRIVAL)
 async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
     """Handle the button click event."""
     await ack()
     user_id = body["user"]["id"]
-
-    # check if the message was sent within a day
-    # the action is only valid from 6AM to 6PM JST
-    # if not, send a ephemeral message to the user
-
+    action_id = body["actions"][0]["action_id"]
     message_ts = body["message"]["ts"]
     jst_message_datetime = unix_timestamp_to_jst(float(message_ts))
+
+    logger.debug(
+        f"user_id: {user_id}, action_id: {action_id}, "
+        f"jst_message_datetime: {jst_message_datetime}"
+    )
     now = get_current_jst_datetime()
-    insert_result = insert_arrival_action(get_db().__next__(), now, user_id)
-    if insert_result is False:
-        await client.chat_postEphemeral(
-            channel=body["channel"]["id"],
-            user=body["user"]["id"],
-            text="本日は既に出社申告を済ませています",
-        )
-        return
 
     # replace the message datetime at 6AM
     jst_message_datetime_at6 = jst_message_datetime.replace(
         hour=6, minute=0, second=0, microsecond=0
     )
 
+    # check if the message was sent within a day
+    # the action is only valid from 6AM to 6PM JST
+    # if not, send a ephemeral message to the user
     if not (
         jst_message_datetime_at6 < now < jst_message_datetime_at6 + timedelta(hours=12)
     ):
@@ -104,16 +101,25 @@ async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
             text="出社申告は当日の6:00から18:00までの間にしてください",
         )
         return
+    insert_result = insert_arrival_action(get_db().__next__(), now, user_id)
+    if insert_result is False:
+        await client.chat_postEphemeral(
+            channel=body["channel"]["id"],
+            user=body["user"]["id"],
+            text="本日は既に出社申告を済ませています",
+        )
+        return
 
-    ## send the fastest arrival message
-    arrival_message = FastestArrivalMessage(
-        user_id=user_id, jst_datetime=get_current_jst_datetime()
-    )
-    await client.chat_postMessage(
-        channel=body["channel"]["id"],
-        text=arrival_message.to_text(),
-        blocks=arrival_message.render(),
-    )
+    if body["actions"][0]["action_id"] == ActionID.FASTEST_ARRIVAL:
+        ## send the fastest arrival message
+        arrival_message = FastestArrivalMessage(
+            user_id=user_id, jst_datetime=get_current_jst_datetime()
+        )
+        await client.chat_postMessage(
+            channel=body["channel"]["id"],
+            text=arrival_message.to_text(),
+            blocks=arrival_message.render(),
+        )
 
     # send point get message to thread
     point_get_message = PointGetMessage(
@@ -129,59 +135,14 @@ async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
     )
 
     # replace the message with RegistryMessage
-
-    registry_message = RegistryMessage()
-    await client.chat_update(
-        channel=body["channel"]["id"],
-        ts=body["message"]["ts"],
-        text=registry_message.to_text(),
-        blocks=registry_message.render(),
-    )
-
-
-@app.action(ActionID.ARRIVED_OFFICE)
-async def handle_arrived_office(ack: dict, body: dict, client: WebClient) -> None:
-    """Handle the arrived office action."""
-    await ack()
-    user_id = body["user"]["id"]
-
-    message_ts = body["message"]["ts"]
-    jst_message_datetime = unix_timestamp_to_jst(float(message_ts))
-    now = get_current_jst_datetime()
-    insert_result = insert_arrival_action(get_db().__next__(), now, user_id)
-    if insert_result is False:
-        await client.chat_postEphemeral(
+    if body["actions"][0]["action_id"] == ActionID.FASTEST_ARRIVAL:
+        registry_message = RegistryMessage()
+        await client.chat_update(
             channel=body["channel"]["id"],
-            user=body["user"]["id"],
-            text="本日は既に出社申告を済ませています",
+            ts=body["message"]["ts"],
+            text=registry_message.to_text(),
+            blocks=registry_message.render(),
         )
-        return
-
-    # replace the message datetime at 6AM
-    jst_message_datetime = jst_message_datetime.replace(
-        hour=6, minute=0, second=0, microsecond=0
-    )
-
-    if not (jst_message_datetime < now < jst_message_datetime + timedelta(hours=12)):
-        await client.chat_postEphemeral(
-            channel=body["channel"]["id"],
-            user=body["user"]["id"],
-            text="出社申告は当日の6:00から18:00までの間にしてください",
-        )
-        return
-
-    # send point get message to thread
-    point_get_message = PointGetMessage(
-        session=get_db().__next__(),
-        user_id=user_id,
-        jst_datetime=get_current_jst_datetime(),
-    )
-    await client.chat_postMessage(
-        channel=body["channel"]["id"],
-        thread_ts=body["message"]["ts"],
-        text=point_get_message.to_text(),
-        blocks=point_get_message.render(),
-    )
 
 
 if __name__ == "__main__":
