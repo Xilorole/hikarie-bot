@@ -191,6 +191,7 @@ class PointGetMessage(BaseMessage):
                         )
                     ]
                 ),
+                blocks.DividerBlock(),
             ]
         )
 
