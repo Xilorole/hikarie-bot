@@ -212,12 +212,18 @@ async def send_daily_message(
     channel_id = os.environ.get("OUTPUT_CHANNEL")
 
     logger.info("started task")
+    weekday_limit = 5
+
     while True:
         # check if the time is 06:00 JST
         now = datetime.now(JST)
         next_day = now + timedelta(days=1)
         logger.debug(f"now is {now}")
-        if now.hour == at_hour and now.minute == at_minute:
+        if (
+            now.hour == at_hour
+            and now.minute == at_minute
+            and now.weekday() < weekday_limit
+        ):
             logger.info("tring to fetch message")
             # check if the BOT already sent to channel
             logger.debug(f"channel_id: {channel_id}")
