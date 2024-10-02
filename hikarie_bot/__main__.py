@@ -60,7 +60,8 @@ async def initially_create_db(app: AsyncApp) -> None:
     messages = []
 
     _messages = await app.client.conversations_history(
-        channel=os.environ.get("OUTPUT_CHANNEL")
+        channel=os.environ.get("OUTPUT_CHANNEL"),
+        oldest=1651363200,  # 2022-05-01 00:00:00
     )
     messages += _messages["messages"]
     while _messages["has_more"]:
@@ -71,6 +72,7 @@ async def initially_create_db(app: AsyncApp) -> None:
         _messages = await app.client.conversations_history(
             channel=os.environ.get("OUTPUT_CHANNEL"),
             cursor=_messages["response_metadata"]["next_cursor"],
+            oldest=1651363200,  # 2022-05-01 00:00:00
         )
         messages += _messages["messages"]
         await asyncio.sleep(0.1)
@@ -129,6 +131,10 @@ async def main(*, dev: bool = False) -> None:
     background_task.add(a)
 
     await initially_create_db(app)
+    await app.client.chat_postMessage(
+        channel=os.environ.get("LOG_CHANNEL"),
+        text="application started",
+    )
 
     handler = AsyncSocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
     await handler.start_async()
