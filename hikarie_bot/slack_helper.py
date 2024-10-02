@@ -72,8 +72,7 @@ def fetch_todays_initial_message(
     oldest = today.replace(hour=0, minute=0, second=0, microsecond=0)
     latest = today.replace(hour=23, minute=59, second=59, microsecond=0)
     logger.info(
-        f"fetching data from {
-            oldest:%Y-%m-%d %H:%M:%S} to {latest:%Y-%m-%d %H:%M:%S}"
+        f"fetching data from {oldest:%Y-%m-%d %H:%M:%S} to {latest:%Y-%m-%d %H:%M:%S}"
     )
     response = app.client.conversations_history(
         channel=channel_id,
