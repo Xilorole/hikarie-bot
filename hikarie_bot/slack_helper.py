@@ -119,6 +119,7 @@ class MessageFilter:
         """
         filters = [
             cls.filter_v1,
+            cls.filter_v3,
         ]
         return any(filter_func(message) for filter_func in filters)
 
@@ -143,7 +144,7 @@ class MessageFilter:
 
         """
         logger.debug(f"message: {message}, user: {os.environ.get('BOT_ID')}")
-        if message.get("user") == os.environ.get("BOT_ID") and (
+        if message.get("bot_id") == os.environ.get("V1_BOT_ID") and (
             match := re.search(Pattern.v1_message, message.get("text"))
         ):
             return match.group(1)
@@ -174,6 +175,33 @@ class MessageFilter:
             Pattern.v2_message, message.get("text")
         )
 
+    @classmethod
+    def filter_v3(cls, message: dict) -> str | None:
+        """Filter question messages from a Slack message.
+
+        Parameters
+        ----------
+        message : dict
+            The Slack message to filter.
+
+        Returns
+        -------
+            bool: True if the message is a question message, False otherwise.
+
+        Description
+        -----------
+        This method filters the messages based on the following criteria:
+            - The message is sent by the bot.
+            - The message includes the mentioned user's ID.
+
+        """
+        logger.debug(f"message: {message}, user: {os.environ.get('BOT_ID')}")
+        if message.get("user") == os.environ.get("BOT_ID") and (
+            match := re.search(Pattern.v1_message, message.get("text"))
+        ):
+            return match.group(1)
+        return None
+
 
 async def send_daily_message(
     app: AsyncApp, at_hour: int = 6, at_minute: int = 0, check_interval: int = 5
@@ -181,7 +209,7 @@ async def send_daily_message(
     "Run task every weekday 06:00 JST."
     # タイムゾーンの生成
     JST = timezone(timedelta(hours=+9), "JST")  # noqa: N806
-    channel_id = os.environ.get("DEV")
+    channel_id = os.environ.get("OUTPUT_CHANNEL")
 
     logger.info("started task")
     while True:

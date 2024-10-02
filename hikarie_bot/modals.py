@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from hikarie_bot.models import GuestArrivalInfo, User
 from hikarie_bot.utils import (
     get_current_level_point,
+    get_level,
     get_level_name,
     get_point_range_to_next_level,
     get_point_to_next_level,
@@ -145,6 +146,7 @@ class PointGetMessage(BaseMessage):
         fastest_score = arrival.acquired_rank_score
 
         # get the variables
+        level = get_level(current_point)
         level_name = get_level_name(current_point)
         point_to_next_level = get_point_to_next_level(current_point)
         level_up_flag = is_level_uped(previous_point, current_point)
@@ -182,7 +184,7 @@ class PointGetMessage(BaseMessage):
                 blocks.ContextBlock(
                     elements=[
                         basic_components.MarkdownTextObject(
-                            text=f"かたがき: *{level_name}*"
+                            text=f"かたがき: *{level_name}* (lv{level})"
                             f"\nつぎのレベルまで: *{point_to_next_level}pt*"
                             f"\nしんこうど: `{point_rate_text}` "
                             f"| *{experience_rate:>3d}%* "
