@@ -60,17 +60,16 @@ async def initially_create_db(app: AsyncApp) -> None:
     messages = []
 
     _messages = await app.client.conversations_history(
-        channel=os.environ.get("DEV"),
+        channel=os.environ.get("OUTPUT_CHANNEL")
     )
     messages += _messages["messages"]
     while _messages["has_more"]:
-        logger.info("loading more messages.")
         jst_message_datetime = unix_timestamp_to_jst(
             float(_messages["messages"][-1]["ts"])
         )
-        logger.debug(f"latest message: {jst_message_datetime}")
+        logger.info(f"loading. latest message: {jst_message_datetime}")
         _messages = await app.client.conversations_history(
-            channel=os.environ.get("DEV"),
+            channel=os.environ.get("OUTPUT_CHANNEL"),
             cursor=_messages["response_metadata"]["next_cursor"],
         )
         messages += _messages["messages"]
@@ -80,9 +79,14 @@ async def initially_create_db(app: AsyncApp) -> None:
     thread_messages = []
     for message in messages:
         logger.debug(f"message: {message}")
-        if message.get("thread_ts"):
+        if message.get("thread_ts") and (
+            message.get("user") == os.environ.get("BOT_ID")
+            or message.get("bot_id") == os.environ.get("V1_BOT_ID")
+        ):
+            jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
+            logger.info(f"loading thread. latest message: {jst_message_datetime}")
             _thread_messages = await app.client.conversations_replies(
-                channel=os.environ.get("DEV"), ts=message["ts"], limit=100
+                channel=os.environ.get("OUTPUT_CHANNEL"), ts=message["ts"], limit=100
             )
             thread_messages += _thread_messages["messages"]
             await asyncio.sleep(0.1)
@@ -90,11 +94,11 @@ async def initially_create_db(app: AsyncApp) -> None:
 
     message_filter = MessageFilter()
     for message in sorted(messages, key=lambda x: x["ts"]):
-        if (user_id := message_filter.filter_v1(message)) and message.get(
-            "subtype"
-        ) != "channel_join":
-            if user_id == "U069VLFF7EV":
-                logger.debug(f"THIS MESSAGE: {message}")
+        if (
+            user_id := (
+                message_filter.filter_v1(message) or message_filter.filter_v3(message)
+            )
+        ) and message.get("subtype") != "channel_join":
             jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
             insert_arrival_action(get_db().__next__(), jst_message_datetime, user_id)
 
