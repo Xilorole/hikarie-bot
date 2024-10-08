@@ -3,6 +3,7 @@ import os
 import re
 from datetime import UTC, datetime, timedelta, timezone
 
+import jpholiday
 from loguru import logger
 from slack_bolt import App
 from slack_bolt.app.async_app import AsyncApp
@@ -211,47 +212,69 @@ async def send_daily_message(
     JST = timezone(timedelta(hours=+9), "JST")  # noqa: N806
     channel_id = os.environ.get("OUTPUT_CHANNEL")
 
-    logger.info("started task")
+    logger.info("Started task")
     weekday_limit = 5
 
     while True:
         # check if the time is 06:00 JST
         now = datetime.now(JST)
         next_day = now + timedelta(days=1)
-        logger.debug(f"now is {now}")
+        logger.debug(f"Current time: {now}")
         if (
             now.hour == at_hour
             and now.minute == at_minute
             and now.weekday() < weekday_limit
+            and not jpholiday.is_holiday(now.date())
         ):
-            logger.info("tring to fetch message")
+            logger.info("Attempting to fetch messages")
             # check if the BOT already sent to channel
-            logger.debug(f"channel_id: {channel_id}")
-            messages = await app.client.conversations_history(
-                channel=channel_id,
-                oldest=datetime(
-                    year=now.year,
-                    month=now.month,
-                    day=now.day,
-                    tzinfo=JST,
-                ).timestamp(),
-                latest=datetime(
-                    year=next_day.year,
-                    month=next_day.month,
-                    day=next_day.day,
-                    tzinfo=JST,
-                ).timestamp(),
-            )
+            logger.debug(f"Channel ID: {channel_id}")
+            try:
+                messages = await app.conversations_history(
+                    channel=channel_id,
+                    oldest=datetime(
+                        year=now.year,
+                        month=now.month,
+                        day=now.day,
+                        tzinfo=JST,
+                    ).timestamp(),
+                    latest=datetime(
+                        year=next_day.year,
+                        month=next_day.month,
+                        day=next_day.day,
+                        tzinfo=JST,
+                    ).timestamp(),
+                )
+            except app.errors.SlackApiError as e:
+                logger.error(f"Slack API error fetching conversation history: {e}")
+                await asyncio.sleep(check_interval)
+                continue
+            except TimeoutError as e:
+                logger.error(f"Timeout error fetching conversation history: {e}")
+                await asyncio.sleep(check_interval)
+                continue
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"Unexpected error fetching conversation history: {e}")
+                await asyncio.sleep(check_interval)
+                continue
 
             app_user_id = os.environ.get("BOT_ID")
-            logger.debug(messages["messages"])
+            logger.debug(f"Messages: {messages['messages']}")
             if any(app_user_id == message["user"] for message in messages["messages"]):
-                logger.info("message already sent")
+                logger.info("Message already sent")
             else:
-                logger.info("sending message to channel")
-                await app.client.chat_postMessage(
-                    channel=channel_id,
-                    blocks=InitialMessage().render(),
-                    text=InitialMessage().to_text(),
-                )
+                logger.info("Sending message to channel")
+                try:
+                    await app.chat_postMessage(
+                        channel=channel_id,
+                        blocks=InitialMessage().render(),
+                        text=InitialMessage().to_text(),
+                    )
+                    logger.info("Message sent")
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"Error sending message: {e}")
+        else:
+            logger.debug("Conditions not met for sending message")
+        logger.debug("Sleeping for check_interval")
         await asyncio.sleep(check_interval)
+        logger.debug("Woke up from sleep")
