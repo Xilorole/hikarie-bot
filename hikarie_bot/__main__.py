@@ -12,6 +12,7 @@ from slack_bolt.app.async_app import AsyncApp
 from slack_sdk.web import WebClient
 from sqlalchemy.orm import Session
 
+from hikarie_bot._version import version
 from hikarie_bot.curd import insert_arrival_action
 from hikarie_bot.database import BaseSchema, SessionLocal, engine
 from hikarie_bot.modals import (
@@ -133,7 +134,7 @@ async def main(*, dev: bool = False) -> None:
     await initially_create_db(app)
     await app.client.chat_postMessage(
         channel=os.environ.get("LOG_CHANNEL"),
-        text="application started",
+        text=f"application started (v{version})",
     )
 
     handler = AsyncSocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
