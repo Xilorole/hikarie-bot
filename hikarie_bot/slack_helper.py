@@ -230,7 +230,7 @@ async def send_daily_message(
             # check if the BOT already sent to channel
             logger.debug(f"Channel ID: {channel_id}")
             try:
-                messages = await app.conversations_history(
+                messages = await app.client.conversations_history(
                     channel=channel_id,
                     oldest=datetime(
                         year=now.year,
@@ -245,34 +245,29 @@ async def send_daily_message(
                         tzinfo=JST,
                     ).timestamp(),
                 )
-            except app.errors.SlackApiError as e:
-                logger.error(f"Slack API error fetching conversation history: {e}")
-                await asyncio.sleep(check_interval)
-                continue
-            except TimeoutError as e:
-                logger.error(f"Timeout error fetching conversation history: {e}")
-                await asyncio.sleep(check_interval)
-                continue
+                app_user_id = os.environ.get("BOT_ID")
+                logger.debug(f"Messages: {messages['messages']}")
+                if any(
+                    app_user_id == message["user"] for message in messages["messages"]
+                ):
+                    logger.info("Message already sent")
+                else:
+                    logger.info("Sending message to channel")
+                    try:
+                        await app.client.chat_postMessage(
+                            channel=channel_id,
+                            blocks=InitialMessage().render(),
+                            text=InitialMessage().to_text(),
+                        )
+                        logger.info("Message sent")
+                    except Exception as e:  # noqa: BLE001
+                        logger.error(f"Error sending message: {e}")
+
             except Exception as e:  # noqa: BLE001
                 logger.error(f"Unexpected error fetching conversation history: {e}")
                 await asyncio.sleep(check_interval)
                 continue
 
-            app_user_id = os.environ.get("BOT_ID")
-            logger.debug(f"Messages: {messages['messages']}")
-            if any(app_user_id == message["user"] for message in messages["messages"]):
-                logger.info("Message already sent")
-            else:
-                logger.info("Sending message to channel")
-                try:
-                    await app.chat_postMessage(
-                        channel=channel_id,
-                        blocks=InitialMessage().render(),
-                        text=InitialMessage().to_text(),
-                    )
-                    logger.info("Message sent")
-                except Exception as e:  # noqa: BLE001
-                    logger.error(f"Error sending message: {e}")
         else:
             logger.debug("Conditions not met for sending message")
         logger.debug("Sleeping for check_interval")
