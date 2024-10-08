@@ -109,7 +109,7 @@ class FastestArrivalMessage(BaseMessage):
             [
                 blocks.SectionBlock(
                     text="ヒカリエは正義 :hikarie:\n"
-			f"本日の最速出社: <@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",  # noqa: E501
+                    f"本日の最速出社: <@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
                     block_id=BlockID.FASTEST_ARRIVAL_REPLY,
                 )
             ]
