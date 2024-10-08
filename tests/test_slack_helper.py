@@ -61,10 +61,10 @@ async def test_send_daily_message() -> None:
     ):
         # Mock the app.client methods
         mock_app = AsyncMock()
-        mock_app.conversations_history.return_value = {
+        mock_app.client.conversations_history.return_value = {
             "messages": [{"user": "other_user_id"}]
         }
-        mock_app.chat_postMessage.return_value = None
+        mock_app.client.chat_postMessage.return_value = None
 
         # Freeze time to a specific datetime
         with freeze_time("2023-02-14 06:00:00", tz_offset=-9, real_asyncio=True):
@@ -76,11 +76,11 @@ async def test_send_daily_message() -> None:
                 await task
 
             # Assertions
-            mock_app.conversations_history.assert_called_once()
-            mock_app.chat_postMessage.assert_called_once_with(
+            mock_app.client.conversations_history.assert_called_once()
+            mock_app.client.chat_postMessage.assert_called_once_with(
                 channel="test_channel",
-                blocks=mock_app.chat_postMessage.call_args[1]["blocks"],
-                text=mock_app.chat_postMessage.call_args[1]["text"],
+                blocks=mock_app.client.chat_postMessage.call_args[1]["blocks"],
+                text=mock_app.client.chat_postMessage.call_args[1]["text"],
             )
 
 
@@ -95,10 +95,10 @@ async def test_not_sending_message_on_holiday() -> None:
     ):
         # Mock the app.client methods
         mock_app = AsyncMock()
-        mock_app.conversations_history.return_value = {
+        mock_app.client.conversations_history.return_value = {
             "messages": [{"user": "other_user_id"}]
         }
-        mock_app.chat_postMessage.return_value = None
+        mock_app.client.chat_postMessage.return_value = None
 
         # Freeze time to a specific datetime
         with freeze_time("2024-02-12 06:00:00", tz_offset=-9, real_asyncio=True):
@@ -118,8 +118,8 @@ async def test_not_sending_message_on_holiday() -> None:
                 await task
 
             # aseert the conversation history is not called
-            mock_app.conversations_history.assert_not_called()
-            mock_app.chat_postMessage.assert_not_called()
+            mock_app.client.conversations_history.assert_not_called()
+            mock_app.client.chat_postMessage.assert_not_called()
 
 
 @pytest.mark.asyncio()
@@ -133,10 +133,10 @@ async def test_not_sending_message_0559_and_0601() -> None:
     ):
         # Mock the app.client methods
         mock_app = AsyncMock()
-        mock_app.conversations_history.return_value = {
+        mock_app.client.conversations_history.return_value = {
             "messages": [{"user": "other_user_id"}]
         }
-        mock_app.chat_postMessage.return_value = None
+        mock_app.client.chat_postMessage.return_value = None
 
         # Freeze time to a specific datetime
         with freeze_time("2024-02-13 06:01:00", tz_offset=-9, real_asyncio=True):
@@ -156,15 +156,15 @@ async def test_not_sending_message_0559_and_0601() -> None:
                 await task
 
             # aseert the conversation history is not called
-            mock_app.conversations_history.assert_not_called()
-            mock_app.chat_postMessage.assert_not_called()
+            mock_app.client.conversations_history.assert_not_called()
+            mock_app.client.chat_postMessage.assert_not_called()
 
         # 一応再初期化
         mock_app = AsyncMock()
-        mock_app.conversations_history.return_value = {
+        mock_app.client.conversations_history.return_value = {
             "messages": [{"user": "other_user_id"}]
         }
-        mock_app.chat_postMessage.return_value = None
+        mock_app.client.chat_postMessage.return_value = None
 
         # Freeze time to a specific datetime
         with freeze_time("2024-02-13 05:59:00", tz_offset=-9, real_asyncio=True):
@@ -184,5 +184,5 @@ async def test_not_sending_message_0559_and_0601() -> None:
                 await task
 
             # aseert the conversation history is not called
-            mock_app.conversations_history.assert_not_called()
-            mock_app.chat_postMessage.assert_not_called()
+            mock_app.client.conversations_history.assert_not_called()
+            mock_app.client.chat_postMessage.assert_not_called()
