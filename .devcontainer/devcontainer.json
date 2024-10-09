@@ -24,7 +24,8 @@
                 "shardulm94.trailing-spaces",
                 "usernamehw.errorlens",
                 "yzhang.markdown-all-in-one",
-                "GitHub.copilot"
+                "GitHub.copilot",
+                "GitHub.vscode-pull-request-github"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/root/.local/share/uv/python",

@@ -11,8 +11,116 @@ from .utils import (
     get_point_range_to_next_level,
     get_point_to_next_level,
     get_time_score,
+    is_jp_bizday,
     is_level_uped,
 )
+
+
+def _check_straight_flash(
+    session: Session, user_id: str, last_date: datetime, flash_length: int = 5
+) -> bool:
+    """Check if the user arrived at the office five days in a row.
+
+    Args:
+    ----
+        session (Session): The session factory to interact with the database.
+        user_id (str): The user ID.
+        last_date (datetime): The last date to check for a straight flash.
+        flash_length (int): The number of days to check for a straight flash.
+
+    Returns:
+    -------
+        bool: True if the user has a straight flash, False otherwise.
+
+    """
+    # Get the user's arrival information
+    user_arrivals = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.user_id == user_id)
+        .filter(GuestArrivalInfo.arrival_time <= last_date + timedelta(minutes=1))
+        .order_by(GuestArrivalInfo.arrival_time.desc())
+        .limit(5)
+        .all()
+    )
+
+    # Check if the user has at least 5 arrivals
+    if len(user_arrivals) < flash_length:
+        logger.info(f"not enough arrivals: {len(user_arrivals)}")
+        return False
+
+    # Check if the user has a straight flash
+    # list all workdays within the last 5 arrivals
+
+    initial_date: datetime.date = user_arrivals[-1].arrival_time.date()
+    valid_bizdays = []
+    for i in range(14):
+        logger.info(
+            f"checking date: {initial_date + timedelta(days=i)}, last_date: {last_date}"
+        )
+        logger.info(f"- cond 1 {is_jp_bizday(initial_date + timedelta(days=i))}")
+        logger.info(f"- cond 2 {initial_date + timedelta(days=i) <= last_date.date()}")
+
+        if (
+            is_jp_bizday(initial_date + timedelta(days=i))
+            and initial_date + timedelta(days=i) <= last_date.date()
+        ):
+            valid_bizdays.append(initial_date + timedelta(days=i))
+    return len(valid_bizdays) == flash_length
+
+
+def _calculate_and_update_user_score(
+    session: Session, user_id: str, jst_datetime: datetime
+) -> None:
+    arrival = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.user_id == user_id)
+        .filter(GuestArrivalInfo.arrival_time == jst_datetime)
+        .one()
+    )
+
+    start_of_day = jst_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    # Calculate the arrival rank
+    # The arrival rank is the number of users arrived on the same day + 1
+    same_day_arrivals = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.arrival_time >= start_of_day)
+        .filter(GuestArrivalInfo.arrival_time < end_of_day)
+        .count()
+    )
+    arrival_rank = same_day_arrivals
+
+    # Determine the score based on arrival time
+    time_score = get_time_score(jst_datetime)
+
+    # add initial arrival bonus
+    rank_score = 0
+
+    # if the user arrived first and the time score is not 0
+    # (thus the user arrived within the labour time), add 2 points
+    if arrival_rank == 1 and time_score != 0:
+        rank_score = 2
+
+    straight_flash_score = 0
+    logger.info(f"checking straight flash for {user_id}, {jst_datetime}")
+    if _check_straight_flash(session, user_id, last_date=jst_datetime):
+        straight_flash_score = 3
+
+    logger.info(
+        f"arrival rank: {arrival_rank}, "
+        f"time score: {time_score}, "
+        f"rank score: {rank_score}, "
+        f"straight_flash_score: {straight_flash_score}"
+    )
+
+    # update
+    arrival.arrival_rank = arrival_rank
+    arrival.acquired_score_sum = time_score + rank_score + straight_flash_score
+    arrival.acquired_time_score = time_score
+    arrival.acquired_rank_score = rank_score
+    arrival.straight_flash_score = straight_flash_score
+
+    session.commit()
 
 
 def insert_arrival_action(
@@ -51,53 +159,34 @@ def insert_arrival_action(
         logger.info(f"existing arrival @ {existing_arrival.arrival_time}")
         return False
 
-    # Calculate the arrival rank
-    # The arrival rank is the number of users arrived on the same day + 1
-    same_day_arrivals = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.arrival_time >= start_of_day)
-        .filter(GuestArrivalInfo.arrival_time < end_of_day)
-        .count()
-    )
-    arrival_rank = same_day_arrivals + 1
-
-    # Determine the score based on arrival time
-    time_score = get_time_score(jst_datetime)
-
-    # add initial arrival bonus
-    rank_score = 0
-
-    # if the user arrived first and the time score is not 0
-    # (thus the user arrived within the labour time), add 2 points
-    if arrival_rank == 1 and time_score != 0:
-        rank_score = 2
-
-    logger.info(
-        f"arrival rank: {arrival_rank}, "
-        f"time score: {time_score}, "
-        f"rank score: {rank_score}"
-    )
     # Insert the new arrival
     new_arrival = GuestArrivalInfo(
         arrival_time=jst_datetime,
         user_id=user_id,
-        arrival_rank=arrival_rank,
-        acquired_score_sum=time_score + rank_score,
-        acquired_time_score=time_score,
-        acquired_rank_score=rank_score,
+        arrival_rank=-1,
+        acquired_score_sum=-1,
+        acquired_time_score=-1,
+        acquired_rank_score=-1,
+        straight_flash_score=-1,
     )
     session.add(new_arrival)
+    session.commit()
+
+    _calculate_and_update_user_score(session, user_id, jst_datetime)
+    updated_arrival = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.user_id == user_id)
+        .filter(GuestArrivalInfo.arrival_time == jst_datetime)
+        .one()
+    )
 
     # Update user score
     user_score_entry = session.query(User).filter_by(id=user_id).one_or_none()
 
     # calculate_attribute
-    if user_score_entry:
-        previous_score = user_score_entry.current_score
-        current_score = user_score_entry.current_score + time_score + rank_score
-    else:
-        previous_score = 0
-        current_score = time_score + rank_score
+    previous_score = user_score_entry.current_score or 0 if user_score_entry else 0
+    current_score = previous_score + updated_arrival.acquired_score_sum
+
     level = get_level(current_score)
     level_name = get_level_name(current_score)
     level_uped = is_level_uped(previous_score, current_score)

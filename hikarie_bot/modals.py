@@ -145,6 +145,7 @@ class PointGetMessage(BaseMessage):
         score_addup = arrival.acquired_score_sum
         time_score = arrival.acquired_time_score
         fastest_score = arrival.acquired_rank_score
+        straight_flash_score = arrival.straight_flash_score
 
         # get the variables
         level = get_level(current_point)
@@ -173,6 +174,11 @@ class PointGetMessage(BaseMessage):
             0: "",
         }.get(fastest_score)
 
+        straight_flash_score_text = {
+            3: "ストレートフラッ出社:*+3pt*",
+            0: "",
+        }.get(straight_flash_score)
+
         self.blocks.extend(
             [
                 blocks.SectionBlock(
@@ -190,7 +196,8 @@ class PointGetMessage(BaseMessage):
                             f"\nしんこうど: `{point_rate_text}` "
                             f"| *{experience_rate:>3d}%* "
                             f"(*+{experience_add_up_rate}%*)"
-                            f"\nうちわけ: {time_score_text} {fastest_score_text}"
+                            f"\nうちわけ: {time_score_text} {fastest_score_text} "
+                            f"{straight_flash_score_text}"
                         )
                     ]
                 ),
