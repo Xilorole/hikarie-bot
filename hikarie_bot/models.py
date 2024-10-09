@@ -39,6 +39,7 @@ class GuestArrivalInfo(BaseSchema):
     acquired_score_sum = Column(Integer)
     acquired_time_score = Column(Integer)
     acquired_rank_score = Column(Integer)
+    straight_flash_score = Column(Integer)
 
 
 # Define the UserScore table

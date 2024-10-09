@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, time, timedelta, timezone
 
+import jpholiday
+
 from .errors import InvalidPointError
 
 level_map = {
@@ -180,3 +182,13 @@ def get_current_jst_datetime() -> datetime:
     "Get the current time in JST."
     tz_jst = timezone(timedelta(hours=+9), "JST")
     return datetime.now(tz_jst)
+
+
+def is_jp_bizday(day: datetime.date) -> bool:
+    "Check if the given day is a business day in Japan."
+    return not (
+        jpholiday.is_holiday(day)
+        or day.weekday() in {5, 6}
+        or (day.month == 1 and day.day in {1, 2, 3})
+        or (day.month, day.day) == (12, 31)
+    )

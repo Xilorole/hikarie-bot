@@ -108,7 +108,10 @@ async def initially_create_db(app: AsyncApp) -> None:
 
 @click.command()
 @click.option("--dev", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
-async def main(*, dev: bool = False) -> None:
+@click.option(
+    "--skip-db-create", is_flag=True, help="Set LOGURU_LEVEL to INFO for development."
+)
+async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
     """Run the app."""
     log_level = "DEBUG" if dev else "INFO"  # Default log level
     # Configure loguru logger
@@ -130,8 +133,8 @@ async def main(*, dev: bool = False) -> None:
 
     # makes a strong reference not to GC
     background_task.add(a)
-
-    await initially_create_db(app)
+    if not skip_db_create:
+        await initially_create_db(app)
     await app.client.chat_postMessage(
         channel=os.environ.get("LOG_CHANNEL"),
         text=f"application started (v{version})",
