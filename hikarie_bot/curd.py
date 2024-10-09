@@ -43,6 +43,15 @@ def _check_straight_flash(
         .all()
     )
 
+    # Check if the user has straight flash within last 5 arrivals
+    if any(
+        user_arrival.straight_flash_score > 0
+        for user_arrival in user_arrivals
+        if datetime.date(user_arrival.arrival_time) != last_date.date()
+    ):
+        logger.info("already has straight flash")
+        return False
+
     # Check if the user has at least 5 arrivals
     if len(user_arrivals) < flash_length:
         logger.info(f"not enough arrivals: {len(user_arrivals)}")

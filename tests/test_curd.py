@@ -131,41 +131,14 @@ def test__check_straight_flash(temp_db: sessionmaker) -> None:
 
     # sample straight flash
     # 2024-04-22, 2024-04-23, 2024-04-24, 2024-04-25, 2024-04-26
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 22, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 23, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 24, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 25, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 26, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
+    for m, d in ((4, 22), (4, 23), (4, 24), (4, 25), (4, 26)):
+        insert_arrival_action(
+            session=session,
+            jst_datetime=datetime(
+                2024, m, d, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            ),
+            user_id="test_user",
+        )
 
     assert _check_straight_flash(
         session=session,
@@ -179,43 +152,46 @@ def test__check_straight_flash(temp_db: sessionmaker) -> None:
 
     assert user_info.current_score == 28
 
+    for m, d in ((4, 30), (5, 1), (5, 2), (5, 7)):
+        insert_arrival_action(
+            session=session,
+            jst_datetime=datetime(
+                2024, m, d, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            ),
+            user_id="test_user",
+        )
+
+        assert not _check_straight_flash(
+            session=session,
+            user_id="test_user",
+            last_date=datetime(
+                2024, m, d, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            ),
+        )
+
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 5, 8, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="test_user",
+    )
+    assert _check_straight_flash(
+        session=session,
+        user_id="test_user",
+        last_date=datetime(2024, 5, 8, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+    )
+
     # longest straight flash
     # 2024-04-26, 2024-04-30, 2024-05-01, 2024-05-02, 2024-05-07
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 26, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_longest",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 30, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_longest",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 5, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_longest",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 5, 2, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_longest",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 5, 7, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_longest",
-    )
+    for m, d in ((4, 26), (4, 30), (5, 1), (5, 2), (5, 7)):
+        insert_arrival_action(
+            session=session,
+            jst_datetime=datetime(
+                2024, m, d, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            ),
+            user_id="test_user_longest",
+        )
 
     assert _check_straight_flash(
         session=session,
@@ -225,41 +201,15 @@ def test__check_straight_flash(temp_db: sessionmaker) -> None:
 
     # sample failing straight flash
     # 2024-04-22, 2024-04-23, 2024-04-24, 2024-04-25, 2024-04-30
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 22, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_fail",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 23, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_fail",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 24, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_fail",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 25, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_fail",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 4, 30, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_fail",
-    )
+    for m, d in ((4, 22), (4, 23), (4, 24), (4, 25), (4, 30)):
+        insert_arrival_action(
+            session=session,
+            jst_datetime=datetime(
+                2024, m, d, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            ),
+            user_id="test_user_fail",
+        )
+
     assert not _check_straight_flash(
         session=session,
         user_id="test_user_fail",
