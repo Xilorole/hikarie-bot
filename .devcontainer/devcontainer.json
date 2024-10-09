@@ -26,7 +26,8 @@
                 "usernamehw.errorlens",
                 "yzhang.markdown-all-in-one",
                 "GitHub.copilot",
-                "GitHub.vscode-pull-request-github"
+                "GitHub.vscode-pull-request-github",
+                "github.vscode-github-actions"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/root/.local/share/uv/python",
