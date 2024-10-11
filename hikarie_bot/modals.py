@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from loguru import logger
 from slack_sdk.models.blocks import (
     BlockElement,
     basic_components,
@@ -80,9 +81,20 @@ class InitialMessage(BaseMessage):
 class RegistryMessage(BaseMessage):
     """Class for creating the registry Slack message with a question and a button."""
 
-    def __init__(self) -> None:
+    def __init__(self, session: Session, jst_datetime: datetime) -> None:
         """Initialize the RegistryMessage with a question and a button."""
         super().__init__()
+
+        start_of_day = jst_datetime.replace(hour=6, minute=0, second=0, microsecond=0)
+
+        arrived_users = (
+            session.query(GuestArrivalInfo)
+            .filter(GuestArrivalInfo.arrival_time >= start_of_day)
+            .filter(GuestArrivalInfo.arrival_time <= jst_datetime)
+            .all()
+        )
+        logger.info(arrived_users)
+
         self.blocks.extend(
             [
                 blocks.SectionBlock(text="ヒカリエに出社してる？"),  # noqa: RUF001
@@ -94,6 +106,15 @@ class RegistryMessage(BaseMessage):
                         )
                     ],
                     block_id=BlockID.ARRIVED_OFFICE,
+                ),
+                blocks.SectionBlock(
+                    text="本日の出社ユーザー :hikarie: :\n"
+                    + "\n".join(
+                        [
+                            f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>"
+                            for user in arrived_users
+                        ]
+                    ),
                 ),
             ]
         )
@@ -119,7 +140,14 @@ class FastestArrivalMessage(BaseMessage):
 class PointGetMessage(BaseMessage):
     """Class for creating the point get Slack message."""
 
-    def __init__(self, session: Session, user_id: str, jst_datetime: datetime) -> None:
+    def __init__(
+        self,
+        session: Session,
+        user_id: str,
+        jst_datetime: datetime,
+        *,
+        initial_arrival: bool,
+    ) -> None:
         """Initialize the PointGetMessage with the user ID and time."""
         super().__init__()
 
@@ -162,6 +190,9 @@ class PointGetMessage(BaseMessage):
             "█" + "█" * (experience_rate // 10) + " " * (10 - experience_rate // 10)
         )
 
+        initial_arrival_text = "最速" if initial_arrival else ""
+        hikarie_text = " :hikarie:" if initial_arrival else ""
+
         time_score_text = {
             3: "9時までの出社:*+3pt*",
             2: "11時までの出社:*+2pt*",
@@ -182,7 +213,8 @@ class PointGetMessage(BaseMessage):
         self.blocks.extend(
             [
                 blocks.SectionBlock(
-                    text=f"*{arrive_time:%H:%M}* 出社登録しました！"  # noqa: RUF001
+                    text=f"*{arrive_time:%H:%M}* "
+                    f"{initial_arrival_text}出社登録しました！{hikarie_text}"  # noqa: RUF001
                     f"\n<@{user_id}>さんのポイント "
                     f"{previous_point} → *{current_point}* "
                     f"(*+{score_addup}{' レベルアップ！' if level_up_flag else ''}*)"  # noqa: RUF001

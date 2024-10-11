@@ -17,7 +17,6 @@ from hikarie_bot.curd import insert_arrival_action
 from hikarie_bot.database import BaseSchema, SessionLocal, engine
 from hikarie_bot.modals import (
     ActionID,
-    FastestArrivalMessage,
     PointGetMessage,
     RegistryMessage,
 )
@@ -150,6 +149,7 @@ async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
     """Handle the button click event."""
     await ack()
     user_id = body["user"]["id"]
+    channel_id = body["channel"]["id"]
     action_id = body["actions"][0]["action_id"]
     message_ts = body["message"]["ts"]
     jst_message_datetime = unix_timestamp_to_jst(float(message_ts))
@@ -172,30 +172,19 @@ async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
         jst_message_datetime_at6 < now < jst_message_datetime_at6 + timedelta(hours=12)
     ):
         await client.chat_postEphemeral(
-            channel=body["channel"]["id"],
-            user=body["user"]["id"],
+            channel=channel_id,
+            user=user_id,
             text="出社申告は当日の6:00から18:00までの間にしてください",
         )
         return
     insert_result = insert_arrival_action(get_db().__next__(), now, user_id)
     if insert_result is False:
         await client.chat_postEphemeral(
-            channel=body["channel"]["id"],
-            user=body["user"]["id"],
+            channel=channel_id,
+            user=user_id,
             text="本日は既に出社申告を済ませています",
         )
         return
-
-    if body["actions"][0]["action_id"] == ActionID.FASTEST_ARRIVAL:
-        ## send the fastest arrival message
-        arrival_message = FastestArrivalMessage(
-            user_id=user_id, jst_datetime=get_current_jst_datetime()
-        )
-        await client.chat_postMessage(
-            channel=body["channel"]["id"],
-            text=arrival_message.to_text(),
-            blocks=arrival_message.render(),
-        )
 
     # send point get message to thread
     point_get_message = PointGetMessage(
@@ -204,21 +193,21 @@ async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
         jst_datetime=get_current_jst_datetime(),
     )
     await client.chat_postMessage(
-        channel=body["channel"]["id"],
-        thread_ts=body["message"]["ts"],
+        channel=channel_id,
+        thread_ts=message_ts,
         text=point_get_message.to_text(),
         blocks=point_get_message.render(),
+        reply_broadcast=action_id == ActionID.FASTEST_ARRIVAL,
     )
 
     # replace the message with RegistryMessage
-    if body["actions"][0]["action_id"] == ActionID.FASTEST_ARRIVAL:
-        registry_message = RegistryMessage()
-        await client.chat_update(
-            channel=body["channel"]["id"],
-            ts=body["message"]["ts"],
-            text=registry_message.to_text(),
-            blocks=registry_message.render(),
-        )
+    registry_message = RegistryMessage(session=get_db().__next__(), jst_datetime=now)
+    await client.chat_update(
+        channel=channel_id,
+        ts=message_ts,
+        text=registry_message.to_text(),
+        blocks=registry_message.render(),
+    )
 
 
 if __name__ == "__main__":
