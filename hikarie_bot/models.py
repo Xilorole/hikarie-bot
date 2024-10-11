@@ -1,6 +1,5 @@
-from datetime import UTC, datetime
-
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.orm import relationship
 
 from .database import BaseSchema
 
@@ -17,8 +16,8 @@ class GuestArrivalRaw(BaseSchema):
     __tablename__ = "guest_arrival_raw"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(String, ForeignKey("user.id"))
-    arrival_time = Column(DateTime, default=datetime.now(UTC))
+    user_id = Column(String, ForeignKey("user.id"), nullable=False)
+    arrival_time = Column(DateTime, default=func.now())
 
 
 # Define the GuestArrivalInfo table
@@ -33,8 +32,8 @@ class GuestArrivalInfo(BaseSchema):
     __tablename__ = "guest_arrival_info"
 
     id = Column(Integer, primary_key=True)
-    arrival_time = Column(DateTime, default=datetime.now(UTC))
-    user_id = Column(String, ForeignKey("user.id"))
+    user_id = Column(String, ForeignKey("user.id"), nullable=False)
+    arrival_time = Column(DateTime, default=func.now())
     arrival_rank = Column(Integer)
     acquired_score_sum = Column(Integer)
     acquired_time_score = Column(Integer)
@@ -52,13 +51,59 @@ class User(BaseSchema):
 
     __tablename__ = "user"
 
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True)
     current_score = Column(Integer)
     previous_score = Column(Integer)
-    update_datetime = Column(DateTime, default=datetime.now(UTC))
+    update_datetime = Column(DateTime, default=func.now())
     level = Column(Integer)
     level_name = Column(String)
     level_uped = Column(Boolean)
     point_to_next_level = Column(Integer)
     point_range_to_next_level = Column(Integer)
     current_level_point = Column(Integer)
+
+    guest_arrivals_raw = relationship("GuestArrivalRaw", backref="user")
+    guest_arrivals_info = relationship("GuestArrivalInfo", backref="user")
+    badges = relationship("UserBadge", back_populates="user")
+
+
+class BadgeType(BaseSchema):
+    "Define the BadgeType table."
+
+    __tablename__ = "badge_types"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(String)
+
+    badges = relationship("Badge", back_populates="badge_type")
+
+
+class Badge(BaseSchema):
+    "Define the Badge table."
+
+    __tablename__ = "badges"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    message = Column(String)
+    description = Column(String)
+    rank = Column(Integer, nullable=False)
+    score = Column(Integer, nullable=False)
+    badge_type_id = Column(Integer, ForeignKey("badge_types.id"), nullable=False)
+
+    badge_type = relationship("BadgeType", back_populates="badges")
+    users = relationship("UserBadge", back_populates="badge")
+
+
+class UserBadge(BaseSchema):
+    """Define the UserBadge table."""
+
+    __tablename__ = "user_badges"
+
+    user_id = Column(Integer, ForeignKey("user.id"), primary_key=True)
+    badge_id = Column(Integer, ForeignKey("badges.id"), primary_key=True)
+    acquired_date = Column(DateTime, default=func.now())
+
+    user = relationship("User", back_populates="badges")
+    badge = relationship("Badge", back_populates="users")
