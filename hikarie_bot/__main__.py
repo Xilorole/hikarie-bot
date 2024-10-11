@@ -191,6 +191,7 @@ async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
         session=get_db().__next__(),
         user_id=user_id,
         jst_datetime=get_current_jst_datetime(),
+        initial_arrival=action_id == ActionID.FASTEST_ARRIVAL,
     )
     await client.chat_postMessage(
         channel=channel_id,
