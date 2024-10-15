@@ -21,6 +21,12 @@ repos:
         types: [python]
         args: [--maxfail=1, --disable-warnings, tests/]  # Specify the directory or files where your tests are located
 
+      - id: pre-push-uv-build
+        name: Run uv build before push
+        entry: uv build
+        language: system
+        stages: [push]
+
   - repo: https://github.com/hadolint/hadolint
     rev: v2.12.0
     hooks:
