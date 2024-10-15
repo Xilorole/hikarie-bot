@@ -41,6 +41,26 @@ class GuestArrivalInfo(BaseSchema):
     straight_flash_score = Column(Integer)
 
 
+class Achievement(BaseSchema):
+    """Define the Achievement table.
+
+    The Achievement table stores the user ID, arrival data, and the badges
+    The badges are related to single arrival data.
+    """
+
+    __tablename__ = "achievement"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String, ForeignKey("user.id"), nullable=False)
+    arrival_id = Column(Integer, ForeignKey("guest_arrival_info.id"), nullable=False)
+    badge_id = Column(Integer, ForeignKey("badges.id"), nullable=False)
+    achieved_time = Column(DateTime, default=func.now())
+
+    user = relationship("User", backref="achievement")
+    arrival = relationship("GuestArrivalInfo", backref="achievement")
+    badges = relationship("Badge", backref="achievement")
+
+
 # Define the UserScore table
 class User(BaseSchema):
     """Define the UserScore table.
@@ -51,7 +71,7 @@ class User(BaseSchema):
 
     __tablename__ = "user"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True)
     current_score = Column(Integer)
     previous_score = Column(Integer)
     update_datetime = Column(DateTime, default=func.now())
@@ -85,10 +105,9 @@ class Badge(BaseSchema):
     __tablename__ = "badges"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
     message = Column(String)
-    description = Column(String)
-    rank = Column(Integer, nullable=False)
+    condition = Column(String)
+    level = Column(Integer, nullable=False)
     score = Column(Integer, nullable=False)
     badge_type_id = Column(Integer, ForeignKey("badge_types.id"), nullable=False)
 
