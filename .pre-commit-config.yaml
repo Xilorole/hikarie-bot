@@ -1,3 +1,4 @@
+default_stages: [commit]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.3.5
@@ -6,36 +7,31 @@ repos:
       name: Ruff check
       description: "Run 'ruff check' for extremely fast Python linting"
       # args: [ --fix ]
-      stages: [commit]
 
     - id: ruff-format
       name: Ruff format
       description: "Run 'ruff format' for extremely fast Python formatting"
-      stages: [commit]
 
   - repo: local
     hooks:
-    - id: pytest
-      name: Run pytest
-      entry: uv run pytest
-      language: system
-      types: [python]
-      args: [--maxfail=1, --disable-warnings, tests/]  # Specify the directory or files where your tests are located
-      stages: [commit]
+      - id: pytest
+        name: Run pytest
+        entry: uv run pytest
+        language: system
+        types: [python]
+        args: [--maxfail=1, --disable-warnings, tests/]  # Specify the directory or files where your tests are located
 
-    - id: check-version-update
-      name: Check if version is updated in the last commit
-      entry: bash -c 'scripts/check_version_update.sh'
-      language: system
-      stages: [push]
+      - id: add-version-file
+        name: Add _version.py if modified
+        entry: bash -c 'scripts/add_version_file.sh'
+        language: system
 
   - repo: https://github.com/hadolint/hadolint
     rev: v2.12.0
     hooks:
-    - id: hadolint
-      name: Lint Dockerfiles
-      description: Runs hadolint to lint Dockerfiles
-      language: system
-      types: ["dockerfile"]
-      entry: bash -c 'find . -maxdepth 2 -name "Dockerfile*" | xargs hadolint'
-      stages: [commit]
+      - id: hadolint
+        name: Lint Dockerfiles
+        description: Runs hadolint to lint Dockerfiles
+        language: system
+        types: ["dockerfile"]
+        entry: bash -c 'find . -maxdepth 2 -name "Dockerfile*" | xargs hadolint'
