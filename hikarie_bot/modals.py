@@ -93,6 +93,14 @@ class RegistryMessage(BaseMessage):
             .filter(GuestArrivalInfo.arrival_time <= jst_datetime)
             .all()
         )
+        arrived_user_text = "本日の出社ユーザー :hikarie: :\n"
+        arrived_user_text += "\n".join(
+            [
+                f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>"
+                f"{':crown:' if idx == 0 else ''}"
+                for idx, user in enumerate(arrived_users)
+            ]
+        )
         logger.info(arrived_users)
 
         self.blocks.extend(
