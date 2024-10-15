@@ -19,7 +19,7 @@ repos:
         entry: uv run pytest
         language: system
         types: [python]
-        args: [--maxfail=1, --disable-warnings, tests/]  # Specify the directory or files where your tests are located
+        args: [--maxfail=1, --disable-warnings, tests/, -q]  # Specify the directory or files where your tests are located
 
   - repo: https://github.com/hadolint/hadolint
     rev: v2.12.0

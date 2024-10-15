@@ -7,7 +7,9 @@ __all__ = [
     "GuestArrivalInfo",
     "GuestArrivalRaw",
     "User",
+    "Badge",
+    "BadgeType",
 ]
 
 from ._version import version
-from .models import GuestArrivalInfo, GuestArrivalRaw, User
+from .models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User

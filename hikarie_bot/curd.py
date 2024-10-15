@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from loguru import logger
 from sqlalchemy.orm import Session
 
+from .db_data import Badges, BadgeTypes
 from .models import GuestArrivalInfo, GuestArrivalRaw, User
 from .utils import (
     get_current_level_point,
@@ -231,3 +232,17 @@ def insert_arrival_action(
 
     session.commit()
     return True
+
+
+def initially_insert_badge_data(session: Session) -> None:
+    """Insert the badge data into the database.
+
+    Args:
+    ----
+        session (Session): The session factory to interact with the database.
+
+    """
+    session.add_all(Badges)
+    session.add_all(BadgeTypes)
+    session.commit()
+    logger.info("Badge data inserted successfully")
