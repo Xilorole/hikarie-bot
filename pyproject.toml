@@ -42,3 +42,5 @@ version = { attr = "hikarie_bot.version" }
 [tool.setuptools_scm]
 write_to = "hikarie_bot/_version.py"
 
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"

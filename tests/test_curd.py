@@ -3,8 +3,12 @@ from datetime import datetime
 
 from sqlalchemy.orm import sessionmaker
 
-from hikarie_bot.curd import _check_straight_flash, insert_arrival_action
-from hikarie_bot.models import GuestArrivalInfo, GuestArrivalRaw, User
+from hikarie_bot.curd import (
+    _check_straight_flash,
+    initially_insert_badge_data,
+    insert_arrival_action,
+)
+from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
 
 
 # @temp_db
@@ -217,3 +221,23 @@ def test__check_straight_flash(temp_db: sessionmaker) -> None:
             2024, 4, 30, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
         ),
     )
+
+
+def test_insert_badge_data(temp_db: sessionmaker) -> None:
+    """Test badge data."""
+    session = temp_db()
+
+    initially_insert_badge_data(session=session)
+
+    assert session.query(Badge).count() != 0
+    assert session.query(BadgeType).count() == 14
+
+    assert (
+        session.query(Badge)
+        .filter(Badge.badge_type_id == 1 and Badge.level == 1)
+        .one()
+        .message
+        == "はじめての出社登録"
+    )
+
+    assert session.query(BadgeType).filter(BadgeType.id == 1).one().name == "welcome"
