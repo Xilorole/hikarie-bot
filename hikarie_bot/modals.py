@@ -107,6 +107,7 @@ class RegistryMessage(BaseMessage):
                     ],
                     block_id=BlockID.ARRIVED_OFFICE,
                 ),
+                blocks.DividerBlock(),
                 blocks.SectionBlock(
                     text="本日の出社ユーザー :hikarie: :\n"
                     + "\n".join(
