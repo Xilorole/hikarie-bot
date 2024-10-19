@@ -20,8 +20,10 @@ class DatabaseExistsError(Exception):
 @pytest.fixture
 def temp_db() -> Generator[Any, Any, Any]:
     """Create a test database and tables."""
+    DB_PATH = ".db/test_temp.db"  # noqa: N806
+
     # settings of test database
-    TEST_SQLALCHEMY_DATABASE_URL = "sqlite:///./test_temp.db"  # noqa: N806
+    TEST_SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"  # noqa: N806
     engine = create_engine(
         TEST_SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
     )

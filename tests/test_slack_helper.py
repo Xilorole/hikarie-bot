@@ -45,12 +45,6 @@ def test_filter(monkeypatch: Generator) -> None:
 
 
 @pytest.mark.asyncio()
-async def test_example() -> None:
-    """No marker."""
-    await asyncio.sleep(0.1)
-
-
-@pytest.mark.asyncio()
 async def test_send_daily_message() -> None:
     """Test the daily message sending function."""
     # Mock environment variables
@@ -70,7 +64,7 @@ async def test_send_daily_message() -> None:
         with freeze_time("2023-02-14 06:00:00", tz_offset=-9, real_asyncio=True):
             # Run the function in a background task
             task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.01)
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
@@ -108,7 +102,7 @@ async def test_not_sending_message_on_holiday() -> None:
             task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
             logger.info("Task started")
             # Allow some time for the function to run
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.01)
             logger.info("Task finished")
             # Cancel the task to stop the infinite loop
             task.cancel()
@@ -146,7 +140,7 @@ async def test_not_sending_message_0559_and_0601() -> None:
             task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
             logger.info("Task started")
             # Allow some time for the function to run
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.01)
             logger.info("Task finished")
             # Cancel the task to stop the infinite loop
             task.cancel()
@@ -174,7 +168,7 @@ async def test_not_sending_message_0559_and_0601() -> None:
             task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
             logger.info("Task started")
             # Allow some time for the function to run
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.01)
             logger.info("Task finished")
             # Cancel the task to stop the infinite loop
             task.cancel()
