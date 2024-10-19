@@ -29,7 +29,7 @@ def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
     with temp_db() as session:
         initially_insert_badge_data(session)
         badge = BadgeChecker.get_badge(session=session, badge_id=101)
-        checker = BadgeChecker()
+        checker = BadgeChecker(badge_type_to_check=[1])
 
         # test scenario
         # 1. test_user:
@@ -66,6 +66,11 @@ def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
                 user_id=data.user_id,
                 target_date=data.jst_datetime,
             )
+            assert expected == checker.check(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
 
 
 def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
@@ -73,7 +78,7 @@ def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
     with temp_db() as session:
         initially_insert_badge_data(session)
         badge = BadgeChecker.get_badge(session=session, badge_id=201)
-        checker = BadgeChecker()
+        checker = BadgeChecker([2])
 
         # test scenario
         # 1. test_user:
@@ -119,7 +124,7 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
         badge_5 = BadgeChecker.get_badge(session=session, badge_id=301)
         badge_20 = BadgeChecker.get_badge(session=session, badge_id=302)
         badge_100 = BadgeChecker.get_badge(session=session, badge_id=303)
-        checker = BadgeChecker()
+        checker = BadgeChecker([3])
 
         # Badge types are below:
         # > # BadgeType id=3, name="arrival_count", description="たくさん出社登録をした"
@@ -213,7 +218,7 @@ def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=401)
         badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=402)
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=403)
-        checker = BadgeChecker()
+        checker = BadgeChecker([4])
 
         # > # BadgeTypeData id=4, name="straight_flash", description="連続して出社した"
         # > BadgeData(
@@ -371,7 +376,7 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=503)
         badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=502)
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=501)
-        checker = BadgeChecker()
+        checker = BadgeChecker([5])
 
         # > # BadgeTypeData id=5, name="time_window", description="時間帯による出社登録"
         # > BadgeData(
@@ -443,7 +448,7 @@ def test_badge_checker_id6_kiriban(temp_db: sessionmaker) -> None:
     with temp_db() as session:
         initially_insert_badge_data(session)
         badge_n100 = BadgeChecker.get_badge(session=session, badge_id=601)
-        checker = BadgeChecker()
+        checker = BadgeChecker([6])
 
         test_data = (
             *[
@@ -526,7 +531,7 @@ def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=703)
         badge_lv4 = BadgeChecker.get_badge(session=session, badge_id=704)
 
-        checker = BadgeChecker()
+        checker = BadgeChecker([7])
 
         # test scenario: all users arriveld at 2024-01-01 07:00:00 initially
         # 1. 2 weeks no see (+15 days)
@@ -579,7 +584,7 @@ def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=801)
         badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=802)
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=803)
-        checker = BadgeChecker()
+        checker = BadgeChecker([8])
 
         # > # BadgeTypeData id=8, name="lucky_you_guys", description="同じ時間に出社登録をした"  # noqa: E501
         # > BadgeData(
@@ -641,6 +646,65 @@ def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
         for expected, data in check_data:
             logger.info(f"expected: {expected}, data: {data}")
             assert expected == checker.check_lucky_you_guys(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
+
+
+def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
+    """Test the badge checker with complex condition."""
+    with temp_db() as session:
+        initially_insert_badge_data(session)
+        badge_id1 = BadgeChecker.get_badge(session=session, badge_id=101)
+        badge_id2 = BadgeChecker.get_badge(session=session, badge_id=201)
+        badge_id3 = BadgeChecker.get_badge(session=session, badge_id=301)
+        checker = BadgeChecker(badge_type_to_check=[1, 2, 3])
+
+        # test scenario
+        # A: always comes fastest, arrive from 1/1,
+        #    get arrival count lv1(5times) badge at 2024-01-05
+        # B: start to come at 1/4, get the fastest at 1/6
+
+        test_data = (
+            # A
+            UserData(jst_datetime="2024-01-01 06:00:00", user_id="user_A"),
+            UserData(jst_datetime="2024-01-02 06:00:00", user_id="user_A"),
+            UserData(jst_datetime="2024-01-03 06:00:00", user_id="user_A"),
+            UserData(jst_datetime="2024-01-04 06:00:00", user_id="user_A"),
+            UserData(jst_datetime="2024-01-05 06:00:00", user_id="user_A"),
+            UserData(jst_datetime="2024-01-06 07:00:00", user_id="user_A"),
+            # B
+            UserData(jst_datetime="2024-01-04 07:00:00", user_id="user_B"),
+            UserData(jst_datetime="2024-01-05 07:00:00", user_id="user_B"),
+            UserData(jst_datetime="2024-01-06 06:00:00", user_id="user_B"),
+        )
+
+        check_data = (
+            # A
+            (
+                [badge_id1, badge_id2],
+                UserData(jst_datetime="2024-01-01", user_id="user_A"),
+            ),
+            (
+                [badge_id2, badge_id3],
+                UserData(jst_datetime="2024-01-05", user_id="user_A"),
+            ),
+            ([], UserData(jst_datetime="2024-01-06", user_id="user_A")),
+            # B
+            ([badge_id1], UserData(jst_datetime="2024-01-04", user_id="user_B")),
+            ([badge_id2], UserData(jst_datetime="2024-01-06", user_id="user_B")),
+        )
+
+        for data in test_data:
+            insert_arrival_action(
+                session=session,
+                jst_datetime=data.jst_datetime,
+                user_id=data.user_id,
+            )
+
+        for expected, data in check_data:
+            assert expected == checker.check(
                 session=session,
                 user_id=data.user_id,
                 target_date=data.jst_datetime,

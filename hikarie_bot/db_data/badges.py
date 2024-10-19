@@ -17,6 +17,7 @@ from typing import Self
 from loguru import logger
 from sqlalchemy.orm import Session
 
+from hikarie_bot.exceptions import CheckerFunctionNotSpecifiedError
 from hikarie_bot.models import Badge, GuestArrivalInfo
 from hikarie_bot.utils import list_bizdays
 
@@ -45,35 +46,45 @@ class BadgeData:
 class BadgeChecker:
     """Class for checking if a user has acquired a badge."""
 
-    def __init__(self) -> Self:
+    def __init__(self, badge_type_to_check: list[int]) -> Self:
         """Initialize the BadgeChecker with an empty list of badges."""
-        checkers = {
-            1: self.check_welcome,
-            2: self.check_fastest_arrival,
-            # 3: self.check_arrival_count,
-            # 4: self.check_straight_flash,
-            # 5: self.check_time_window,
-            # 6: self.check_kiriban,
-            # 7: self.check_long_time_no_see,
-            # 8: self.check_lucky_you_guys,
-            # 9: self.check_reincarnation,
-            # 10: self.check_item_shop,
-            # 11: self.check_used_log_report,
-            # 12: self.check_seasonal_rank,
-            # 13: self.check_reactioner,
-            # 14: self.check_advance_notice_success,
-        }
+        if badge_type_to_check is None:
+            raise CheckerFunctionNotSpecifiedError
 
         # select badge types to check
-        self.badge_type_to_check = [
-            1,
-            2,
-        ]
+        self.badge_type_to_check = badge_type_to_check
+
+        checker_map = self.get_checker_map()
 
         # define active checker functions
         self.checkers = [
-            checkers[badge_type_id] for badge_type_id in self.badge_type_to_check
+            checker_map[badge_type_id] for badge_type_id in self.badge_type_to_check
         ]
+
+    @classmethod
+    def get_checker_map(cls) -> dict[int, callable]:
+        """Return the checker map."""
+        return {
+            1: cls.check_welcome,
+            2: cls.check_fastest_arrival,
+            3: cls.check_arrival_count,
+            4: cls.check_straight_flash,
+            5: cls.check_time_window,
+            6: cls.check_kiriban,
+            7: cls.check_long_time_no_see,
+            8: cls.check_lucky_you_guys,
+            # 9: cls.check_reincarnation,
+            # 10: cls.check_item_shop,
+            # 11: cls.check_used_log_report,
+            # 12: cls.check_seasonal_rank,
+            # 13: cls.check_reactioner,
+            # 14: cls.check_advance_notice_success,
+        }
+
+    @classmethod
+    def get_available_badge_types(cls) -> list[int]:
+        """Return the available badge types."""
+        return cls.get_checker_map().keys()
 
     @classmethod
     def get_badge(cls, session: Session, badge_id: int) -> Badge:
@@ -116,7 +127,7 @@ class BadgeChecker:
         self,
         session: Session,
         user_id: str,
-        jst_date: datetime,
+        target_date: datetime,
     ) -> list[Badge]:
         """Check if a user has acquired a badge.
 
@@ -124,8 +135,7 @@ class BadgeChecker:
         ----
             session (Session): The session factory to interact with the database.
             user_id (str): The ID of the user to check for badge acquisition.
-            jst_date (datetime): The date and time in JST to check for badge acquisition.
-            inline (bool): Whether to update the badge information directly in the database.
+            target_date (datetime): The date and time in JST to check for badge acquisition.
 
         Returns:
         -------
@@ -135,7 +145,7 @@ class BadgeChecker:
         return [
             badge
             for checker in self.checkers
-            for badge in checker(session, user_id, jst_date)
+            for badge in checker(session, user_id, target_date)
         ]
 
     @classmethod
