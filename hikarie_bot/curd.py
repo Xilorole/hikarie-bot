@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from .db_data import Badges, BadgeTypes
-from .models import GuestArrivalInfo, GuestArrivalRaw, User
+from . import db_data
+from .models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
 from .utils import (
     get_current_level_point,
     get_level,
@@ -242,7 +242,33 @@ def initially_insert_badge_data(session: Session) -> None:
         session (Session): The session factory to interact with the database.
 
     """
-    session.add_all(Badges)
-    session.add_all(BadgeTypes)
+    if session.query(Badge).count() > 0:
+        logger.info("Badge data already exists")
+    else:
+        session.add_all(
+            Badge(
+                id=badge.id,
+                message=badge.message,
+                condition=badge.condition,
+                level=badge.level,
+                score=badge.score,
+                badge_type_id=badge.badge_type_id,
+            )
+            for badge in db_data.Badges
+        )
+        logger.info("Badge data inserted successfully")
+
+    if session.query(BadgeType).count() > 0:
+        logger.info("Badge Type data already exists")
+    else:
+        session.add_all(
+            BadgeType(
+                id=badge_type.id,
+                name=badge_type.name,
+                description=badge_type.description,
+            )
+            for badge_type in db_data.BadgeTypes
+        )
+        logger.info("Badge Type data inserted successfully")
     session.commit()
-    logger.info("Badge data inserted successfully")
+    logger.info("inserted successfully")
