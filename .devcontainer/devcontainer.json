@@ -27,7 +27,8 @@
                 "yzhang.markdown-all-in-one",
                 "GitHub.copilot",
                 "GitHub.vscode-pull-request-github",
-                "github.vscode-github-actions"
+                "github.vscode-github-actions",
+                "tamasfe.even-better-toml"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/root/.local/share/uv/python",
