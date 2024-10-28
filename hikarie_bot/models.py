@@ -126,13 +126,15 @@ class UserBadge(BaseSchema):
     __tablename__ = "user_badges"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("user.id"), primary_key=True
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
+    badge_id: Mapped[int] = mapped_column(Integer, ForeignKey("badges.id"))
+    initially_acquired_datetime: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now()
     )
-    badge_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("badges.id"), primary_key=True
+    last_acquired_datetime: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now()
     )
-    acquired_date: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    count: Mapped[int] = mapped_column(Integer)
 
     user = relationship("User", back_populates="badges")
     badge = relationship("Badge", back_populates="users")

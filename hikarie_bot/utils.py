@@ -2,7 +2,7 @@ from datetime import UTC, datetime, time, timedelta, timezone
 
 import jpholiday
 
-from .errors import InvalidPointError
+from .exceptions import InvalidPointError
 
 level_map = {
     1: {"name": "かけだしのかいしゃいん", "point": 20},

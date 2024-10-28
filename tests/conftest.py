@@ -20,23 +20,26 @@ class DatabaseExistsError(Exception):
 @pytest.fixture
 def temp_db() -> Generator[sessionmaker[Session], Any, Any]:
     """Create a test database and tables."""
-    DB_PATH = ".db/test_temp.db"  # noqa: N806
+    import tempfile
 
-    # settings of test database
-    TEST_SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"  # noqa: N806
-    engine = create_engine(
-        TEST_SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
+    with tempfile.TemporaryFile() as temp_db_file:
+        DB_PATH = temp_db_file.name  # noqa: N806
 
-    if database_exists(TEST_SQLALCHEMY_DATABASE_URL):
-        raise DatabaseExistsError(TEST_SQLALCHEMY_DATABASE_URL)
+        # settings of test database
+        TEST_SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"  # noqa: N806
+        engine = create_engine(
+            TEST_SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+        )
 
-    # Create test database and tables
-    BaseSchema.metadata.create_all(engine)
-    session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        if database_exists(TEST_SQLALCHEMY_DATABASE_URL):
+            raise DatabaseExistsError(TEST_SQLALCHEMY_DATABASE_URL)
 
-    # Run the tests
-    yield session
+        # Create test database and tables
+        BaseSchema.metadata.create_all(engine)
+        session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    # Drop the test database
-    drop_database(TEST_SQLALCHEMY_DATABASE_URL)
+        # Run the tests
+        yield session
+
+        # Drop the test database
+        drop_database(TEST_SQLALCHEMY_DATABASE_URL)

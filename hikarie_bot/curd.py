@@ -19,6 +19,7 @@ from .models import (
     GuestArrivalInfo,
     GuestArrivalRaw,
     User,
+    UserBadge,
 )
 from .utils import (
     get_current_level_point,
@@ -76,7 +77,24 @@ def _update_achievements(session: Session, arrival_id: int) -> None:
                 achieved_time=jst_datetime,
             )
         )
-
+        user_badge = (
+            session.query(UserBadge)
+            .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
+            .one_or_none()
+        )
+        if user_badge is None:
+            session.add(
+                UserBadge(
+                    user_id=user_id,
+                    badge_id=badge.id,
+                    initially_acquired_datetime=jst_datetime,
+                    last_acquired_datetime=jst_datetime,
+                    count=1,
+                )
+            )
+        else:
+            user_badge.count += 1
+            user_badge.last_acquired_datetime = jst_datetime
     session.commit()
 
 

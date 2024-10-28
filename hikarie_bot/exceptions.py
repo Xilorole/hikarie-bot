@@ -23,3 +23,20 @@ class UserArrivalNotFoundError(Exception):
     def __init__(self: Self, arrival_id: int) -> None:
         """Initialize the UserArrivalNotFoundError class."""
         super().__init__(f"User arrival not found for arrival_id: {arrival_id}")
+
+
+class EnvironmentVariableNotFoundError(Exception):
+    """Raised when the environment variable is not found."""
+
+    def __init__(self: Self, env_var: str) -> None:
+        """Initialize the EnvironmentVariableNotFoundError class."""
+
+
+class InvalidPointError(Exception):
+    """Raised when the point value is invalid."""
+
+    def __init__(self: Self, point: int, message: str = "Invalid point value") -> None:
+        """Initialize the InvalidPointError class."""
+        self.point = point
+        self.message = message
+        super().__init__(f"{message}: {point}")
