@@ -13,7 +13,7 @@ from slack_sdk.web import WebClient
 from sqlalchemy.orm import Session
 
 from hikarie_bot._version import version
-from hikarie_bot.curd import insert_arrival_action
+from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.database import BaseSchema, SessionLocal, engine
 from hikarie_bot.modals import (
     ActionID,
@@ -132,6 +132,7 @@ async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
 
     # makes a strong reference not to GC
     background_task.add(a)
+    initially_insert_badge_data(get_db().__next__())
     if not skip_db_create:
         await initially_create_db(app)
     await app.client.chat_postMessage(

@@ -5,7 +5,13 @@ from textwrap import dedent
 from sqlalchemy.orm import Session, sessionmaker
 
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
-from hikarie_bot.modals import InitialMessage, RegistryMessage
+from hikarie_bot.modals import (
+    AlreadyRegisteredMessage,
+    FastestArrivalMessage,
+    InitialMessage,
+    PointGetMessage,
+    RegistryMessage,
+)
 
 
 def test_initial_message() -> None:
@@ -152,4 +158,116 @@ def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
-# [TODO] この続きからやる レジストリメッセージは終わったので、FastestArrivalMessageをやる
+def test_fastest_arrival_message(temp_db: sessionmaker[Session]) -> None:
+    """Test the fastest arrival message."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="test_user",
+    )
+    message = FastestArrivalMessage(
+        user_id="test_user",
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+    )
+
+    assert message.render() == [
+        {
+            "type": "section",
+            "block_id": "FASTEST_ARRIVAL_REPLY",
+            "text": {
+                "type": "mrkdwn",
+                "text": "ヒカリエは正義 :hikarie:\n"
+                "本日の最速出社: <@test_user> @ 2024-01-01 06:00:00",
+            },
+        }
+    ]
+
+
+def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
+    """Test the point get message."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="test_user",
+    )
+
+    message = PointGetMessage(
+        session,
+        user_id="test_user",
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        initial_arrival=True,
+    )
+
+    assert (
+        message.render()
+        == [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*06:00* 最速出社登録しました！ :hikarie:\n"  # noqa: RUF001
+                    "<@test_user>さんのポイント 0 → *7* (*+7*)",
+                },
+            },
+            {
+                "type": "divider",
+            },
+            {
+                "elements": [
+                    {
+                        "text": "かたがき: *かけだしのかいしゃいん* (lv1)\n"
+                        "つぎのレベルまで: *13pt*\n"
+                        "しんこうど: `████       ` | * 35%* (*+35%*)\n"
+                        "うちわけ:\n"
+                        " - はじめての出社登録:*+2pt*\n"
+                        " - 最速出社:*+2pt*\n"
+                        " - 朝型出社:*+3pt*",
+                        "type": "mrkdwn",
+                    },
+                ],
+                "type": "context",
+            },
+            {
+                "type": "divider",
+            },
+        ]
+    )
+
+
+def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
+    """Test the already registered message."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+
+    message = AlreadyRegisteredMessage(
+        user_id="test_user",
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+    )
+
+    assert message.render() == [
+        {
+            "type": "section",
+            "block_id": "ALREADY_REGISTERED_REPLY",
+            "text": {
+                "type": "mrkdwn",
+                "text": "本日の出社登録はすでに完了しています\n"
+                "<@test_user> @ 2024-01-01 06:00:00",
+            },
+        }
+    ]
