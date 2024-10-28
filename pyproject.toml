@@ -34,6 +34,7 @@ dev-dependencies = [
     "jupyter>=1.1.1",
     "pyright>=1.1.386",
     "pytest-mock>=3.14.0",
+    "pytest-env>=1.1.4",
 ]
 
 [tool.setuptools.packages.find]
@@ -47,3 +48,6 @@ write_to = "hikarie_bot/_version.py"
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.pytest_env]
+ENV = "test"

@@ -30,7 +30,7 @@ for env, env_str in [
     (SLACK_BOT_TOKEN, "SLACK_BOT_TOKEN"),
     (SLACK_APP_TOKEN, "SLACK_APP_TOKEN"),
 ]:
-    if env == "":
+    if env == "" and os.environ.get("ENV") not in ["dev", "test"]:
         raise EnvironmentVariableNotFoundError(env_str)
 
 
