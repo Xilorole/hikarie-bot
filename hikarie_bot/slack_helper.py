@@ -298,4 +298,5 @@ async def retrieve_thread_messages(
             channel=OUTPUT_CHANNEL, ts=message["ts"], limit=100
         )
         thread_messages += _thread_messages["messages"]
+        await asyncio.sleep(0.1)
     return thread_messages
