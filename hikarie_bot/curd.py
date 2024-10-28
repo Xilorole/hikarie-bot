@@ -1,18 +1,133 @@
 from datetime import datetime, timedelta
 
 from loguru import logger
+from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
-from .models import GuestArrivalInfo, GuestArrivalRaw, User
+from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
+from hikarie_bot.db_data.badges import BadgeChecker
+from hikarie_bot.exceptions import (
+    AchievementAlreadyRegisteredError,
+    UserArrivalNotFoundError,
+)
+
+from . import db_data
+from .models import (
+    Achievement,
+    Badge,
+    BadgeType,
+    GuestArrivalInfo,
+    GuestArrivalRaw,
+    User,
+    UserBadge,
+)
 from .utils import (
     get_current_level_point,
     get_level,
     get_level_name,
     get_point_range_to_next_level,
     get_point_to_next_level,
-    get_time_score,
     is_level_uped,
 )
+
+
+def _update_achievements(session: Session, arrival_id: int) -> None:
+    """_summary_.
+
+    Parameters
+    ----------
+    session : Session
+        _description_
+    user_id : str
+        _description_
+    jst_datetime : datetime
+        _description_
+    arrival_id : int
+        _description_
+    """
+    # initially check whether user has already achieved the badge
+    achievements = (
+        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).all()
+    )
+    if achievements:
+        logger.error("User has already achieved the badge")
+        raise AchievementAlreadyRegisteredError
+
+    user_arrival = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.id == arrival_id)
+        .one_or_none()
+    )
+
+    if user_arrival is None:
+        logger.error(f"User arrival not found for arrival_id: {arrival_id}")
+        raise UserArrivalNotFoundError(arrival_id)
+
+    user_id, jst_datetime = user_arrival.user_id, user_arrival.arrival_time
+
+    checker = BadgeChecker(badge_type_to_check=BADGE_TYPES_TO_CHECK)
+    achieved_badges = checker.check(session, user_id, jst_datetime)
+
+    for badge in achieved_badges:
+        session.add(
+            Achievement(
+                user_id=user_id,
+                arrival_id=arrival_id,
+                badge_id=badge.id,
+                achieved_time=jst_datetime,
+            )
+        )
+        user_badge = (
+            session.query(UserBadge)
+            .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
+            .one_or_none()
+        )
+        if user_badge is None:
+            session.add(
+                UserBadge(
+                    user_id=user_id,
+                    badge_id=badge.id,
+                    initially_acquired_datetime=jst_datetime,
+                    last_acquired_datetime=jst_datetime,
+                    count=1,
+                )
+            )
+        else:
+            user_badge.count += 1
+            user_badge.last_acquired_datetime = jst_datetime
+    session.commit()
+
+
+def _update_acquired_score_sum(session: Session, arrival_id: int) -> None:
+    """
+    Calculate and update the user's score based on their arrival information.
+
+    Parameters
+    ----------
+    session : Session
+        The session factory to interact with the database.
+    arrival_id : int
+        The ID of the arrival record.
+
+    Returns
+    -------
+    None
+    """
+    acquired_score_sum = (
+        session.query(func.sum(Badge.score))
+        .join(Achievement, Achievement.badge_id == Badge.id)
+        .filter(Achievement.arrival_id == arrival_id)
+        .scalar()
+    ) or 0
+
+    logger.info(f"acquired_score_sum: {acquired_score_sum}")
+    session.execute(
+        update(GuestArrivalInfo)
+        .where(GuestArrivalInfo.id == arrival_id)
+        .values(acquired_score_sum=acquired_score_sum)
+    )
+
+    session.commit()
 
 
 def insert_arrival_action(
@@ -47,57 +162,37 @@ def insert_arrival_action(
         .filter(GuestArrivalInfo.arrival_time < end_of_day)
         .first()
     )
-    logger.info(f"existing arrival: {existing_arrival}")
-    if existing_arrival:
+    if existing_arrival is not None:
+        logger.info(f"existing arrival @ {existing_arrival.arrival_time}")
         return False
 
-    # Calculate the arrival rank
-    # The arrival rank is the number of users arrived on the same day + 1
-    same_day_arrivals = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.arrival_time >= start_of_day)
-        .filter(GuestArrivalInfo.arrival_time < end_of_day)
-        .count()
-    )
-    arrival_rank = same_day_arrivals + 1
-
-    # Determine the score based on arrival time
-    time_score = get_time_score(jst_datetime)
-
-    # add initial arrival bonus
-    rank_score = 0
-
-    # if the user arrived first and the time score is not 0
-    # (thus the user arrived within the labour time), add 2 points
-    if arrival_rank == 1 and time_score != 0:
-        rank_score = 2
-
-    logger.info(
-        f"arrival rank: {arrival_rank}, "
-        f"time score: {time_score}, "
-        f"rank score: {rank_score}"
-    )
     # Insert the new arrival
     new_arrival = GuestArrivalInfo(
         arrival_time=jst_datetime,
         user_id=user_id,
-        arrival_rank=arrival_rank,
-        acquired_score_sum=time_score + rank_score,
-        acquired_time_score=time_score,
-        acquired_rank_score=rank_score,
+        arrival_rank=-1,
+        acquired_score_sum=-1,
     )
     session.add(new_arrival)
+    session.commit()
+    logger.info(f"new arrival @ {new_arrival.arrival_time} id: {new_arrival.id}")
+
+    _update_achievements(session, new_arrival.id)
+    _update_acquired_score_sum(session, new_arrival.id)
+    updated_arrival = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.user_id == user_id)
+        .filter(GuestArrivalInfo.arrival_time == jst_datetime)
+        .one()
+    )
 
     # Update user score
     user_score_entry = session.query(User).filter_by(id=user_id).one_or_none()
 
     # calculate_attribute
-    if user_score_entry:
-        previous_score = user_score_entry.current_score
-        current_score = user_score_entry.current_score + time_score + rank_score
-    else:
-        previous_score = 0
-        current_score = time_score + rank_score
+    previous_score = user_score_entry.current_score or 0 if user_score_entry else 0
+    current_score = previous_score + updated_arrival.acquired_score_sum
+
     level = get_level(current_score)
     level_name = get_level_name(current_score)
     level_uped = is_level_uped(previous_score, current_score)
@@ -133,3 +228,43 @@ def insert_arrival_action(
 
     session.commit()
     return True
+
+
+def initially_insert_badge_data(session: Session) -> None:
+    """Insert the badge data into the database.
+
+    Args:
+    ----
+        session (Session): The session factory to interact with the database.
+
+    """
+    if session.query(Badge).count() > 0:
+        logger.info("Badge data already exists")
+    else:
+        session.add_all(
+            Badge(
+                id=badge.id,
+                message=badge.message,
+                condition=badge.condition,
+                level=badge.level,
+                score=badge.score,
+                badge_type_id=badge.badge_type_id,
+            )
+            for badge in db_data.Badges
+        )
+        logger.info("Badge data inserted successfully")
+
+    if session.query(BadgeType).count() > 0:
+        logger.info("Badge Type data already exists")
+    else:
+        session.add_all(
+            BadgeType(
+                id=badge_type.id,
+                name=badge_type.name,
+                description=badge_type.description,
+            )
+            for badge_type in db_data.BadgeTypes
+        )
+        logger.info("Badge Type data inserted successfully")
+    session.commit()
+    logger.info("inserted successfully")

@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, time, timedelta, timezone
 
-from .errors import InvalidPointError
+import jpholiday
+
+from .exceptions import InvalidPointError
 
 level_map = {
     1: {"name": "かけだしのかいしゃいん", "point": 20},
@@ -174,3 +176,33 @@ def get_time_score(t: datetime.time) -> int:
     else:
         time_score = 0
     return time_score
+
+
+def get_current_jst_datetime() -> datetime:
+    "Get the current time in JST."
+    tz_jst = timezone(timedelta(hours=+9), "JST")
+    return datetime.now(tz_jst)
+
+
+def is_jp_bizday(day: datetime.date) -> bool:
+    "Check if the given day is a business day in Japan."
+    return not (
+        jpholiday.is_holiday(day)
+        or day.weekday() in {5, 6}
+        or (day.month == 1 and day.day in {1, 2, 3})
+        or (day.month, day.day) == (12, 31)
+    )
+
+
+# list all workdays within the last 5 arrivals
+def list_bizdays(start_of_day: datetime, length: int) -> list[datetime]:
+    """List all workdays within the last 5 arrivals including the current day."""
+    current_date: datetime.date = start_of_day.date()
+    valid_bizdays = []
+    for i in range(14):
+        check_date = current_date - timedelta(days=i)
+        if is_jp_bizday(check_date):
+            valid_bizdays.append(check_date)
+            if len(valid_bizdays) == length:
+                break
+    return valid_bizdays

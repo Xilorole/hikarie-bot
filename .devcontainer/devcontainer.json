@@ -5,7 +5,8 @@
         "dockerfile": "Dockerfile"
     },
     "features": {
-        "ghcr.io/dhoeric/features/hadolint:1": {}
+        "ghcr.io/dhoeric/features/hadolint:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
     },
     "customizations": {
         "vscode": {
@@ -18,12 +19,16 @@
                 "mosapride.zenkaku",
                 "ms-azuretools.vscode-docker",
                 "ms-python.python",
+                "ms-vscode-remote.remote-containers",
                 "njpwerner.autodocstring",
                 "pkief.material-icon-theme",
                 "shardulm94.trailing-spaces",
                 "usernamehw.errorlens",
                 "yzhang.markdown-all-in-one",
-                "GitHub.copilot"
+                "GitHub.copilot",
+                "GitHub.vscode-pull-request-github",
+                "github.vscode-github-actions",
+                "tamasfe.even-better-toml"
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/root/.local/share/uv/python",
