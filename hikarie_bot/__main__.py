@@ -75,7 +75,7 @@ async def initially_create_db(app: AsyncApp) -> None:
     thread_messages = []
     for message in messages:
         thread_messages += await retrieve_thread_messages(app=app, message=message)
-        await asyncio.sleep(0.1)
+
     messages += thread_messages
 
     for message in sorted(messages, key=lambda x: x["ts"]):
