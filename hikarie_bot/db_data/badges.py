@@ -691,7 +691,7 @@ Badges = [
     # BadgeTypeData id=2, name="fastest_arrival", description="最速で出社登録をした"
     BadgeData(
         id=201,
-        message="光の速さの出社",
+        message="最速出社",
         condition="最速で出社登録を行った",
         level=1,
         score=2,
@@ -708,7 +708,7 @@ Badges = [
     ),
     BadgeData(
         id=302,
-        message="出社登録ユーザー",
+        message="出社登録マスター",
         condition="20回出社登録した",
         level=2,
         score=5,
@@ -716,7 +716,7 @@ Badges = [
     ),
     BadgeData(
         id=303,
-        message="出社登録マスター",
+        message="出社登録フリーク",
         condition="100回出社登録した",
         level=3,
         score=10,

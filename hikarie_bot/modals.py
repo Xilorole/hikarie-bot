@@ -209,8 +209,8 @@ class PointGetMessage(BaseMessage):
             .order_by(Achievement.badge_id)
             .all()
         )
-        achievements_text = ", ".join(
-            [f"{badge.condition} *+{badge.score}pt*" for badge in badges]
+        achievements_text = "\n".join(
+            [f" - {badge.message}:*+{badge.score}pt*" for badge in badges]
         )
 
         context = dedent(
@@ -218,9 +218,9 @@ class PointGetMessage(BaseMessage):
             かたがき: *{level_name}* (lv{level})
             つぎのレベルまで: *{point_to_next_level}pt*
             しんこうど: `{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)
-            うちわけ: {achievements_text}
+            うちわけ:
             """  # noqa: E501
-        )
+        ) + (achievements_text)
 
         self.blocks.extend(
             [
@@ -253,8 +253,8 @@ class AlreadyRegisteredMessage(BaseMessage):
         self.blocks.extend(
             [
                 blocks.SectionBlock(
-                    text=f"本日の出社登録はすでに完了しています"
-                    f"\n<@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
+                    text=f"本日の出社登録はすでに完了しています\n"
+                    f"<@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
                     block_id=BlockID.ALREADY_REGISTERED_REPLY,
                 )
             ]
