@@ -4,13 +4,14 @@ from textwrap import dedent
 from loguru import logger
 from slack_sdk.models.blocks import (
     Block,
+    MarkdownTextObject,
     basic_components,
     block_elements,
     blocks,
 )
 from sqlalchemy.orm import Session
 
-from hikarie_bot.models import Achievement, Badge, GuestArrivalInfo, User
+from hikarie_bot.models import Achievement, Badge, GuestArrivalInfo, User, UserBadge
 from hikarie_bot.utils import (
     get_current_level_point,
     get_level,
@@ -27,6 +28,7 @@ class ActionID:
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
     POINT_GET = "POINT_GET"
+    CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
 
 
 class BlockID:
@@ -36,6 +38,7 @@ class BlockID:
     FASTEST_ARRIVAL_REPLY = "FASTEST_ARRIVAL_REPLY"
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
     ALREADY_REGISTERED_REPLY = "ALREADY_REGISTERED_REPLY"
+    CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
 
 
 class BaseMessage:
@@ -72,7 +75,11 @@ class InitialMessage(BaseMessage):
                             text="最速出社した",
                             action_id=ActionID.FASTEST_ARRIVAL,
                             style="primary",
-                        )
+                        ),
+                        block_elements.ButtonElement(
+                            text="実績を確認",
+                            action_id=ActionID.CHECK_ACHIEVEMENT,
+                        ),
                     ],
                     block_id=BlockID.FASTEST_ARRIVAL,
                 ),
@@ -113,7 +120,11 @@ class RegistryMessage(BaseMessage):
                         block_elements.ButtonElement(
                             text="出社した",
                             action_id=ActionID.ARRIVED_OFFICE,
-                        )
+                        ),
+                        block_elements.ButtonElement(
+                            text="実績を確認",
+                            action_id=ActionID.CHECK_ACHIEVEMENT,
+                        ),
                     ],
                     block_id=BlockID.ARRIVED_OFFICE,
                 ),
@@ -259,3 +270,48 @@ class AlreadyRegisteredMessage(BaseMessage):
                 )
             ]
         )
+
+
+class AchievementMessage(BaseMessage):
+    """Class for creating the achievement Slack message."""
+
+    def __init__(
+        self,
+        session: Session,
+        user_id: str,
+    ) -> None:
+        """Initialize the AchievementMessage with the user ID."""
+        super().__init__()
+
+        user_badges = (
+            session.query(UserBadge).filter(UserBadge.user_id == user_id).all()
+        )
+        self.blocks.extend(
+            [
+                blocks.SectionBlock(text=f"<@{user_id}>が獲得したバッジ:\n"),
+                blocks.DividerBlock(),
+            ]
+        )
+        for user_badge in sorted(user_badges, key=lambda x: x.badge_id):
+            self.blocks.extend(
+                [
+                    blocks.SectionBlock(
+                        text=f"`{user_badge.badge_id}`  : *{user_badge.badge.message}* [{user_badge.badge.score}pt x{user_badge.count}]",  # noqa: E501
+                        fields=[
+                            MarkdownTextObject(
+                                text="*取得条件*",
+                            ),
+                            MarkdownTextObject(
+                                text="*初めて取得した日*",
+                            ),
+                            MarkdownTextObject(
+                                text=f"{user_badge.badge.condition}",
+                            ),
+                            MarkdownTextObject(
+                                text=f"{user_badge.initially_acquired_datetime:%Y-%m-%d}",
+                            ),
+                        ],
+                    ),
+                    blocks.DividerBlock(),
+                ]
+            )

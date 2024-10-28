@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.modals import (
+    AchievementMessage,
     AlreadyRegisteredMessage,
     FastestArrivalMessage,
     InitialMessage,
@@ -36,7 +37,16 @@ def test_initial_message() -> None:
                         "emoji": True,
                     },
                     "action_id": "FASTEST_ARRIVAL",
-                }
+                },
+                {
+                    "action_id": "CHECK_ACHIEVEMENT",
+                    "text": {
+                        "emoji": True,
+                        "text": "実績を確認",
+                        "type": "plain_text",
+                    },
+                    "type": "button",
+                },
             ],
         },
     ]
@@ -79,7 +89,16 @@ def test_registry_message(temp_db: sessionmaker[Session]) -> None:
                             "text": "出社した",
                             "emoji": True,
                         },
-                    }
+                    },
+                    {
+                        "action_id": "CHECK_ACHIEVEMENT",
+                        "text": {
+                            "emoji": True,
+                            "text": "実績を確認",
+                            "type": "plain_text",
+                        },
+                        "type": "button",
+                    },
                 ],
             },
             {
@@ -139,7 +158,16 @@ def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
                         "text": "出社した",
                         "emoji": True,
                     },
-                }
+                },
+                {
+                    "action_id": "CHECK_ACHIEVEMENT",
+                    "text": {
+                        "emoji": True,
+                        "text": "実績を確認",
+                        "type": "plain_text",
+                    },
+                    "type": "button",
+                },
             ],
         },
         {
@@ -270,4 +298,120 @@ def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
                 "<@test_user> @ 2024-01-01 06:00:00",
             },
         }
+    ]
+
+
+def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
+    """Test the achievement message."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="test_user",
+    )
+
+    message = AchievementMessage(
+        session=session,
+        user_id="test_user",
+    )
+
+    assert message.render() == [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "<@test_user>が獲得したバッジ:\n",
+            },
+        },
+        {
+            "type": "divider",
+        },
+        {
+            "fields": [
+                {
+                    "text": "*取得条件*",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "*初めて取得した日*",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "出社登録BOTを初めて利用した",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "2024-01-01",
+                    "type": "mrkdwn",
+                },
+            ],
+            "text": {
+                "text": "`101`  : *はじめての出社登録* [2pt x1]",
+                "type": "mrkdwn",
+            },
+            "type": "section",
+        },
+        {
+            "type": "divider",
+        },
+        {
+            "fields": [
+                {
+                    "text": "*取得条件*",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "*初めて取得した日*",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "最速で出社登録を行った",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "2024-01-01",
+                    "type": "mrkdwn",
+                },
+            ],
+            "text": {
+                "text": "`201`  : *最速出社* [2pt x1]",
+                "type": "mrkdwn",
+            },
+            "type": "section",
+        },
+        {
+            "type": "divider",
+        },
+        {
+            "fields": [
+                {
+                    "text": "*取得条件*",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "*初めて取得した日*",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "6-9時の間に出社登録をした",
+                    "type": "mrkdwn",
+                },
+                {
+                    "text": "2024-01-01",
+                    "type": "mrkdwn",
+                },
+            ],
+            "text": {
+                "text": "`501`  : *朝型出社* [3pt x1]",
+                "type": "mrkdwn",
+            },
+            "type": "section",
+        },
+        {
+            "type": "divider",
+        },
     ]

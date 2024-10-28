@@ -356,7 +356,6 @@ class BadgeChecker:
             }
         logger.debug(f"recently_achieved_badge_ids: {recently_achieved_badge_ids}")
 
-        # [TODO]restart from here
         _achieved_badges = []
         if ID_lv1 not in recently_achieved_badge_ids:
             _achieved_badges.append(cls.get_badge(session, ID_lv1))

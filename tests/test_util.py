@@ -1,6 +1,6 @@
 import pytest
 
-from hikarie_bot.errors import InvalidPointError
+from hikarie_bot.exceptions import InvalidPointError
 from hikarie_bot.utils import (
     get_current_level_point,
     get_level_name,
