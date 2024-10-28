@@ -3,7 +3,7 @@ from typing import Any, Self
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy_utils import database_exists, drop_database
 
 from hikarie_bot.database import BaseSchema
@@ -18,7 +18,7 @@ class DatabaseExistsError(Exception):
 
 
 @pytest.fixture
-def temp_db() -> Generator[Any, Any, Any]:
+def temp_db() -> Generator[sessionmaker[Session], Any, Any]:
     """Create a test database and tables."""
     DB_PATH = ".db/test_temp.db"  # noqa: N806
 

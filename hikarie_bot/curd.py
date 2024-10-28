@@ -1,134 +1,113 @@
 from datetime import datetime, timedelta
 
 from loguru import logger
+from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
+from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
+from hikarie_bot.db_data.badges import BadgeChecker
+from hikarie_bot.exceptions import (
+    AchievementAlreadyRegisteredError,
+    UserArrivalNotFoundError,
+)
+
 from . import db_data
-from .models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
+from .models import (
+    Achievement,
+    Badge,
+    BadgeType,
+    GuestArrivalInfo,
+    GuestArrivalRaw,
+    User,
+)
 from .utils import (
     get_current_level_point,
     get_level,
     get_level_name,
     get_point_range_to_next_level,
     get_point_to_next_level,
-    get_time_score,
-    is_jp_bizday,
     is_level_uped,
 )
 
 
-def _check_straight_flash(
-    session: Session, user_id: str, last_date: datetime, flash_length: int = 5
-) -> bool:
-    """Check if the user arrived at the office five days in a row.
+def _update_achievements(session: Session, arrival_id: int) -> None:
+    """_summary_.
 
-    Args:
-    ----
-        session (Session): The session factory to interact with the database.
-        user_id (str): The user ID.
-        last_date (datetime): The last date to check for a straight flash.
-        flash_length (int): The number of days to check for a straight flash.
-
-    Returns:
-    -------
-        bool: True if the user has a straight flash, False otherwise.
-
+    Parameters
+    ----------
+    session : Session
+        _description_
+    user_id : str
+        _description_
+    jst_datetime : datetime
+        _description_
+    arrival_id : int
+        _description_
     """
-    # Get the user's arrival information
-    user_arrivals = (
+    # initially check whether user has already achieved the badge
+    achievements = (
+        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).all()
+    )
+    if achievements:
+        logger.error("User has already achieved the badge")
+        raise AchievementAlreadyRegisteredError
+
+    user_arrival = (
         session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.user_id == user_id)
-        .filter(GuestArrivalInfo.arrival_time <= last_date + timedelta(minutes=1))
-        .order_by(GuestArrivalInfo.arrival_time.desc())
-        .limit(5)
-        .all()
+        .filter(GuestArrivalInfo.id == arrival_id)
+        .one_or_none()
     )
 
-    # Check if the user has straight flash within last 5 arrivals
-    if any(
-        user_arrival.straight_flash_score > 0
-        for user_arrival in user_arrivals
-        if datetime.date(user_arrival.arrival_time) != last_date.date()
-    ):
-        logger.info("already has straight flash")
-        return False
+    if user_arrival is None:
+        logger.error(f"User arrival not found for arrival_id: {arrival_id}")
+        raise UserArrivalNotFoundError(arrival_id)
 
-    # Check if the user has at least 5 arrivals
-    if len(user_arrivals) < flash_length:
-        logger.info(f"not enough arrivals: {len(user_arrivals)}")
-        return False
+    user_id, jst_datetime = user_arrival.user_id, user_arrival.arrival_time
 
-    # Check if the user has a straight flash
-    # list all workdays within the last 5 arrivals
+    checker = BadgeChecker(badge_type_to_check=BADGE_TYPES_TO_CHECK)
+    achieved_badges = checker.check(session, user_id, jst_datetime)
 
-    initial_date: datetime.date = user_arrivals[-1].arrival_time.date()
-    valid_bizdays = []
-    for i in range(14):
-        logger.info(
-            f"checking date: {initial_date + timedelta(days=i)}, last_date: {last_date}"
+    for badge in achieved_badges:
+        session.add(
+            Achievement(
+                user_id=user_id,
+                arrival_id=arrival_id,
+                badge_id=badge.id,
+                achieved_time=jst_datetime,
+            )
         )
-        logger.info(f"- cond 1 {is_jp_bizday(initial_date + timedelta(days=i))}")
-        logger.info(f"- cond 2 {initial_date + timedelta(days=i) <= last_date.date()}")
 
-        if (
-            is_jp_bizday(initial_date + timedelta(days=i))
-            and initial_date + timedelta(days=i) <= last_date.date()
-        ):
-            valid_bizdays.append(initial_date + timedelta(days=i))
-    return len(valid_bizdays) == flash_length
+    session.commit()
 
 
-def _calculate_and_update_user_score(
-    session: Session, user_id: str, jst_datetime: datetime
-) -> None:
-    arrival = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.user_id == user_id)
-        .filter(GuestArrivalInfo.arrival_time == jst_datetime)
-        .one()
+def _update_acquired_score_sum(session: Session, arrival_id: int) -> None:
+    """
+    Calculate and update the user's score based on their arrival information.
+
+    Parameters
+    ----------
+    session : Session
+        The session factory to interact with the database.
+    arrival_id : int
+        The ID of the arrival record.
+
+    Returns
+    -------
+    None
+    """
+    acquired_score_sum = (
+        session.query(func.sum(Badge.score))
+        .join(Achievement, Achievement.badge_id == Badge.id)
+        .filter(Achievement.arrival_id == arrival_id)
+        .scalar()
+    ) or 0
+
+    logger.info(f"acquired_score_sum: {acquired_score_sum}")
+    session.execute(
+        update(GuestArrivalInfo)
+        .where(GuestArrivalInfo.id == arrival_id)
+        .values(acquired_score_sum=acquired_score_sum)
     )
-
-    start_of_day = jst_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_day = start_of_day + timedelta(days=1)
-    # Calculate the arrival rank
-    # The arrival rank is the number of users arrived on the same day + 1
-    same_day_arrivals = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.arrival_time >= start_of_day)
-        .filter(GuestArrivalInfo.arrival_time < end_of_day)
-        .count()
-    )
-    arrival_rank = same_day_arrivals
-
-    # Determine the score based on arrival time
-    time_score = get_time_score(jst_datetime)
-
-    # add initial arrival bonus
-    rank_score = 0
-
-    # if the user arrived first and the time score is not 0
-    # (thus the user arrived within the labour time), add 2 points
-    if arrival_rank == 1 and time_score != 0:
-        rank_score = 2
-
-    straight_flash_score = 0
-    logger.info(f"checking straight flash for {user_id}, {jst_datetime}")
-    if _check_straight_flash(session, user_id, last_date=jst_datetime):
-        straight_flash_score = 3
-
-    logger.info(
-        f"arrival rank: {arrival_rank}, "
-        f"time score: {time_score}, "
-        f"rank score: {rank_score}, "
-        f"straight_flash_score: {straight_flash_score}"
-    )
-
-    # update
-    arrival.arrival_rank = arrival_rank
-    arrival.acquired_score_sum = time_score + rank_score + straight_flash_score
-    arrival.acquired_time_score = time_score
-    arrival.acquired_rank_score = rank_score
-    arrival.straight_flash_score = straight_flash_score
 
     session.commit()
 
@@ -175,14 +154,13 @@ def insert_arrival_action(
         user_id=user_id,
         arrival_rank=-1,
         acquired_score_sum=-1,
-        acquired_time_score=-1,
-        acquired_rank_score=-1,
-        straight_flash_score=-1,
     )
     session.add(new_arrival)
     session.commit()
+    logger.info(f"new arrival @ {new_arrival.arrival_time} id: {new_arrival.id}")
 
-    _calculate_and_update_user_score(session, user_id, jst_datetime)
+    _update_achievements(session, new_arrival.id)
+    _update_acquired_score_sum(session, new_arrival.id)
     updated_arrival = (
         session.query(GuestArrivalInfo)
         .filter(GuestArrivalInfo.user_id == user_id)

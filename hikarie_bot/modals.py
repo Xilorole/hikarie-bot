@@ -1,15 +1,16 @@
 from datetime import datetime, timedelta
+from textwrap import dedent
 
 from loguru import logger
 from slack_sdk.models.blocks import (
-    BlockElement,
+    Block,
     basic_components,
     block_elements,
     blocks,
 )
 from sqlalchemy.orm import Session
 
-from hikarie_bot.models import GuestArrivalInfo, User
+from hikarie_bot.models import Achievement, Badge, GuestArrivalInfo, User
 from hikarie_bot.utils import (
     get_current_level_point,
     get_level,
@@ -34,6 +35,7 @@ class BlockID:
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
     FASTEST_ARRIVAL_REPLY = "FASTEST_ARRIVAL_REPLY"
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
+    ALREADY_REGISTERED_REPLY = "ALREADY_REGISTERED_REPLY"
 
 
 class BaseMessage:
@@ -41,7 +43,7 @@ class BaseMessage:
 
     def __init__(self) -> None:
         """Initialize the BaseMessage with an empty list of blocks."""
-        self.blocks: list[BlockElement] = []
+        self.blocks: list[Block] = []
 
     def render(self) -> list[dict]:
         """Render the blocks to a list of dictionaries."""
@@ -161,7 +163,7 @@ class PointGetMessage(BaseMessage):
         super().__init__()
 
         ## variable
-        score = session.query(User).filter(User.id == user_id).first()
+        score = session.query(User).filter(User.id == user_id).one()
 
         # retrieve guest arrival data
         start_of_day = jst_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -180,9 +182,6 @@ class PointGetMessage(BaseMessage):
         previous_point = score.previous_score
         current_point = score.current_score
         score_addup = arrival.acquired_score_sum
-        time_score = arrival.acquired_time_score
-        fastest_score = arrival.acquired_rank_score
-        straight_flash_score = arrival.straight_flash_score
 
         # get the variables
         level = get_level(current_point)
@@ -202,22 +201,26 @@ class PointGetMessage(BaseMessage):
         initial_arrival_text = "最速" if initial_arrival else ""
         hikarie_text = " :hikarie:" if initial_arrival else ""
 
-        time_score_text = {
-            3: "9時までの出社:*+3pt*",
-            2: "11時までの出社:*+2pt*",
-            1: "11時以降の出社:*+1pt*",
-            0: "18時を過ぎるとポイント付与はありません！また明日！",  # noqa: RUF001
-        }.get(time_score)
+        # get the Achievements
+        badges = (
+            session.query(Badge)
+            .join(Achievement, Achievement.badge_id == Badge.id)
+            .filter(Achievement.arrival_id == arrival.id)
+            .order_by(Achievement.badge_id)
+            .all()
+        )
+        achievements_text = ", ".join(
+            [f"{badge.condition} *+{badge.score}pt*" for badge in badges]
+        )
 
-        fastest_score_text = {
-            2: "最速出社:*+2pt*",
-            0: "",
-        }.get(fastest_score)
-
-        straight_flash_score_text = {
-            3: "ストレートフラッ出社:*+3pt*",
-            0: "",
-        }.get(straight_flash_score)
+        context = dedent(
+            f"""\
+            かたがき: *{level_name}* (lv{level})
+            つぎのレベルまで: *{point_to_next_level}pt*
+            しんこうど: `{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)
+            うちわけ: {achievements_text}
+            """  # noqa: E501
+        )
 
         self.blocks.extend(
             [
@@ -232,13 +235,7 @@ class PointGetMessage(BaseMessage):
                 blocks.ContextBlock(
                     elements=[
                         basic_components.MarkdownTextObject(
-                            text=f"かたがき: *{level_name}* (lv{level})"
-                            f"\nつぎのレベルまで: *{point_to_next_level}pt*"
-                            f"\nしんこうど: `{point_rate_text}` "
-                            f"| *{experience_rate:>3d}%* "
-                            f"(*+{experience_add_up_rate}%*)"
-                            f"\nうちわけ: {time_score_text} {fastest_score_text} "
-                            f"{straight_flash_score_text}"
+                            text=context,
                         )
                     ]
                 ),

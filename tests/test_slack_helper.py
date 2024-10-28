@@ -44,7 +44,7 @@ def test_filter(monkeypatch: Generator) -> None:
     assert MessageFilter.run(message) is False
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_send_daily_message() -> None:
     """Test the daily message sending function."""
     # Mock environment variables
@@ -78,7 +78,7 @@ async def test_send_daily_message() -> None:
             )
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_not_sending_message_on_holiday() -> None:
     """Test the daily message sending function."""
     # Mock environment variables
@@ -116,7 +116,7 @@ async def test_not_sending_message_on_holiday() -> None:
             mock_app.client.chat_postMessage.assert_not_called()
 
 
-@pytest.mark.asyncio()
+@pytest.mark.asyncio
 async def test_not_sending_message_0559_and_0601() -> None:
     """Test the daily message sending function."""
     # Mock environment variables
