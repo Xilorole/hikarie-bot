@@ -9,10 +9,10 @@ Variables:
     Badges (list): A list of Badge instances defining various badges and their conditions.
 """  # noqa: E501
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import Self
 
 from loguru import logger
 from sqlalchemy.orm import Session
@@ -46,13 +46,15 @@ class BadgeData:
 class BadgeChecker:
     """Class for checking if a user has acquired a badge."""
 
-    def __init__(self, badge_type_to_check: list[int]) -> Self:
+    def __init__(self, badge_type_to_check: list[int]) -> None:
         """Initialize the BadgeChecker with an empty list of badges."""
         if badge_type_to_check is None:
             raise CheckerFunctionNotSpecifiedError
 
         # select badge types to check
         self.badge_type_to_check = badge_type_to_check
+
+        logger.info(f"badge_type_to_check: {self.badge_type_to_check}")
 
         checker_map = self.get_checker_map()
 
@@ -62,7 +64,7 @@ class BadgeChecker:
         ]
 
     @classmethod
-    def get_checker_map(cls) -> dict[int, callable]:
+    def get_checker_map(cls) -> dict[int, Callable]:
         """Return the checker map."""
         return {
             1: cls.check_welcome,
@@ -84,7 +86,7 @@ class BadgeChecker:
     @classmethod
     def get_available_badge_types(cls) -> list[int]:
         """Return the available badge types."""
-        return cls.get_checker_map().keys()
+        return list(cls.get_checker_map().keys())
 
     @classmethod
     def get_badge(cls, session: Session, badge_id: int) -> Badge:
@@ -186,6 +188,7 @@ class BadgeChecker:
 
         # if the user had a previous arrival, they won't acquire the welcome badge
         if previous_arrival_count == 0:
+            logger.info(session.query(Badge).all())
             return [session.query(Badge).filter(Badge.id == ID).one()]
         return []
 
@@ -226,7 +229,7 @@ class BadgeChecker:
         )
 
         if faster_arrival == 0:
-            return [session.query(Badge).filter(Badge.id == ID).one()]
+            return [cls.get_badge(session, ID)]
         return []
 
     @classmethod
@@ -270,11 +273,11 @@ class BadgeChecker:
 
         match arrival_count:
             case 5:
-                return [session.query(Badge).filter(Badge.id == ID_lv1).one()]
+                return [cls.get_badge(session, ID_lv1)]
             case 20:
-                return [session.query(Badge).filter(Badge.id == ID_lv2).one()]
+                return [cls.get_badge(session, ID_lv2)]
             case 100:
-                return [session.query(Badge).filter(Badge.id == ID_lv3).one()]
+                return [cls.get_badge(session, ID_lv3)]
             case _:
                 return []
 
@@ -682,7 +685,7 @@ Badges = [
         message="はじめての出社登録",
         condition="出社登録BOTを初めて利用した",
         level=1,
-        score=1,
+        score=2,
         badge_type_id=1,
     ),
     # BadgeTypeData id=2, name="fastest_arrival", description="最速で出社登録をした"
@@ -691,7 +694,7 @@ Badges = [
         message="光の速さの出社",
         condition="最速で出社登録を行った",
         level=1,
-        score=1,
+        score=2,
         badge_type_id=2,
     ),
     # BadgeTypeData id=3, name="arrival_count", description="たくさん出社登録をした"
@@ -700,7 +703,7 @@ Badges = [
         message="出社登録ビギナー",
         condition="5回出社登録した",
         level=1,
-        score=1,
+        score=3,
         badge_type_id=3,
     ),
     BadgeData(
@@ -708,7 +711,7 @@ Badges = [
         message="出社登録ユーザー",
         condition="20回出社登録した",
         level=2,
-        score=1,
+        score=5,
         badge_type_id=3,
     ),
     BadgeData(
@@ -716,7 +719,7 @@ Badges = [
         message="出社登録マスター",
         condition="100回出社登録した",
         level=3,
-        score=1,
+        score=10,
         badge_type_id=3,
     ),
     # BadgeTypeData id=4, name="straight_flash", description="連続して出社した"
@@ -725,7 +728,7 @@ Badges = [
         message="ストレートフラッ出社",
         condition="5日連続で出社した",
         level=1,
-        score=1,
+        score=3,
         badge_type_id=4,
     ),
     BadgeData(
@@ -733,7 +736,7 @@ Badges = [
         message="ロイヤルストレートフラッ出社",
         condition="異なる時間帯に5日連続で出社した",
         level=2,
-        score=1,
+        score=5,
         badge_type_id=4,
     ),
     BadgeData(
@@ -741,7 +744,7 @@ Badges = [
         message="ウルトラロイヤルストレートフラッ出社",
         condition="異なる連続した時間帯に5日連続で出社した",
         level=3,
-        score=1,
+        score=8,
         badge_type_id=4,
     ),
     # BadgeTypeData id=5, name="time_window", description="時間帯による出社登録"
@@ -750,7 +753,7 @@ Badges = [
         message="朝型出社",
         condition="6-9時の間に出社登録をした",
         level=3,
-        score=1,
+        score=3,
         badge_type_id=5,
     ),
     BadgeData(
@@ -758,7 +761,7 @@ Badges = [
         message="出社",
         condition="9-11時の間に出社登録をした",
         level=2,
-        score=1,
+        score=2,
         badge_type_id=5,
     ),
     BadgeData(
@@ -775,7 +778,7 @@ Badges = [
         message="100番目のお客様",
         condition="100回目の出社登録をした",
         level=1,
-        score=1,
+        score=5,
         badge_type_id=6,
     ),
     # BadgeTypeData id=7, name="long_time_no_see",
@@ -785,7 +788,7 @@ Badges = [
         message="2週間ぶりですね、元気にしていましたか？",  # noqa: RUF001
         condition="14日以上出社登録がなかったが復帰した",
         level=1,
-        score=1,
+        score=2,
         badge_type_id=7,
     ),
     BadgeData(
@@ -793,7 +796,7 @@ Badges = [
         message="1か月ぶりですね、おかえりなさい。",
         condition="30日以上出社登録がなかったが復帰した",
         level=2,
-        score=1,
+        score=3,
         badge_type_id=7,
     ),
     BadgeData(
@@ -801,7 +804,7 @@ Badges = [
         message="2か月ぶりですね、顔を忘れるところでした。",
         condition="2か月以上出社登録がなかったが復帰した",
         level=3,
-        score=1,
+        score=4,
         badge_type_id=7,
     ),
     BadgeData(
@@ -809,7 +812,7 @@ Badges = [
         message="半年ぶりですね、むしろ初めまして。",
         condition="半年以上出社登録がなかったが復帰した",
         level=4,
-        score=1,
+        score=6,
         badge_type_id=7,
     ),
     # BadgeTypeData id=8, name="lucky_you_guys", description="同じ時間に出社登録をした"
@@ -818,7 +821,7 @@ Badges = [
         message="幸運なふたり",
         condition="分単位で同じ時間に出社登録をした2人目になること",
         level=1,
-        score=1,
+        score=2,
         badge_type_id=8,
     ),
     BadgeData(
@@ -826,7 +829,7 @@ Badges = [
         message="豪運なトリオ",
         condition="分単位で同じ時間に出社登録をした3人目になること",
         level=2,
-        score=1,
+        score=3,
         badge_type_id=8,
     ),
     BadgeData(
@@ -834,7 +837,7 @@ Badges = [
         message="激運なカルテット",
         condition="分単位で同じ時間に出社登録をした4人目になること",
         level=2,
-        score=1,
+        score=4,
         badge_type_id=8,
     ),
     # BadgeTypeData id=9, name="reincarnation", description="転生した"
