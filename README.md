@@ -5,9 +5,9 @@
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-[![Ruff](https://github.com/Xilorole/python-uv/actions/workflows/ruff.yml/badge.svg)](https://github.com/Xilorole/python-uv/actions/workflows/ruff.yml)
-[![Test](https://github.com/Xilorole/python-uv/actions/workflows/test.yml/badge.svg)](https://github.com/Xilorole/python-uv/actions/workflows/test.yml)
-[![Docker](https://github.com/Xilorole/python-uv/actions/workflows/docker.yml/badge.svg)](https://github.com/Xilorole/python-uv/actions/workflows/docker.yml)
+[![Ruff](https://github.com/Xilorole/hikarie-bot/actions/workflows/ruff.yml/badge.svg)](https://github.com/Xilorole/hikarie-bot/actions/workflows/ruff.yml)
+[![Test](https://github.com/Xilorole/hikarie-bot/actions/workflows/test.yml/badge.svg)](https://github.com/Xilorole/hikarie-bot/actions/workflows/test.yml)
+[![Docker](https://github.com/Xilorole/hikarie-bot/actions/workflows/docker.yml/badge.svg)](https://github.com/Xilorole/hikarie-bot/actions/workflows/docker.yml)
 
 </div>
 
