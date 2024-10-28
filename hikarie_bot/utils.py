@@ -2,7 +2,7 @@ from datetime import UTC, datetime, time, timedelta, timezone
 
 import jpholiday
 
-from .errors import InvalidPointError
+from .exceptions import InvalidPointError
 
 level_map = {
     1: {"name": "かけだしのかいしゃいん", "point": 20},
@@ -192,3 +192,17 @@ def is_jp_bizday(day: datetime.date) -> bool:
         or (day.month == 1 and day.day in {1, 2, 3})
         or (day.month, day.day) == (12, 31)
     )
+
+
+# list all workdays within the last 5 arrivals
+def list_bizdays(start_of_day: datetime, length: int) -> list[datetime]:
+    """List all workdays within the last 5 arrivals including the current day."""
+    current_date: datetime.date = start_of_day.date()
+    valid_bizdays = []
+    for i in range(14):
+        check_date = current_date - timedelta(days=i)
+        if is_jp_bizday(check_date):
+            valid_bizdays.append(check_date)
+            if len(valid_bizdays) == length:
+                break
+    return valid_bizdays

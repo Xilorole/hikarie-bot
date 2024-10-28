@@ -3,28 +3,40 @@ import os
 import sys
 from collections.abc import Generator
 from datetime import timedelta
+from typing import Any
 
 import asyncclick as click
 from dotenv import load_dotenv
 from loguru import logger
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
-from slack_sdk.web import WebClient
+from slack_bolt.context.ack.async_ack import AsyncAck
+from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy.orm import Session
 
 from hikarie_bot._version import version
-from hikarie_bot.curd import insert_arrival_action
+from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.database import BaseSchema, SessionLocal, engine
 from hikarie_bot.modals import (
+    AchievementMessage,
     ActionID,
     PointGetMessage,
     RegistryMessage,
 )
-from hikarie_bot.slack_helper import MessageFilter, send_daily_message
+from hikarie_bot.settings import (
+    LOG_CHANNEL,
+    SLACK_BOT_TOKEN,
+)
+from hikarie_bot.slack_helper import (
+    MessageFilter,
+    get_messages,
+    retrieve_thread_messages,
+    send_daily_message,
+)
 from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
 
 load_dotenv(override=True)
-app = AsyncApp(token=os.environ.get("SLACK_BOT_TOKEN"))
+app = AsyncApp(token=SLACK_BOT_TOKEN)
 
 
 # Dependency
@@ -32,8 +44,8 @@ def get_db() -> Generator[Session, None, None]:
     """Get the database session."""
     # create tables
     BaseSchema.metadata.create_all(engine)
+    db = SessionLocal()  # sessionを生成
     try:
-        db = SessionLocal()  # sessionを生成
         yield db
     finally:
         db.close()
@@ -57,50 +69,19 @@ async def initially_create_db(app: AsyncApp) -> None:
         asyncio.TimeoutError: If the request to the Slack API times out.
 
     """  # noqa: E501
-    messages = []
-
-    _messages = await app.client.conversations_history(
-        channel=os.environ.get("OUTPUT_CHANNEL"),
-        oldest=1651363200,  # 2022-05-01 00:00:00
-    )
-    messages += _messages["messages"]
-    while _messages["has_more"]:
-        jst_message_datetime = unix_timestamp_to_jst(
-            float(_messages["messages"][-1]["ts"])
-        )
-        logger.info(f"loading. latest message: {jst_message_datetime}")
-        _messages = await app.client.conversations_history(
-            channel=os.environ.get("OUTPUT_CHANNEL"),
-            cursor=_messages["response_metadata"]["next_cursor"],
-            oldest=1651363200,  # 2022-05-01 00:00:00
-        )
-        messages += _messages["messages"]
-        await asyncio.sleep(0.1)
+    messages = await get_messages(app=app)
 
     # get the threading messages
     thread_messages = []
     for message in messages:
-        logger.debug(f"message: {message}")
-        if message.get("thread_ts") and (
-            message.get("user") == os.environ.get("BOT_ID")
-            or message.get("bot_id") == os.environ.get("V1_BOT_ID")
-        ):
-            jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
-            logger.info(f"loading thread. latest message: {jst_message_datetime}")
-            _thread_messages = await app.client.conversations_replies(
-                channel=os.environ.get("OUTPUT_CHANNEL"), ts=message["ts"], limit=100
-            )
-            thread_messages += _thread_messages["messages"]
-            await asyncio.sleep(0.1)
+        thread_messages += await retrieve_thread_messages(app=app, message=message)
+        await asyncio.sleep(0.1)
     messages += thread_messages
 
-    message_filter = MessageFilter()
     for message in sorted(messages, key=lambda x: x["ts"]):
-        if (
-            user_id := (
-                message_filter.filter_v1(message) or message_filter.filter_v3(message)
-            )
-        ) and message.get("subtype") != "channel_join":
+        if (user_id := MessageFilter.extract_user_id(message)) and message.get(
+            "subtype"
+        ) != "channel_join":
             jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
             insert_arrival_action(get_db().__next__(), jst_message_datetime, user_id)
 
@@ -132,10 +113,11 @@ async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
 
     # makes a strong reference not to GC
     background_task.add(a)
+    initially_insert_badge_data(get_db().__next__())
     if not skip_db_create:
         await initially_create_db(app)
     await app.client.chat_postMessage(
-        channel=os.environ.get("LOG_CHANNEL"),
+        channel=LOG_CHANNEL,
         text=f"application started (v{version})",
     )
 
@@ -145,7 +127,9 @@ async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
 
 @app.action(ActionID.ARRIVED_OFFICE)
 @app.action(ActionID.FASTEST_ARRIVAL)
-async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
+async def handle_button_click(
+    ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient
+) -> None:
     """Handle the button click event."""
     await ack()
     user_id = body["user"]["id"]
@@ -208,6 +192,26 @@ async def handle_button_click(ack: dict, body: dict, client: WebClient) -> None:
         ts=message_ts,
         text=registry_message.to_text(),
         blocks=registry_message.render(),
+    )
+
+
+@app.action(ActionID.CHECK_ACHIEVEMENT)
+async def handle_check_achievement(
+    ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient
+) -> None:
+    """Handle the check achievement button click event."""
+    await ack()
+    user_id = body["user"]["id"]
+    channel_id = body["channel"]["id"]
+    achievement_message = AchievementMessage(
+        session=get_db().__next__(), user_id=user_id
+    )
+    logger.info(f"Checking achievement for {user_id}")
+    await client.chat_postEphemeral(
+        channel=channel_id,
+        user=user_id,
+        text=achievement_message.to_text(),
+        blocks=achievement_message.render(),
     )
 
 

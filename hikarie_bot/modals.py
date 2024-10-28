@@ -1,15 +1,17 @@
 from datetime import datetime, timedelta
+from textwrap import dedent
 
 from loguru import logger
 from slack_sdk.models.blocks import (
-    BlockElement,
+    Block,
+    MarkdownTextObject,
     basic_components,
     block_elements,
     blocks,
 )
 from sqlalchemy.orm import Session
 
-from hikarie_bot.models import GuestArrivalInfo, User
+from hikarie_bot.models import Achievement, Badge, GuestArrivalInfo, User, UserBadge
 from hikarie_bot.utils import (
     get_current_level_point,
     get_level,
@@ -26,6 +28,7 @@ class ActionID:
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
     POINT_GET = "POINT_GET"
+    CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
 
 
 class BlockID:
@@ -34,6 +37,8 @@ class BlockID:
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
     FASTEST_ARRIVAL_REPLY = "FASTEST_ARRIVAL_REPLY"
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
+    ALREADY_REGISTERED_REPLY = "ALREADY_REGISTERED_REPLY"
+    CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
 
 
 class BaseMessage:
@@ -41,7 +46,7 @@ class BaseMessage:
 
     def __init__(self) -> None:
         """Initialize the BaseMessage with an empty list of blocks."""
-        self.blocks: list[BlockElement] = []
+        self.blocks: list[Block] = []
 
     def render(self) -> list[dict]:
         """Render the blocks to a list of dictionaries."""
@@ -70,7 +75,11 @@ class InitialMessage(BaseMessage):
                             text="最速出社した",
                             action_id=ActionID.FASTEST_ARRIVAL,
                             style="primary",
-                        )
+                        ),
+                        block_elements.ButtonElement(
+                            text="実績を確認",
+                            action_id=ActionID.CHECK_ACHIEVEMENT,
+                        ),
                     ],
                     block_id=BlockID.FASTEST_ARRIVAL,
                 ),
@@ -111,7 +120,11 @@ class RegistryMessage(BaseMessage):
                         block_elements.ButtonElement(
                             text="出社した",
                             action_id=ActionID.ARRIVED_OFFICE,
-                        )
+                        ),
+                        block_elements.ButtonElement(
+                            text="実績を確認",
+                            action_id=ActionID.CHECK_ACHIEVEMENT,
+                        ),
                     ],
                     block_id=BlockID.ARRIVED_OFFICE,
                 ),
@@ -161,7 +174,7 @@ class PointGetMessage(BaseMessage):
         super().__init__()
 
         ## variable
-        score = session.query(User).filter(User.id == user_id).first()
+        score = session.query(User).filter(User.id == user_id).one()
 
         # retrieve guest arrival data
         start_of_day = jst_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -180,9 +193,6 @@ class PointGetMessage(BaseMessage):
         previous_point = score.previous_score
         current_point = score.current_score
         score_addup = arrival.acquired_score_sum
-        time_score = arrival.acquired_time_score
-        fastest_score = arrival.acquired_rank_score
-        straight_flash_score = arrival.straight_flash_score
 
         # get the variables
         level = get_level(current_point)
@@ -202,22 +212,26 @@ class PointGetMessage(BaseMessage):
         initial_arrival_text = "最速" if initial_arrival else ""
         hikarie_text = " :hikarie:" if initial_arrival else ""
 
-        time_score_text = {
-            3: "9時までの出社:*+3pt*",
-            2: "11時までの出社:*+2pt*",
-            1: "11時以降の出社:*+1pt*",
-            0: "18時を過ぎるとポイント付与はありません！また明日！",  # noqa: RUF001
-        }.get(time_score)
+        # get the Achievements
+        badges = (
+            session.query(Badge)
+            .join(Achievement, Achievement.badge_id == Badge.id)
+            .filter(Achievement.arrival_id == arrival.id)
+            .order_by(Achievement.badge_id)
+            .all()
+        )
+        achievements_text = "\n".join(
+            [f" - {badge.message}:*+{badge.score}pt*" for badge in badges]
+        )
 
-        fastest_score_text = {
-            2: "最速出社:*+2pt*",
-            0: "",
-        }.get(fastest_score)
-
-        straight_flash_score_text = {
-            3: "ストレートフラッ出社:*+3pt*",
-            0: "",
-        }.get(straight_flash_score)
+        context = dedent(
+            f"""\
+            かたがき: *{level_name}* (lv{level})
+            つぎのレベルまで: *{point_to_next_level}pt*
+            しんこうど: `{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)
+            うちわけ:
+            """  # noqa: E501
+        ) + (achievements_text)
 
         self.blocks.extend(
             [
@@ -232,13 +246,7 @@ class PointGetMessage(BaseMessage):
                 blocks.ContextBlock(
                     elements=[
                         basic_components.MarkdownTextObject(
-                            text=f"かたがき: *{level_name}* (lv{level})"
-                            f"\nつぎのレベルまで: *{point_to_next_level}pt*"
-                            f"\nしんこうど: `{point_rate_text}` "
-                            f"| *{experience_rate:>3d}%* "
-                            f"(*+{experience_add_up_rate}%*)"
-                            f"\nうちわけ: {time_score_text} {fastest_score_text} "
-                            f"{straight_flash_score_text}"
+                            text=context,
                         )
                     ]
                 ),
@@ -256,9 +264,54 @@ class AlreadyRegisteredMessage(BaseMessage):
         self.blocks.extend(
             [
                 blocks.SectionBlock(
-                    text=f"本日の出社登録はすでに完了しています"
-                    f"\n<@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
+                    text=f"本日の出社登録はすでに完了しています\n"
+                    f"<@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
                     block_id=BlockID.ALREADY_REGISTERED_REPLY,
                 )
             ]
         )
+
+
+class AchievementMessage(BaseMessage):
+    """Class for creating the achievement Slack message."""
+
+    def __init__(
+        self,
+        session: Session,
+        user_id: str,
+    ) -> None:
+        """Initialize the AchievementMessage with the user ID."""
+        super().__init__()
+
+        user_badges = (
+            session.query(UserBadge).filter(UserBadge.user_id == user_id).all()
+        )
+        self.blocks.extend(
+            [
+                blocks.SectionBlock(text=f"<@{user_id}>が獲得したバッジ:\n"),
+                blocks.DividerBlock(),
+            ]
+        )
+        for user_badge in sorted(user_badges, key=lambda x: x.badge_id):
+            self.blocks.extend(
+                [
+                    blocks.SectionBlock(
+                        text=f"`{user_badge.badge_id}`  : *{user_badge.badge.message}* [{user_badge.badge.score}pt x{user_badge.count}]",  # noqa: E501
+                        fields=[
+                            MarkdownTextObject(
+                                text="*取得条件*",
+                            ),
+                            MarkdownTextObject(
+                                text="*初めて取得した日*",
+                            ),
+                            MarkdownTextObject(
+                                text=f"{user_badge.badge.condition}",
+                            ),
+                            MarkdownTextObject(
+                                text=f"{user_badge.initially_acquired_datetime:%Y-%m-%d}",
+                            ),
+                        ],
+                    ),
+                    blocks.DividerBlock(),
+                ]
+            )
