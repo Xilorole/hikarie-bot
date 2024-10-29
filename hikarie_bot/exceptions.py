@@ -30,6 +30,7 @@ class EnvironmentVariableNotFoundError(Exception):
 
     def __init__(self: Self, env_var: str) -> None:
         """Initialize the EnvironmentVariableNotFoundError class."""
+        super().__init__(f"Environment variable not found: {env_var}")
 
 
 class InvalidPointError(Exception):

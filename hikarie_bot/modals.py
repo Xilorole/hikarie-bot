@@ -56,7 +56,13 @@ class BaseMessage:
         """Convert the blocks to a text."""
         # block.text is a TextObject, so we need to check if block has a text attribute
         return "\n".join(
-            [block.text.text for block in self.blocks if hasattr(block, "text")]
+            [
+                # block.text is clearly a TextObject,
+                # but the block.text is later assigned in __init__
+                block.text.text  # type: ignore  # noqa: PGH003
+                for block in self.blocks
+                if hasattr(block, "text")
+            ]
         )
 
 
