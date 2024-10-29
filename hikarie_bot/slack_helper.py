@@ -23,6 +23,8 @@ class Pattern:
     )
     v2_message = r"ヒカリエに出社してる？"  # noqa: RUF001
 
+    v3_message = r"^(?!.*ヒカリエに出社してる).*" r"<@([A-Z0-9]+)>"
+
 
 class MessageFilter:
     """Class for filtering Slack messages."""
@@ -151,7 +153,7 @@ class MessageFilter:
         if (
             message.get("bot_id") == BOT_ID
             and message.get("text")
-            and (match := re.search(Pattern.v1_message, message["text"]))
+            and (match := re.search(Pattern.v3_message, message["text"]))
         ):
             return match.group(1)
         return None
