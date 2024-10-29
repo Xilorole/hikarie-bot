@@ -467,9 +467,28 @@ class BadgeChecker:
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
         """  # noqa: E501
-        ID = 601  # noqa: N806
-
-        kiriban_count = 100
+        ID_counts = [  # noqa: N806
+            (601, 100),
+            (602, 111),
+            (603, 200),
+            (604, 222),
+            (605, 300),
+            (606, 333),
+            (607, 400),
+            (608, 444),
+            (609, 500),
+            (610, 555),
+            (611, 600),
+            (612, 666),
+            (613, 700),
+            (614, 777),
+            (615, 800),
+            (616, 888),
+            (617, 900),
+            (618, 999),
+            (619, 1000),
+            (620, 1111),
+        ]
 
         user_arrival = cls._arrived_check(session, user_id, target_date)
         if user_arrival is None:
@@ -482,9 +501,9 @@ class BadgeChecker:
             )
             .count()
         )
-
-        if previous_arrival_count == kiriban_count - 1:
-            return [session.query(Badge).filter(Badge.id == ID).one()]
+        for ID, kiriban_count in ID_counts:  # noqa: N806
+            if previous_arrival_count == kiriban_count - 1:
+                return [session.query(Badge).filter(Badge.id == ID).one()]
         return []
 
     @classmethod
@@ -776,6 +795,158 @@ Badges = [
         id=601,
         message="100番目のお客様",
         condition="100回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=602,
+        message="111番目のお客様",
+        condition="111回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=603,
+        message="200番目のお客様",
+        condition="200回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=604,
+        message="222番目のお客様",
+        condition="222回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=605,
+        message="300番目のお客様",
+        condition="300回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=606,
+        message="333番目のお客様",
+        condition="333回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=607,
+        message="400番目のお客様",
+        condition="400回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=608,
+        message="444番目のお客様",
+        condition="444回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=609,
+        message="500番目のお客様",
+        condition="500回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=610,
+        message="555番目のお客様",
+        condition="555回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=611,
+        message="600番目のお客様",
+        condition="600回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=612,
+        message="666番目のお客様",
+        condition="666回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=613,
+        message="700番目のお客様",
+        condition="700回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=614,
+        message="777番目のお客様",
+        condition="777回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=615,
+        message="800番目のお客様",
+        condition="800回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=616,
+        message="888番目のお客様",
+        condition="888回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=617,
+        message="900番目のお客様",
+        condition="900回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=618,
+        message="999番目のお客様",
+        condition="999回目の出社登録をした",
+        level=1,
+        score=10,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=619,
+        message="1000番目のお客様",
+        condition="1000回目の出社登録をした",
+        level=1,
+        score=10,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=620,
+        message="1111番目のお客様",
+        condition="1111回目の出社登録をした",
         level=1,
         score=5,
         badge_type_id=6,
