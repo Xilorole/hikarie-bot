@@ -29,7 +29,7 @@ def test_filter(mocker: MockerFixture) -> None:
 
     message = {
         "user": "TST",
-        "bot_id": "test_bot_id",
+        "bot_id": "test_v1_bot_id",
         "text": "<@USRIDTST0123> clicked *出社してる*",
     }
     assert MessageFilter.run(message) is False
