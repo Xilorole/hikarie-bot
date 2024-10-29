@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import jpholiday
 
@@ -164,27 +164,13 @@ def unix_timestamp_to_jst(unix_timestamp: float) -> datetime:
     return utc_time.astimezone(timezone(timedelta(hours=9)))
 
 
-def get_time_score(t: datetime.time) -> int:
-    "Determine the score based on arrival time."
-    arrival_hour = t.time()
-    if time(6, 0) <= arrival_hour < time(9, 0):
-        time_score = 3
-    elif time(9, 0) <= arrival_hour < time(11, 0):
-        time_score = 2
-    elif time(11, 0) <= arrival_hour < time(18, 0):
-        time_score = 1
-    else:
-        time_score = 0
-    return time_score
-
-
 def get_current_jst_datetime() -> datetime:
     "Get the current time in JST."
     tz_jst = timezone(timedelta(hours=+9), "JST")
     return datetime.now(tz_jst)
 
 
-def is_jp_bizday(day: datetime.date) -> bool:
+def is_jp_bizday(day: date) -> bool:
     "Check if the given day is a business day in Japan."
     return not (
         jpholiday.is_holiday(day)
@@ -197,7 +183,7 @@ def is_jp_bizday(day: datetime.date) -> bool:
 # list all workdays within the last 5 arrivals
 def list_bizdays(start_of_day: datetime, length: int) -> list[datetime]:
     """List all workdays within the last 5 arrivals including the current day."""
-    current_date: datetime.date = start_of_day.date()
+    current_date: date = start_of_day.date()
     valid_bizdays = []
     for i in range(14):
         check_date = current_date - timedelta(days=i)
