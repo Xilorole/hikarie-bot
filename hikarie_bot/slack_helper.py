@@ -204,11 +204,9 @@ async def send_daily_message(
                         ).timestamp()
                     ),
                 )
-                app_user_id = BOT_ID
                 logger.debug(f"Messages: {messages['messages']}")
                 if any(
-                    app_user_id == message.get("user")
-                    for message in messages["messages"]
+                    message.get("bot_id") == BOT_ID for message in messages["messages"]
                 ):
                     logger.info("Message already sent")
                 else:
