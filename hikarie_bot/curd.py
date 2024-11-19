@@ -262,6 +262,7 @@ def initially_insert_badge_data(session: Session) -> None:
                 id=badge_type.id,
                 name=badge_type.name,
                 description=badge_type.description,
+                apply_start=badge_type.apply_start,
             )
             for badge_type in db_data.BadgeTypes
         )
