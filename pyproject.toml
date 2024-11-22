@@ -21,7 +21,7 @@ dependencies = [
     "pydantic>=2.9.1",
     "pytest-asyncio>=0.24.0",
     "python-dotenv>=1.0.1",
-    "ruff==0.7.1",
+    "ruff==0.8.0",
     "slack-bolt>=1.20.1",
     "sqlalchemy-utils>=0.41.2",
     "sqlalchemy>=2.0.34",
