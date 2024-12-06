@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from loguru import logger
 from sqlalchemy.orm import Session
 
+from hikarie_bot.constants import KIRIBAN_ID_COUNTS
 from hikarie_bot.exceptions import CheckerFunctionNotSpecifiedError
 from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo
 from hikarie_bot.utils import list_bizdays
@@ -48,7 +49,7 @@ class BadgeData:
 class BadgeChecker:
     """Class for checking if a user has acquired a badge."""
 
-    def __init__(self, badge_type_to_check: list[int]) -> None:
+    def __init__(self, badge_type_to_check: list[int] | None) -> None:
         """Initialize the BadgeChecker with an empty list of badges."""
         if badge_type_to_check is None:
             raise CheckerFunctionNotSpecifiedError
@@ -470,29 +471,6 @@ class BadgeChecker:
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
         """  # noqa: E501
-        ID_counts = [  # noqa: N806
-            (601, 100),
-            (602, 111),
-            (603, 200),
-            (604, 222),
-            (605, 300),
-            (606, 333),
-            (607, 400),
-            (608, 444),
-            (609, 500),
-            (610, 555),
-            (611, 600),
-            (612, 666),
-            (613, 700),
-            (614, 777),
-            (615, 800),
-            (616, 888),
-            (617, 900),
-            (618, 999),
-            (619, 1000),
-            (620, 1111),
-        ]
-
         user_arrival = cls._arrived_check(session, user_id, target_date)
         if user_arrival is None:
             return []
@@ -504,7 +482,7 @@ class BadgeChecker:
             )
             .count()
         )
-        for ID, kiriban_count in ID_counts:  # noqa: N806
+        for ID, kiriban_count in KIRIBAN_ID_COUNTS:  # noqa: N806
             if previous_arrival_count == kiriban_count - 1:
                 return [session.query(Badge).filter(Badge.id == ID).one()]
         return []

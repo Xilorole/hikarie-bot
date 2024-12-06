@@ -38,7 +38,6 @@ indent-width = 4
 target-version = "py311"
 
 
-[lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
 select = ["ALL"]
 ignore = [
@@ -60,8 +59,6 @@ ignore = [
     "Q002",
     "Q003",
     "W191",
-    "ANN101", # typing for self
-    "ANN102", # typing for self
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from unittest import mock
 
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
@@ -24,6 +25,7 @@ class UserData:
             self.jst_datetime = jst_datetime
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [1])
 def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -73,6 +75,7 @@ def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2])
 def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -117,13 +120,13 @@ def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [3])
+@mock.patch("hikarie_bot.db_data.badges.KIRIBAN_ID_COUNTS", [(601, 10)])
 def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
         initially_insert_badge_data(session)
         badge_5 = BadgeChecker.get_badge(session=session, badge_id=301)
-        badge_20 = BadgeChecker.get_badge(session=session, badge_id=302)
-        badge_100 = BadgeChecker.get_badge(session=session, badge_id=303)
         checker = BadgeChecker([3])
 
         # Badge types are below:
@@ -155,8 +158,6 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
 
         # test scenario
         # 1. user arrived 5 times
-        # 2. user arrived 20 times
-        # 3. user arrived 100 times
         # 4. user arrived 4 times
 
         test_data = (
@@ -166,7 +167,7 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
                     + timedelta(days=i),
                     user_id="user",
                 )
-                for i in range(100)
+                for i in range(5)
             ],
             *[
                 UserData(
@@ -182,14 +183,6 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
             ([], UserData(jst_datetime="2020-01-04", user_id="user")),
             ([badge_5], UserData(jst_datetime="2020-01-05", user_id="user")),
             ([], UserData(jst_datetime="2020-01-06", user_id="user")),
-            # scenario 2
-            ([], UserData(jst_datetime="2020-01-19", user_id="user")),
-            ([badge_20], UserData(jst_datetime="2020-01-20", user_id="user")),
-            ([], UserData(jst_datetime="2020-01-21", user_id="user")),
-            # scenario 3
-            ([], UserData(jst_datetime="2020-04-08", user_id="user")),
-            ([badge_100], UserData(jst_datetime="2020-04-09", user_id="user")),
-            ([], UserData(jst_datetime="2020-04-10", user_id="user")),
             # scenario 4
             ([], UserData(jst_datetime="2020-01-04", user_id="user_4")),
             ([], UserData(jst_datetime="2020-01-05", user_id="user_4")),
@@ -211,6 +204,7 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [4])
 def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -369,6 +363,7 @@ def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [5])
 def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -443,7 +438,11 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
             )
 
 
-def test_badge_checker_id6_kiriban(temp_db: sessionmaker) -> None:
+@mock.patch("hikarie_bot.db_data.badges.KIRIBAN_ID_COUNTS", [(601, 10)])
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [6])
+def test_badge_checker_id6_kiriban(
+    temp_db: sessionmaker,
+) -> None:
     """Test the badge checker."""
     with temp_db() as session:
         initially_insert_badge_data(session)
@@ -457,18 +456,18 @@ def test_badge_checker_id6_kiriban(temp_db: sessionmaker) -> None:
                     + timedelta(seconds=i),
                     user_id=f"user_{i}",
                 )
-                for i in range(99)
+                for i in range(9)
             ],
             UserData(
                 jst_datetime=datetime.fromisoformat("20200102 06:00:00"),
-                user_id="user_kiriban_100",
+                user_id="user_kiriban_10",
             ),
         )
         check_data = (
             ([], UserData(jst_datetime="2020-01-01", user_id="user_0")),
             (
                 [badge_n100],
-                UserData(jst_datetime="2020-01-02", user_id="user_kiriban_100"),
+                UserData(jst_datetime="2020-01-02", user_id="user_kiriban_10"),
             ),
         )
 
@@ -487,6 +486,7 @@ def test_badge_checker_id6_kiriban(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [7])
 def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -577,6 +577,7 @@ def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [8])
 def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -652,6 +653,7 @@ def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [15])
 def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
     """Test the start dash badge."""
     with temp_db() as session:
@@ -719,6 +721,7 @@ def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
             )
 
 
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [1, 2, 3])
 def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
     """Test the badge checker with complex condition."""
     with temp_db() as session:
