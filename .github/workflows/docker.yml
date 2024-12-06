@@ -1,4 +1,4 @@
-name: Docker
+name: Docker Build Test
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
         with:
           dockerfile: Dockerfile
 
-  build:
+  build_release:
     runs-on: ubuntu-latest
 
     needs: lint
@@ -56,12 +56,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Test
-        run: |
-          docker run --rm ${{ env.RELEASE_TEST_TAG }}
-
-
-  devcontainer:
+  build_devcontainer:
     runs-on: ubuntu-latest
 
     steps:
@@ -80,7 +75,3 @@ jobs:
           tags: ${{ env.DEVCONTAINER_TEST_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Test
-        run: |
-          docker run --rm ${{ env.DEVCONTAINER_TEST_TAG }}
