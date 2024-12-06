@@ -685,24 +685,24 @@ def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
 
         test_data = (
             # case 1
-            UserData(jst_datetime="2024-11-25 07:00:00", user_id="user_1"),
             UserData(jst_datetime="2024-12-09 07:00:00", user_id="user_1"),
-            UserData(jst_datetime="2024-12-10 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2024-12-23 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2024-12-24 07:00:00", user_id="user_1"),
             # case 2
-            UserData(jst_datetime="2024-11-24 07:00:00", user_id="user_2"),
-            UserData(jst_datetime="2024-11-26 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2024-12-08 07:00:00", user_id="user_2"),
             UserData(jst_datetime="2024-12-10 07:00:00", user_id="user_2"),
-            UserData(jst_datetime="2024-12-11 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2024-12-24 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2024-12-25 07:00:00", user_id="user_2"),
         )
 
         check_data = (
-            ([badge_lv1], UserData(jst_datetime="2024-11-25", user_id="user_1")),
             ([badge_lv1], UserData(jst_datetime="2024-12-09", user_id="user_1")),
-            ([], UserData(jst_datetime="2024-12-10", user_id="user_1")),
-            ([], UserData(jst_datetime="2024-11-24", user_id="user_2")),
-            ([badge_lv1], UserData(jst_datetime="2024-11-26", user_id="user_2")),
+            ([badge_lv1], UserData(jst_datetime="2024-12-23", user_id="user_1")),
+            ([], UserData(jst_datetime="2024-12-24", user_id="user_1")),
+            ([], UserData(jst_datetime="2024-12-08", user_id="user_2")),
             ([badge_lv1], UserData(jst_datetime="2024-12-10", user_id="user_2")),
-            ([], UserData(jst_datetime="2024-12-11", user_id="user_2")),
+            ([badge_lv1], UserData(jst_datetime="2024-12-24", user_id="user_2")),
+            ([], UserData(jst_datetime="2024-12-25", user_id="user_2")),
         )
 
         for data in test_data:

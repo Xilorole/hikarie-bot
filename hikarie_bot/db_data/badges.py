@@ -728,7 +728,7 @@ BadgeTypes = [
         id=15,
         name="start_dash",
         description="初回利用から2週間以内に出社登録した",
-        apply_start=datetime(2024, 11, 25, tzinfo=ZoneInfo("Asia/Tokyo")),
+        apply_start=datetime(2024, 12, 9, tzinfo=ZoneInfo("Asia/Tokyo")),
     ),
 ]
 
