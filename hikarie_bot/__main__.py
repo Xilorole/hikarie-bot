@@ -158,7 +158,7 @@ async def handle_button_click(
         await client.chat_postEphemeral(
             channel=channel_id,
             user=user_id,
-            text="出社申告は当日の6:00から18:00までの間にしてください",
+            text="出社申告は当日の6時から18時までの間にしてください",
         )
         return
     insert_result = insert_arrival_action(get_db().__next__(), now, user_id)
