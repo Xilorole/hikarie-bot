@@ -32,7 +32,7 @@ ENV JUPYTER_PLATFORM_DIRS=1
 WORKDIR /opt
 
 COPY --from=builder /usr/local/bin/starship /usr/local/bin/starship
-COPY --from=builder /root/.cargo/bin/uv $CARGO_HOME/uv
+COPY --from=builder /root/.local/bin/uv $CARGO_HOME/uv
 COPY ./.python-version ./
 
 RUN uv python pin "$(cat .python-version)"
