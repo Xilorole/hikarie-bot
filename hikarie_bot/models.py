@@ -21,6 +21,13 @@ class GuestArrivalRaw(BaseSchema):
     user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
     arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
+    def __repr__(self) -> str:
+        """Return the string representation of the GuestArrivalRaw class."""
+        return (
+            f"<GuestArrivalRaw(user_id={self.user_id}, "
+            f"arrival_time={self.arrival_time})>"
+        )
+
 
 # Define the GuestArrivalInfo table
 class GuestArrivalInfo(BaseSchema):
@@ -38,6 +45,15 @@ class GuestArrivalInfo(BaseSchema):
     arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     arrival_rank: Mapped[int] = mapped_column(Integer)
     acquired_score_sum: Mapped[int] = mapped_column(Integer)
+
+    def __repr__(self) -> str:
+        """Return the string representation of the GuestArrivalInfo class."""
+        return (
+            f"<GuestArrivalInfo(user_id={self.user_id}, "
+            f"arrival_time={self.arrival_time}, "
+            f"arrival_rank={self.arrival_rank}, "
+            f"acquired_score_sum={self.acquired_score_sum})>"
+        )
 
 
 class Achievement(BaseSchema):
@@ -62,6 +78,15 @@ class Achievement(BaseSchema):
     user = relationship("User", backref="achievement")
     arrival = relationship("GuestArrivalInfo", backref="achievement")
     badge = relationship("Badge", backref="achievement")
+
+    def __repr__(self) -> str:
+        """Return the string representation of the Achievement class."""
+        return (
+            f"<Achievement(user_id={self.user_id}, "
+            f"arrival_id={self.arrival_id}, "
+            f"badge_id={self.badge_id}, "
+            f"achieved_time={self.achieved_time})>"
+        )
 
 
 # Define the UserScore table
@@ -89,6 +114,15 @@ class User(BaseSchema):
     guest_arrivals_info = relationship("GuestArrivalInfo", backref="user")
     badges = relationship("UserBadge", back_populates="user")
 
+    def __repr__(self) -> str:
+        """Return the string representation of the User class."""
+        return (
+            f"<User(id={self.id}, "
+            f"current_score={self.current_score}, "
+            f"previous_score={self.previous_score}, "
+            f"update_datetime={self.update_datetime})>"
+        )
+
 
 class BadgeType(BaseSchema):
     "Define the BadgeType table."
@@ -100,6 +134,10 @@ class BadgeType(BaseSchema):
     description: Mapped[str] = mapped_column(String)
 
     badges = relationship("Badge", back_populates="badge_type")
+
+    def __repr__(self) -> str:
+        """Return the string representation of the BadgeType class."""
+        return f"<BadgeType(name={self.name}, description={self.description})>"
 
 
 class Badge(BaseSchema):
@@ -118,6 +156,13 @@ class Badge(BaseSchema):
 
     badge_type = relationship("BadgeType", back_populates="badges")
     users = relationship("UserBadge", back_populates="badge")
+
+    def __repr__(self) -> str:
+        """Return the string representation of the Badge class."""
+        return (
+            f"<Badge(message={self.message}, condition={self.condition}, "
+            f"level={self.level}, score={self.score})>"
+        )
 
 
 class UserBadge(BaseSchema):
@@ -138,3 +183,13 @@ class UserBadge(BaseSchema):
 
     user = relationship("User", back_populates="badges")
     badge = relationship("Badge", back_populates="users")
+
+    def __repr__(self) -> str:
+        """Return the string representation of the UserBadge class."""
+        return (
+            f"<UserBadge(user_id={self.user_id}, "
+            f"badge_id={self.badge_id}, "
+            f"initially_acquired_datetime={self.initially_acquired_datetime}, "
+            f"last_acquired_datetime={self.last_acquired_datetime}, "
+            f"count={self.count})>"
+        )
