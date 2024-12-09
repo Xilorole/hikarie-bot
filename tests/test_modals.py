@@ -226,7 +226,7 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
     insert_arrival_action(
         session=session,
         jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
         ),
         user_id="test_user",
     )
@@ -235,7 +235,7 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
         session,
         user_id="test_user",
         jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
         ),
         initial_arrival=True,
     )
@@ -247,7 +247,7 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*06:00* 最速出社登録しました！ :hikarie:\n"  # noqa: RUF001
+                    "text": "*07:00* 最速出社登録しました！ :hikarie:\n"  # noqa: RUF001
                     "<@test_user>さんのポイント 0 → *7* (*+7*)",
                 },
             },
@@ -309,7 +309,7 @@ def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
     insert_arrival_action(
         session=session,
         jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
         ),
         user_id="test_user",
     )
@@ -397,7 +397,7 @@ def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
                     "type": "mrkdwn",
                 },
                 {
-                    "text": "6-9時の間に出社登録をした",
+                    "text": "7-9時の間に出社登録をした",
                     "type": "mrkdwn",
                 },
                 {

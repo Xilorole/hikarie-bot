@@ -424,6 +424,7 @@ class BadgeChecker:
         ID_lv1 = 503  # noqa: N806
         ID_lv2 = 502  # noqa: N806
         ID_lv3 = 501  # noqa: N806
+        ID_lv4 = 504  # noqa: N806
 
         @dataclass
         class _TimeWindow:
@@ -432,7 +433,8 @@ class BadgeChecker:
 
         lv1_time_window = _TimeWindow(11, 18)
         lv2_time_window = _TimeWindow(9, 11)
-        lv3_time_window = _TimeWindow(6, 9)
+        lv3_time_window = _TimeWindow(7, 9)
+        lv4_time_window = _TimeWindow(6, 7)
 
         user_arrival = cls._arrived_check(session, user_id, target_date)
         if user_arrival is None:
@@ -440,6 +442,8 @@ class BadgeChecker:
 
         arrival_hour = user_arrival.arrival_time.hour
 
+        if lv4_time_window.start <= arrival_hour < lv4_time_window.end:
+            return [session.query(Badge).filter(Badge.id == ID_lv4).one()]
         if lv3_time_window.start <= arrival_hour < lv3_time_window.end:
             return [session.query(Badge).filter(Badge.id == ID_lv3).one()]
         if lv2_time_window.start <= arrival_hour < lv2_time_window.end:
@@ -747,7 +751,7 @@ Badges = [
     BadgeData(
         id=501,
         message="朝型出社",
-        condition="6-9時の間に出社登録をした",
+        condition="7-9時の間に出社登録をした",
         level=3,
         score=3,
         badge_type_id=5,
@@ -766,6 +770,14 @@ Badges = [
         condition="11時以降に出社登録をした",
         level=1,
         score=1,
+        badge_type_id=5,
+    ),
+    BadgeData(
+        id=504,
+        message="ウルトラ早起き",
+        condition="6時台に出社登録をした",
+        level=4,
+        score=5,
         badge_type_id=5,
     ),
     # BadgeTypeData id=6, name="kiriban", description="特定の出社登録の回数で付与される"

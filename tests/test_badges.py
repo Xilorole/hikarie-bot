@@ -371,6 +371,7 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=503)
         badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=502)
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=501)
+        badge_lv4 = BadgeChecker.get_badge(session=session, badge_id=504)
         checker = BadgeChecker([5])
 
         # > # BadgeTypeData id=5, name="time_window", description="時間帯による出社登録"
@@ -414,13 +415,15 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
             UserData(jst_datetime="2024-04-22 11:00:00", user_id="user_3"),
             UserData(jst_datetime="2024-04-22 05:59:59", user_id="user_4"),
             UserData(jst_datetime="2024-04-22 18:00:00", user_id="user_5"),
+            UserData(jst_datetime="2024-04-22 07:00:00", user_id="user_6"),
         )
         check_data = (
-            ([badge_lv3], UserData(jst_datetime="2024-04-22", user_id="user_1")),
+            ([badge_lv4], UserData(jst_datetime="2024-04-22", user_id="user_1")),
             ([badge_lv2], UserData(jst_datetime="2024-04-22", user_id="user_2")),
             ([badge_lv1], UserData(jst_datetime="2024-04-22", user_id="user_3")),
             ([], UserData(jst_datetime="2024-04-22", user_id="user_4")),
             ([], UserData(jst_datetime="2024-04-22", user_id="user_5")),
+            ([badge_lv3], UserData(jst_datetime="2024-04-22", user_id="user_6")),
         )
 
         for data in test_data:
@@ -430,12 +433,12 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
                 user_id=data.user_id,
             )
 
-        for expected, data in check_data:
+        for idx, (expected, data) in enumerate(check_data):
             assert expected == checker.check_time_window(
                 session=session,
                 user_id=data.user_id,
                 target_date=data.jst_datetime,
-            )
+            ), f"failed: {idx}"
 
 
 @mock.patch("hikarie_bot.db_data.badges.KIRIBAN_ID_COUNTS", [(601, 10)])
