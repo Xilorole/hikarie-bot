@@ -22,11 +22,9 @@ def temp_db() -> Generator[sessionmaker[Session], Any, Any]:
     """Create a test database and tables."""
     import tempfile
 
-    with tempfile.TemporaryFile() as temp_db_file:
-        DB_PATH = temp_db_file.name  # noqa: N806
-
+    with tempfile.TemporaryDirectory() as tmpdirname:
         # settings of test database
-        TEST_SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"  # noqa: N806
+        TEST_SQLALCHEMY_DATABASE_URL = f"sqlite:///{tmpdirname}/.temp.db"  # noqa: N806
         engine = create_engine(
             TEST_SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
         )
