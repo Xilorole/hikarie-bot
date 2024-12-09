@@ -714,3 +714,71 @@ def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
                 user_id=data.user_id,
                 target_date=data.jst_datetime,
             )
+
+
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [15])
+def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
+    """Test the start dash badge."""
+    with temp_db() as session:
+        initially_insert_badge_data(session)
+        badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=1501)
+        checker = BadgeChecker([15])
+
+        # > # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"  # noqa: E501
+        # > BadgeData(
+        # >     id=1501,
+        # >     message="スタートダッシュ",
+        # >     condition="初回利用から2週間以内に出社登録した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=15,
+        # > ),
+
+        # test scenario
+        # not applied before 2024-11-25
+        # case 1. user initially arrived at 2024-11-25
+        #     1. arrives at 2024-11-25 (applied, starts here)
+        #     2. arrives at 2024-12-09 (applied)
+        #     3. arrives at 2024-12-10 (not applied)
+        # case 2. user initially arrived at 2024-11-24 (before 11-25)
+        #     0. arrives at 2024-11-24 (not applied)
+        #     1. arrives at 2024-11-26 (applied, starts here)
+        #     2. arrives at 2024-12-10 (applied)
+        #     3. arrives at 2024-12-11 (not applied)
+
+        test_data = (
+            # case 1
+            UserData(jst_datetime="2024-12-09 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2024-12-23 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2024-12-24 07:00:00", user_id="user_1"),
+            # case 2
+            UserData(jst_datetime="2024-12-08 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2024-12-10 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2024-12-24 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2024-12-25 07:00:00", user_id="user_2"),
+        )
+
+        check_data = (
+            ([badge_lv1], UserData(jst_datetime="2024-12-09", user_id="user_1")),
+            ([badge_lv1], UserData(jst_datetime="2024-12-23", user_id="user_1")),
+            ([], UserData(jst_datetime="2024-12-24", user_id="user_1")),
+            ([], UserData(jst_datetime="2024-12-08", user_id="user_2")),
+            ([badge_lv1], UserData(jst_datetime="2024-12-10", user_id="user_2")),
+            ([badge_lv1], UserData(jst_datetime="2024-12-24", user_id="user_2")),
+            ([], UserData(jst_datetime="2024-12-25", user_id="user_2")),
+        )
+
+        for data in test_data:
+            insert_arrival_action(
+                session=session,
+                jst_datetime=data.jst_datetime,
+                user_id=data.user_id,
+            )
+
+        for expected, data in check_data:
+            logger.info(f"expected: {expected}, data: {data}")
+            assert expected == checker.check_start_dash(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )

@@ -137,7 +137,7 @@ def test_insert_badge_data(temp_db: sessionmaker[Session]) -> None:
     initially_insert_badge_data(session=session)
 
     assert session.query(Badge).count() != 0
-    assert session.query(BadgeType).count() == 14
+    assert session.query(BadgeType).count() == 15
 
     assert (
         session.query(Badge)

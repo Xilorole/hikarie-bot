@@ -132,6 +132,7 @@ class BadgeType(BaseSchema):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(String)
+    apply_start: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
     badges = relationship("Badge", back_populates="badge_type")
 

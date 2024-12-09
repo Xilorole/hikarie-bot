@@ -211,9 +211,8 @@ class PointGetMessage(BaseMessage):
         # calculate the experience rate
         experience_rate = int(100 * current_level_point / point_range)
         experience_add_up_rate = int(100 * score_addup / point_range)
-        point_rate_text = (
-            "█" + "█" * (experience_rate // 10) + " " * (10 - experience_rate // 10)
-        )
+        digits = (experience_rate + 10 - 1) // 10
+        point_rate_text = "█" * digits + " " * (10 - digits)
 
         initial_arrival_text = "最速" if initial_arrival else ""
         hikarie_text = " :hikarie:" if initial_arrival else ""
@@ -246,7 +245,7 @@ class PointGetMessage(BaseMessage):
                     f"{initial_arrival_text}出社登録しました！{hikarie_text}"  # noqa: RUF001
                     f"\n<@{user_id}>さんのポイント "
                     f"{previous_point} → *{current_point}* "
-                    f"(*+{score_addup}{' レベルアップ！' if level_up_flag else ''}*)"  # noqa: RUF001
+                    f"(*+{score_addup}*){' *LvUP!* :star2: ' if level_up_flag else ''}"
                 ),
                 blocks.DividerBlock(),
                 blocks.ContextBlock(

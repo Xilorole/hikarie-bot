@@ -13,13 +13,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 from loguru import logger
 from sqlalchemy.orm import Session
 
 from hikarie_bot.constants import KIRIBAN_ID_COUNTS
 from hikarie_bot.exceptions import CheckerFunctionNotSpecifiedError
-from hikarie_bot.models import Badge, GuestArrivalInfo
+from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo
 from hikarie_bot.utils import list_bizdays
 
 
@@ -30,6 +31,7 @@ class BadgeTypeData:
     id: int
     name: str
     description: str
+    apply_start: datetime | None = None
 
 
 @dataclass
@@ -82,6 +84,7 @@ class BadgeChecker:
             # 12: cls.check_seasonal_rank,
             # 13: cls.check_reactioner,
             # 14: cls.check_advance_notice_success,
+            15: cls.check_start_dash,
         }
 
     @classmethod
@@ -604,6 +607,55 @@ class BadgeChecker:
             return [session.query(Badge).filter(Badge.id == ID_lv3).one()]
         return []
 
+    @classmethod
+    def check_start_dash(
+        cls,
+        session: Session,
+        user_id: str,
+        target_date: datetime,
+    ) -> list[Badge]:
+        """Check if the user has acquired the start dash badge.
+
+        Args:
+        ----
+            session (Session): The session factory to interact with the database.
+            user_id (str): The ID of the user to check for badge acquisition.
+            target_date (datetime): The date and time in JST to check for badge acquisition.
+
+        Returns:
+        -------
+            list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
+        """  # noqa: E501
+        BADGE_TYPE_ID = 15  # noqa: N806
+        ID = 1501  # noqa: N806
+        user_arrival = cls._arrived_check(session, user_id, target_date)
+        if user_arrival is None:
+            return []
+
+        # get the apply start date of the BadgeType
+
+        badge_type = (
+            session.query(BadgeType).filter(BadgeType.id == BADGE_TYPE_ID).one()
+        )
+        initial_arrival = (
+            session.query(GuestArrivalInfo)
+            .filter(
+                GuestArrivalInfo.user_id == user_id,
+                GuestArrivalInfo.arrival_time >= badge_type.apply_start,
+                GuestArrivalInfo.arrival_time <= user_arrival.arrival_time,
+            )
+            .first()
+        )
+
+        # if there is initial arrival and the current arrival is within 2 weekds
+        if (
+            initial_arrival
+            and user_arrival.arrival_time - initial_arrival.arrival_time
+            <= timedelta(days=14)
+        ):
+            return [session.query(Badge).filter(Badge.id == ID).one()]
+        return []
+
 
 # Define the badge types.
 BadgeTypes = [
@@ -674,6 +726,12 @@ BadgeTypes = [
         id=14,
         name="advance_notice_success",
         description="予告出社を成功させた",
+    ),
+    BadgeTypeData(
+        id=15,
+        name="start_dash",
+        description="初回利用から2週間以内に出社登録した",
+        apply_start=datetime(2024, 12, 9, tzinfo=ZoneInfo("Asia/Tokyo")),
     ),
 ]
 
@@ -1078,5 +1136,14 @@ Badges = [
         level=1,
         score=1,
         badge_type_id=14,
+    ),
+    # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"  # noqa: E501
+    BadgeData(
+        id=1501,
+        message="スタートダッシュ",
+        condition="初回利用から2週間以内に出社登録した",
+        level=1,
+        score=2,
+        badge_type_id=15,
     ),
 ]
