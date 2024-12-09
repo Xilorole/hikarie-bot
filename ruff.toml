@@ -39,8 +39,8 @@ target-version = "py311"
 
 
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-select = ["ALL"]
-ignore = [
+lint.select = ["ALL"]
+lint.ignore = [
     "COM812",
     "COM819",
     "D100",
@@ -62,11 +62,11 @@ ignore = [
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
-fixable = ["ALL"]
-unfixable = []
+lint.fixable = ["ALL"]
+lint.unfixable = []
 
 # Allow unused variables when underscore-prefixed.
-dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 
 [format]
