@@ -54,14 +54,14 @@ def test_temp_db(temp_db: sessionmaker[Session]) -> None:
 
     user_info = session.query(User).filter(User.id == "test_user").one()
 
-    assert user_info.current_score == 5
+    assert user_info.current_score == 7
     assert user_info.previous_score == 0
     assert user_info.level == 1
     assert user_info.level_name == "かけだしのかいしゃいん"
     assert not user_info.level_uped
-    assert user_info.point_to_next_level == 15
+    assert user_info.point_to_next_level == 13
     assert user_info.point_range_to_next_level == 20
-    assert user_info.current_level_point == 5
+    assert user_info.current_level_point == 7
 
     assert (
         session.query(GuestArrivalRaw)
@@ -81,7 +81,7 @@ def test_level_up(temp_db: sessionmaker[Session]) -> None:
         insert_arrival_action(
             session=session,
             jst_datetime=datetime(
-                2024, 2, i + 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+                2024, 2, i + 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
             ),
             user_id="test_user",
         )
@@ -123,7 +123,7 @@ def test_second_arrived_user_has_lower_point(temp_db: sessionmaker[Session]) -> 
     user_1st_info = session.query(User).filter(User.id == "test_user_1st").one()
     user_2nd_info = session.query(User).filter(User.id == "test_user_2nd").one()
 
-    assert user_1st_info.current_score == 5
+    assert user_1st_info.current_score == 7
     assert user_1st_info.previous_score == 0
 
     assert user_2nd_info.current_score == 3
