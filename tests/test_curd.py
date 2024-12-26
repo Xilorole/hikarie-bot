@@ -71,6 +71,67 @@ def test_temp_db(temp_db: sessionmaker[Session]) -> None:
     )
 
 
+def test_insert_arrival_action(temp_db: sessionmaker[Session]) -> None:
+    """Test insert arrival action."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="1st_arrived_user",
+    )
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 1, 1, 6, 1, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="2nd_arrived_user",
+    )
+
+    # add data for tommorow and yesterday to check the rank is properly calculated
+
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 1, 1, 5, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="1st_arrived_user",
+    )
+
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(
+            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
+        ),
+        user_id="1st_arrived_user",
+    )
+
+    user_1st_info = (
+        session.query(GuestArrivalInfo)
+        .filter(
+            GuestArrivalInfo.user_id == "1st_arrived_user",
+            GuestArrivalInfo.arrival_time
+            >= datetime(2024, 1, 1, 0, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+            GuestArrivalInfo.arrival_time
+            < datetime(2024, 1, 2, 0, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+        )
+        .one()
+    )
+    user_2nd_info = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.user_id == "2nd_arrived_user")
+        .one()
+    )
+
+    assert user_1st_info.arrival_rank == 1
+    assert user_2nd_info.arrival_rank == 2
+
+    assert user_1st_info.acquired_score_sum != -1
+    assert user_2nd_info.acquired_score_sum != -1
+
+
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
 def test_level_up(temp_db: sessionmaker[Session]) -> None:

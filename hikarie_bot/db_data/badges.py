@@ -192,7 +192,6 @@ class BadgeChecker:
 
         # if the user had a previous arrival, they won't acquire the welcome badge
         if previous_arrival_count == 0:
-            logger.info(session.query(Badge).all())
             return [session.query(Badge).filter(Badge.id == ID).one()]
         return []
 

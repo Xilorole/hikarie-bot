@@ -1,10 +1,8 @@
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from hikarie_bot.settings import DATABASE_URL
 
-load_dotenv(override=True)
 SQLALCHEMY_DATABASE_URL = DATABASE_URL
 
 engine = create_engine(
