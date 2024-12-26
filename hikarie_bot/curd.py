@@ -98,6 +98,47 @@ def _update_achievements(session: Session, arrival_id: int) -> None:
     session.commit()
 
 
+def _update_arrival_rank(session: Session, arrival_id: int) -> None:
+    """
+    Calculate and update the user's rank based on their arrival information.
+
+    Parameters
+    ----------
+    session : Session
+        The session factory to interact with the database.
+    arrival_id : int
+        The ID of the arrival record.
+
+    Returns
+    -------
+    None
+    """
+    user_arrival = (
+        session.query(GuestArrivalInfo)
+        .filter(GuestArrivalInfo.id == arrival_id)
+        .one_or_none()
+    )
+    if user_arrival is None:
+        logger.error(f"User arrival not found for arrival_id: {arrival_id}")
+        raise UserArrivalNotFoundError(arrival_id)
+
+    today = user_arrival.arrival_time.date()
+    start_of_day = datetime.combine(today, datetime.min.time())
+
+    # calculate the arrivals within the same day
+    arrivals_count = (
+        session.query(GuestArrivalInfo)
+        .filter(
+            GuestArrivalInfo.arrival_time >= start_of_day,
+            GuestArrivalInfo.arrival_time < user_arrival.arrival_time,
+        )
+        .count()
+    )
+    user_arrival.arrival_rank = arrivals_count + 1
+
+    session.commit()
+
+
 def _update_acquired_score_sum(session: Session, arrival_id: int) -> None:
     """
     Calculate and update the user's score based on their arrival information.
@@ -177,6 +218,7 @@ def insert_arrival_action(
     session.commit()
     logger.info(f"new arrival @ {new_arrival.arrival_time} id: {new_arrival.id}")
 
+    _update_arrival_rank(session, new_arrival.id)
     _update_achievements(session, new_arrival.id)
     _update_acquired_score_sum(session, new_arrival.id)
     updated_arrival = (
