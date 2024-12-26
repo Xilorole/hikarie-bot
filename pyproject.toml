@@ -36,6 +36,8 @@ dev-dependencies = [
     "pyright>=1.1.386",
     "pytest-mock>=3.14.0",
     "pytest-env>=1.1.4",
+    "matplotlib>=3.10.0",
+    "ing-theme-matplotlib>=0.1.8",
 ]
 
 [tool.setuptools.packages.find]
