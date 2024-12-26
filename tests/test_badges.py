@@ -590,7 +590,7 @@ def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=803)
         checker = BadgeChecker([8])
 
-        # > # BadgeTypeData id=8, name="lucky_you_guys", description="同じ時間に出社登録をした"  # noqa: E501
+        # > # BadgeTypeData id=8, name="lucky_you_guys", description="同じ時間に出社登録をした"
         # > BadgeData(
         # >     id=17,
         # >     message="幸運なふたり",
@@ -724,7 +724,7 @@ def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=1501)
         checker = BadgeChecker([15])
 
-        # > # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"  # noqa: E501
+        # > # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"
         # > BadgeData(
         # >     id=1501,
         # >     message="スタートダッシュ",
@@ -782,3 +782,298 @@ def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
                 user_id=data.user_id,
                 target_date=data.jst_datetime,
             )
+
+
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [16])
+def test_badge_checker_id16_specific_day(temp_db: sessionmaker) -> None:
+    """Test the specific day badge."""
+    with temp_db() as session:
+        initially_insert_badge_data(session)
+
+        # > # BadgeTypeData id=16, name="specific_day", description="特定の年月日に出社した"
+        # > BadgeData(
+        # >     id=1601,
+        # >     message="2024年お疲れ様です",
+        # >     condition="2024年12月27日に出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=16,
+        # > ),
+        # > BadgeData(
+        # >     id=1602,
+        # >     message="2025年明けましておめでとうございます",
+        # >     condition="2025年1月6日に出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=16,
+        # > ),
+
+        badge_2024_end = BadgeChecker.get_badge(session=session, badge_id=1601)
+        badge_2025_start = BadgeChecker.get_badge(session=session, badge_id=1602)
+        checker = BadgeChecker([16])
+
+        # test scenario
+        # 1. 2024-12-27
+        # 2. 2025-01-06
+        # 3. 2024-12-26
+        # 4. 2025-01-05
+
+        test_data = (
+            UserData(jst_datetime="2024-12-27 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2025-01-06 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2024-12-26 07:00:00", user_id="user_3"),
+            UserData(jst_datetime="2025-01-05 07:00:00", user_id="user_4"),
+        )
+
+        check_data = (
+            ([badge_2024_end], UserData(jst_datetime="2024-12-27", user_id="user_1")),
+            ([badge_2025_start], UserData(jst_datetime="2025-01-06", user_id="user_2")),
+            ([], UserData(jst_datetime="2024-12-26", user_id="user_3")),
+            ([], UserData(jst_datetime="2025-01-05", user_id="user_4")),
+        )
+
+        for data in test_data:
+            insert_arrival_action(
+                session=session,
+                jst_datetime=data.jst_datetime,
+                user_id=data.user_id,
+            )
+
+        for expected, data in check_data:
+            logger.info(f"expected: {expected}, data: {data}")
+            assert expected == checker.check_specific_day(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
+
+
+@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [17])
+def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
+    """Test the yearly specific day badge."""
+    with temp_db() as session:
+        initially_insert_badge_data(session)
+
+        # > # BadgeTypeData id=17, name="yearly_specific_day", description="毎年特定の日に出社した"
+        # > BadgeData(
+        # >     id=1701,
+        # >     message="クリスマス出社",
+        # >     condition="12月25日に出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=17,
+        # > ),
+        # > BadgeData(
+        # >     id=1702,
+        # >     message="昨年度はお世話になりました",
+        # >     condition="年度末に出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=17,
+        # > ),
+        # > BadgeData(
+        # >     id=1703,
+        # >     message="今年度もよろしくお願いします",
+        # >     condition="年度初めに出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=17,
+        # > ),
+
+        badge_christmas = BadgeChecker.get_badge(session=session, badge_id=1701)
+        badge_workyear_end = BadgeChecker.get_badge(session=session, badge_id=1702)
+        badge_workyear_start = BadgeChecker.get_badge(session=session, badge_id=1703)
+        checker = BadgeChecker([17])
+
+        # test scenario
+        # クリスマス出社は12/25に出社した場合のみもらえる
+        # 年度末出社は3/25-3/31の間に出社した場合に同じ年は1度のみもらえる
+        # 年度初め出社は4/1-4/7の間に出社した場合に同じ年は1度のみもらえる
+
+        # 下記にテスト観点を列挙する
+        # クリスマス出社は当日のみもらえていること、前日や翌日はもらえないこと、次の歳になったらもらえていること
+        # 年度末出社は期間中1度のみもらえること、期間外はもらえないこと、次の年度になったらもらえていること
+        # 年度初め出社は期間中1度のみもらえること、期間外はもらえないこと、次の年度になったらもらえていること
+
+        # テストシナリオ
+        # ユーザー1: 正常系: クリスマス出社、年度末出社、年度初め出社
+        #   -  2024-12-25: クリスマス出社 ok
+        #   -  2024-03-25: 年度末出社 ok
+        #   -  2024-03-31: 年度末出社 ng (年度末出社は1度のみ)
+        #   -  2024-04-01: 年度初め出社 ok
+        #   -  2024-04-08: 年度初め出社 ng (年度初め出社は1度のみ)
+        #   -  2025-12-25: クリスマス出社 ok
+        #   -  2025-03-24: 年度末出社 ok
+        #   -  2025-04-01: 年度初め出社 ok
+        # ユーザー2: 異常系: クリスマス出社、年度末出社、年度初め出社
+        #   -  2024-12-24: クリスマス出社 ng
+        #   -  2024-12-26: クリスマス出社 ng
+        #   -  2024-03-23: 年度末出社 ng
+        #   -  2024-03-31: 年度末出社 ok, 年度初め出社 ng
+        #   -  2024-04-08: 年度初め出社 ng
+
+        test_data = (
+            # ユーザー1
+            UserData(jst_datetime="2024-12-25 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2025-03-25 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2025-03-31 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2025-04-01 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2025-04-08 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2026-12-25 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2026-03-25 07:00:00", user_id="user_1"),
+            UserData(jst_datetime="2026-04-01 07:00:00", user_id="user_1"),
+            # ユーザー2
+            UserData(jst_datetime="2025-12-24 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2025-12-26 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2025-03-24 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2025-03-31 07:00:00", user_id="user_2"),
+            UserData(jst_datetime="2025-04-08 07:00:00", user_id="user_2"),
+        )
+
+        check_data = (
+            ([badge_christmas], UserData(jst_datetime="2024-12-25", user_id="user_1")),
+            (
+                [badge_workyear_end],
+                UserData(jst_datetime="2025-03-25", user_id="user_1"),
+            ),
+            ([], UserData(jst_datetime="2025-03-31", user_id="user_1")),
+            (
+                [badge_workyear_start],
+                UserData(jst_datetime="2025-04-01", user_id="user_1"),
+            ),
+            ([], UserData(jst_datetime="2025-04-08", user_id="user_1")),
+            ([badge_christmas], UserData(jst_datetime="2026-12-25", user_id="user_1")),
+            (
+                [badge_workyear_end],
+                UserData(jst_datetime="2026-03-25", user_id="user_1"),
+            ),
+            (
+                [badge_workyear_start],
+                UserData(jst_datetime="2026-04-01", user_id="user_1"),
+            ),
+            ([], UserData(jst_datetime="2025-12-24", user_id="user_2")),
+            ([], UserData(jst_datetime="2025-12-26", user_id="user_2")),
+            ([], UserData(jst_datetime="2025-03-24", user_id="user_2")),
+            (
+                [badge_workyear_end],
+                UserData(jst_datetime="2025-03-31", user_id="user_2"),
+            ),
+            ([], UserData(jst_datetime="2025-04-08", user_id="user_2")),
+        )
+
+        for data in test_data:
+            insert_arrival_action(
+                session=session,
+                jst_datetime=data.jst_datetime,
+                user_id=data.user_id,
+            )
+
+        for expected, data in check_data:
+            logger.info(f"expected: {expected}, data: {data}")
+            actual = checker.check_yearly_specific_day(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
+            logger.info(f"actual: {actual}")
+            assert expected == checker.check_yearly_specific_day(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
+
+
+def test_badge_checker_id18_specific_time(temp_db: sessionmaker) -> None:
+    """Test the specific time badge."""
+    with temp_db() as session:
+        initially_insert_badge_data(session)
+
+        # > # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"
+        # > BadgeData(
+        # >     id=1801,
+        # >     message="隣同士",
+        # >     condition="時間と分が隣接した数字の時に出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1802,
+        # >     message="ぞろ目出社",
+        # >     condition="時間と分が同じ数字の時に出社した",
+        # >     level=2,
+        # >     score=3,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1803,
+        # >     message="階段",
+        # >     condition="時間が連続した数字の時に出社した",
+        # >     level=3,
+        # >     score=4,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1804,
+        # >     message="せーの...ポッキー!",
+        # >     condition="11:11に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
+
+        badge_adjacent = BadgeChecker.get_badge(session=session, badge_id=1801)
+        badge_repeater = BadgeChecker.get_badge(session=session, badge_id=1802)
+        badge_stairs = BadgeChecker.get_badge(session=session, badge_id=1803)
+        badge_pocky = BadgeChecker.get_badge(session=session, badge_id=1804)
+
+        checker = BadgeChecker([18])
+
+        # test scenario
+        # 1. 2025-12-27 07:08:00 -> adjacent
+        # 2. 2025-12-27 07:07:00 -> repeater
+        # 3. 2025-12-27 07:06:00 -> adjacent
+        # 4. 2025-12-27 12:33:00 -> x
+        # 5. 2025-12-27 12:34:00 -> stairs
+        # 6. 2025-12-27 11:11:00 -> pocky
+        # 7. 2025-12-27 11:12:00 -> adjacent
+        # 8. 2025-12-27 11:10:00 -> adjacent
+
+        test_data = (
+            UserData(jst_datetime="2025-12-27 07:08:00", user_id="user_1"),
+            UserData(jst_datetime="2025-12-27 07:07:00", user_id="user_2"),
+            UserData(jst_datetime="2025-12-27 07:06:00", user_id="user_3"),
+            UserData(jst_datetime="2025-12-27 12:33:00", user_id="user_4"),
+            UserData(jst_datetime="2025-12-27 12:34:00", user_id="user_5"),
+            UserData(jst_datetime="2025-12-27 11:11:00", user_id="user_6"),
+            UserData(jst_datetime="2025-12-27 11:12:00", user_id="user_7"),
+            UserData(jst_datetime="2025-12-27 11:10:00", user_id="user_8"),
+        )
+
+        check_data = (
+            ([badge_adjacent], UserData(jst_datetime="2025-12-27", user_id="user_1")),
+            ([badge_repeater], UserData(jst_datetime="2025-12-27", user_id="user_2")),
+            ([badge_adjacent], UserData(jst_datetime="2025-12-27", user_id="user_3")),
+            ([], UserData(jst_datetime="2025-12-27", user_id="user_4")),
+            ([badge_stairs], UserData(jst_datetime="2025-12-27", user_id="user_5")),
+            ([badge_pocky], UserData(jst_datetime="2025-12-27", user_id="user_6")),
+            ([badge_adjacent], UserData(jst_datetime="2025-12-27", user_id="user_7")),
+            ([badge_adjacent], UserData(jst_datetime="2025-12-27", user_id="user_8")),
+        )
+
+        for data in test_data:
+            insert_arrival_action(
+                session=session,
+                jst_datetime=data.jst_datetime,
+                user_id=data.user_id,
+            )
+
+        for expected, data in check_data:
+            actual = checker.check_specific_time(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
+            logger.info(f"expected: {expected}, data: {data}, actual: {actual}")
+
+            assert expected == actual

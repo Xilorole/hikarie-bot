@@ -85,6 +85,9 @@ class BadgeChecker:
             # 13: cls.check_reactioner,
             # 14: cls.check_advance_notice_success,
             15: cls.check_start_dash,
+            16: cls.check_specific_day,
+            17: cls.check_yearly_specific_day,
+            18: cls.check_specific_time,
         }
 
     @classmethod
@@ -656,6 +659,231 @@ class BadgeChecker:
             return [session.query(Badge).filter(Badge.id == ID).one()]
         return []
 
+    @classmethod
+    def check_specific_day(
+        cls,
+        session: Session,
+        user_id: str,
+        target_date: datetime,
+    ) -> list[Badge]:
+        """Check if the user has acquired the specific day badge.
+
+        Args:
+        ----
+            session (Session): The session factory to interact with the database.
+            user_id (str): The ID of the user to check for badge acquisition.
+            target_date (datetime): The date and time in JST to check for badge acquisition.
+
+        Returns:
+        -------
+            list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
+
+        """  # noqa: E501
+        ID_2024_end = 1601  # noqa: N806
+        ID_2025_start = 1602  # noqa: N806
+
+        if not cls.apply_start_check(
+            session=session, target_date=target_date, badge_type_id=16
+        ):
+            return []
+
+        user_arrival = cls._arrived_check(session, user_id, target_date)
+        if user_arrival is None:
+            return []
+
+        if (
+            user_arrival.arrival_time.date()
+            == datetime(2024, 12, 27, tzinfo=ZoneInfo("Asia/Tokyo")).date()
+        ):
+            return [session.query(Badge).filter(Badge.id == ID_2024_end).one()]
+        if (
+            user_arrival.arrival_time.date()
+            == datetime(2025, 1, 6, tzinfo=ZoneInfo("Asia/Tokyo")).date()
+        ):
+            return [session.query(Badge).filter(Badge.id == ID_2025_start).one()]
+        return []
+
+    @classmethod
+    def check_yearly_specific_day(
+        cls,
+        session: Session,
+        user_id: str,
+        target_date: datetime,
+    ) -> list[Badge]:
+        """Check if the user has acquired the yearly specific day badge.
+
+        Args:
+        ----
+            session (Session): The session factory to interact with the database.
+            user_id (str): The ID of the user to check for badge acquisition.
+            target_date (datetime): The date and time in JST to check for badge acquisition.
+
+        Returns:
+        -------
+            list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
+
+        """  # noqa: E501
+        ID_christmas = 1701  # noqa: N806
+        ID_workyear_end = 1702  # noqa: N806
+        ID_new_workyear_start = 1703  # noqa: N806
+
+        if not cls.apply_start_check(
+            session=session, target_date=target_date, badge_type_id=17
+        ):
+            return []
+
+        user_arrival = cls._arrived_check(session, user_id, target_date)
+        if user_arrival is None:
+            return []
+        month = user_arrival.arrival_time.date().month
+        day = user_arrival.arrival_time.date().day
+        if (month, day) == (12, 25):
+            return [session.query(Badge).filter(Badge.id == ID_christmas).one()]
+
+        logger.info(f"month: {month}, day: {day}")
+        if month == 3 and (24 < day <= 31):  # noqa: PLR2004
+            # check if the user has not achieved this badge within the last 7 days
+            year = user_arrival.arrival_time.date().year
+            date_3_25 = datetime(year, 3, 25, tzinfo=ZoneInfo("Asia/Tokyo"))
+            recent_arrival_count = (
+                session.query(GuestArrivalInfo)
+                .filter(
+                    GuestArrivalInfo.user_id == user_id,
+                    GuestArrivalInfo.arrival_time >= date_3_25,
+                    GuestArrivalInfo.arrival_time < target_date,
+                )
+                .count()
+            )
+            if recent_arrival_count == 0:
+                return [session.query(Badge).filter(Badge.id == ID_workyear_end).one()]
+
+        if month == 4 and (1 <= day < 8):  # noqa: PLR2004
+            # check if the user has not achieved this badge within the last 7 days
+            year = user_arrival.arrival_time.date().year
+            date_4_1 = datetime(year, 4, 1, tzinfo=ZoneInfo("Asia/Tokyo"))
+            recent_arrival_count = (
+                session.query(GuestArrivalInfo)
+                .filter(
+                    GuestArrivalInfo.user_id == user_id,
+                    GuestArrivalInfo.arrival_time >= date_4_1,
+                    GuestArrivalInfo.arrival_time < target_date,
+                )
+                .count()
+            )
+            if recent_arrival_count == 0:
+                return [
+                    session.query(Badge).filter(Badge.id == ID_new_workyear_start).one()
+                ]
+
+        return []
+
+    @classmethod
+    def check_specific_time(  # noqa: PLR0911
+        cls,
+        session: Session,
+        user_id: str,
+        target_date: datetime,
+    ) -> list[Badge]:
+        """Check if the user has acquired the specific time badge.
+
+        Args:
+        ----
+            session (Session): The session factory to interact with the database.
+            user_id (str): The ID of the user to check for badge acquisition.
+            target_date (datetime): The date and time in JST to check for badge acquisition.
+
+        Returns:
+        -------
+            list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
+
+        """  # noqa: E501
+        # > # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"  # noqa: E501
+        # > BadgeData(
+        # >     id=1801,
+        # >     message="隣同士",
+        # >     condition="時間と分が隣接した数字の時に出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1802,
+        # >     message="ぞろ目出社",
+        # >     condition="時間と分が同じ数字の時に出社した",
+        # >     level=2,
+        # >     score=3,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1803,
+        # >     message="階段",
+        # >     condition="時間が連続した数字の時に出社した",
+        # >     level=3,
+        # >     score=4,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1804,
+        # >     message="せーの...ポッキー!",
+        # >     condition="11:11に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
+
+        ID_lv1 = 1801  # noqa: N806
+        ID_lv2 = 1802  # noqa: N806
+        ID_lv3 = 1803  # noqa: N806
+        ID_lv4 = 1804  # noqa: N806
+
+        if not cls.apply_start_check(
+            session=session, target_date=target_date, badge_type_id=18
+        ):
+            return []
+
+        user_arrival = cls._arrived_check(session, user_id, target_date)
+        if user_arrival is None:
+            return []
+
+        arrival_time = user_arrival.arrival_time
+        hour, minute = arrival_time.hour, arrival_time.minute
+
+        if hour == minute == 11:  # noqa: PLR2004
+            return [session.query(Badge).filter(Badge.id == ID_lv4).one()]
+
+        if (hour, minute) == (12, 34):
+            return [session.query(Badge).filter(Badge.id == ID_lv3).one()]
+
+        if hour == minute:
+            return [session.query(Badge).filter(Badge.id == ID_lv2).one()]
+
+        if abs(hour - minute) == 1:
+            return [session.query(Badge).filter(Badge.id == ID_lv1).one()]
+
+        return []
+
+    @classmethod
+    def apply_start_check(
+        cls, session: Session, target_date: datetime, badge_type_id: int
+    ) -> bool:
+        """Check if the badge can be applied.
+
+        Args:
+        ----
+            session (Session): The session factory to interact with the database.
+            target_date (datetime): The date and time in JST to check for badge acquisition.
+            badge_type_id (int): The ID of the badge type to check for badge acquisition.
+
+        Returns:
+        -------
+            bool: True if the badge can be applied, False otherwise.
+
+        """  # noqa: E501
+        badge_type = (
+            session.query(BadgeType).filter(BadgeType.id == badge_type_id).one()
+        )
+        return target_date >= badge_type.apply_start
+
 
 # Define the badge types.
 BadgeTypes = [
@@ -732,6 +960,24 @@ BadgeTypes = [
         name="start_dash",
         description="初回利用から2週間以内に出社登録した",
         apply_start=datetime(2024, 12, 9, tzinfo=ZoneInfo("Asia/Tokyo")),
+    ),
+    BadgeTypeData(
+        id=16,
+        name="specific_day",
+        description="特定の年月日に出社した",
+        apply_start=datetime(2024, 12, 26, tzinfo=ZoneInfo("Asia/Tokyo")),
+    ),
+    BadgeTypeData(
+        id=17,
+        name="yearly_specific_day",
+        description="毎年特定の日に出社した",
+        apply_start=datetime(2024, 12, 1, tzinfo=ZoneInfo("Asia/Tokyo")),
+    ),
+    BadgeTypeData(
+        id=18,
+        name="specific_time",
+        description="特定の時間に出社した",
+        apply_start=datetime(2025, 1, 1, tzinfo=ZoneInfo("Asia/Tokyo")),
     ),
 ]
 
@@ -1054,7 +1300,7 @@ Badges = [
         id=803,
         message="激運なカルテット",
         condition="分単位で同じ時間に出社登録をした4人目になること",
-        level=2,
+        level=3,
         score=4,
         badge_type_id=8,
     ),
@@ -1145,5 +1391,80 @@ Badges = [
         level=1,
         score=2,
         badge_type_id=15,
+    ),
+    # BadgeTypeData id=16, name="specific_day", description="特定の年月日に出社した"  # noqa: E501
+    BadgeData(
+        id=1601,
+        message="2024年お疲れ様です",
+        condition="2024年12月27日に出社した",
+        level=1,
+        score=2,
+        badge_type_id=16,
+    ),
+    BadgeData(
+        id=1602,
+        message="2025年明けましておめでとうございます",
+        condition="2025年1月6日に出社した",
+        level=1,
+        score=2,
+        badge_type_id=16,
+    ),
+    # BadgeTypeData id=17, name="yearly_specific_day", description="毎年特定の日に出社した"  # noqa: E501
+    BadgeData(
+        id=1701,
+        message="クリスマス出社",
+        condition="12月25日に出社した",
+        level=1,
+        score=2,
+        badge_type_id=17,
+    ),
+    BadgeData(
+        id=1702,
+        message="昨年度はお世話になりました",
+        condition="年度末に出社した",
+        level=1,
+        score=2,
+        badge_type_id=17,
+    ),
+    BadgeData(
+        id=1703,
+        message="今年度もよろしくお願いします",
+        condition="年度初めに出社した",
+        level=1,
+        score=2,
+        badge_type_id=17,
+    ),
+    # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"  # noqa: E501
+    BadgeData(
+        id=1801,
+        message="隣同士",
+        condition="時間と分が隣接した数字の時に出社した",
+        level=1,
+        score=2,
+        badge_type_id=18,
+    ),
+    BadgeData(
+        id=1802,
+        message="ぞろ目出社",
+        condition="時間と分が同じ数字の時に出社した",
+        level=2,
+        score=3,
+        badge_type_id=18,
+    ),
+    BadgeData(
+        id=1803,
+        message="階段",
+        condition="時間が連続した数字の時に出社した",
+        level=3,
+        score=4,
+        badge_type_id=18,
+    ),
+    BadgeData(
+        id=1804,
+        message="せーの...ポッキー!",
+        condition="11:11に出社した",
+        level=4,
+        score=5,
+        badge_type_id=18,
     ),
 ]

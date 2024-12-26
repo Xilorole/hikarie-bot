@@ -1,4 +1,4 @@
-BADGE_TYPES_TO_CHECK: list[int] = [1, 2, 3, 4, 5, 6, 7, 8, 15]
+BADGE_TYPES_TO_CHECK: list[int] = [1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 17, 18]
 KIRIBAN_ID_COUNTS: list[tuple[int, int]] = [
     (601, 100),
     (602, 111),
