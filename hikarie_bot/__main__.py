@@ -18,7 +18,7 @@ from hikarie_bot._version import version
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.database import BaseSchema, SessionLocal, engine
 from hikarie_bot.modals import (
-    AchievementMessage,
+    AchievementView,
     ActionID,
     PointGetMessage,
     RegistryMessage,
@@ -202,16 +202,11 @@ async def handle_check_achievement(
     """Handle the check achievement button click event."""
     await ack()
     user_id = body["user"]["id"]
-    channel_id = body["channel"]["id"]
-    achievement_message = AchievementMessage(
-        session=get_db().__next__(), user_id=user_id
-    )
+    achievement_view = AchievementView(session=get_db().__next__(), user_id=user_id)
     logger.info(f"Checking achievement for {user_id}")
-    await client.chat_postEphemeral(
-        channel=channel_id,
-        user=user_id,
-        text=achievement_message.to_text(),
-        blocks=achievement_message.render(),
+    await client.views_open(
+        trigger_id=body["trigger_id"],
+        view=achievement_view,
     )
 
 
