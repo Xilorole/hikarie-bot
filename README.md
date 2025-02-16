@@ -27,12 +27,25 @@ uv sync --dev
 This will create a virtual environment and install all necessary dependencies for the project.
 
 ```
-├── .github/workflows   # GitHub Actions workflows
-├── src                 # Source code for the application
+├── .github             # GitHub configuration and workflows
+│   ├── workflows       # GitHub Actions workflows
+├── .devcontainer       # VSCode Dev Container configuration
+├── hikarie_bot         # Source code for the application
+│   ├── __init__.py     # Package initialization
+│   ├── models.py       # Database models
+│   ├── slack_helper.py # Slack integration utilities
+│   ├── modals.py       # Slack modal utilities
+│   ├── settings.py     # Application settings
+│   └── ...             # Other modules
 ├── tests               # Test cases for the application
+│   ├── test_app.py     # Tests for the main application
+│   ├── test_badges.py  # Tests for badge-related functionality
+│   └── ...             # Other test modules
+├── scripts             # Utility scripts
 ├── Dockerfile          # Docker configuration
-├── docker-compose.yml  # Docker Compose configuration
-└── README.md           # Project documentation
+├── pyproject.toml      # Project configuration
+├── README.md           # Project documentation
+└── LICENSE             # License file
 ```
 
 ## Roadmap
