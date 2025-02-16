@@ -71,50 +71,46 @@ def test_registry_message(temp_db: sessionmaker[Session]) -> None:
             2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
         ),
     )
-    assert (
-        message.render()
-        == [
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},  # noqa: RUF001
-            },
-            {
-                "type": "actions",
-                "block_id": "ARRIVED_OFFICE",
-                "elements": [
-                    {
-                        "type": "button",
-                        "action_id": "ARRIVED_OFFICE",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "出社した",
-                            "emoji": True,
-                        },
+    assert message.render() == [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},  # noqa: RUF001
+        },
+        {
+            "type": "actions",
+            "block_id": "ARRIVED_OFFICE",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "ARRIVED_OFFICE",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "出社した",
+                        "emoji": True,
                     },
-                    {
-                        "action_id": "CHECK_ACHIEVEMENT",
-                        "text": {
-                            "emoji": True,
-                            "text": "実績を確認",
-                            "type": "plain_text",
-                        },
-                        "type": "button",
-                    },
-                ],
-            },
-            {
-                "type": "divider",
-            },
-            {
-                "text": {
-                    "text": "本日の出社ユーザー :hikarie: :\n"
-                    "*06:00* : <@test_user_1st>",
-                    "type": "mrkdwn",
                 },
-                "type": "section",
+                {
+                    "action_id": "CHECK_ACHIEVEMENT",
+                    "text": {
+                        "emoji": True,
+                        "text": "実績を確認",
+                        "type": "plain_text",
+                    },
+                    "type": "button",
+                },
+            ],
+        },
+        {
+            "type": "divider",
+        },
+        {
+            "text": {
+                "text": "本日の出社ユーザー :hikarie: :\n*06:00* : <@test_user_1st>",
+                "type": "mrkdwn",
             },
-        ]
-    )
+            "type": "section",
+        },
+    ]
 
 
 def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
@@ -241,40 +237,37 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
         initial_arrival=True,
     )
 
-    assert (
-        message.render()
-        == [
-            {
-                "type": "section",
-                "text": {
+    assert message.render() == [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*07:00* 最速出社登録しました！ :hikarie:\n"  # noqa: RUF001
+                "<@test_user>さんのポイント 0 → *7* (*+7*)",
+            },
+        },
+        {
+            "type": "divider",
+        },
+        {
+            "elements": [
+                {
+                    "text": "かたがき: *かけだしのかいしゃいん* (lv1)\n"
+                    "つぎのレベルまで: *13pt*\n"
+                    "しんこうど: `████      ` | * 35%* (*+35%*)\n"
+                    "うちわけ:\n"
+                    " - はじめての出社登録:*+2pt*\n"
+                    " - 最速出社:*+2pt*\n"
+                    " - 朝型出社:*+3pt*",
                     "type": "mrkdwn",
-                    "text": "*07:00* 最速出社登録しました！ :hikarie:\n"  # noqa: RUF001
-                    "<@test_user>さんのポイント 0 → *7* (*+7*)",
                 },
-            },
-            {
-                "type": "divider",
-            },
-            {
-                "elements": [
-                    {
-                        "text": "かたがき: *かけだしのかいしゃいん* (lv1)\n"
-                        "つぎのレベルまで: *13pt*\n"
-                        "しんこうど: `████      ` | * 35%* (*+35%*)\n"
-                        "うちわけ:\n"
-                        " - はじめての出社登録:*+2pt*\n"
-                        " - 最速出社:*+2pt*\n"
-                        " - 朝型出社:*+3pt*",
-                        "type": "mrkdwn",
-                    },
-                ],
-                "type": "context",
-            },
-            {
-                "type": "divider",
-            },
-        ]
-    )
+            ],
+            "type": "context",
+        },
+        {
+            "type": "divider",
+        },
+    ]
 
 
 def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:

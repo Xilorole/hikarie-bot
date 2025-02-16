@@ -32,7 +32,15 @@ def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
     arrival_id = 1
     jst_datetime = datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
 
-    session.add(GuestArrivalInfo(id=arrival_id, user_id=user_id, arrival_time=jst_datetime, arrival_rank=1, acquired_score_sum=0))
+    session.add(
+        GuestArrivalInfo(
+            id=arrival_id,
+            user_id=user_id,
+            arrival_time=jst_datetime,
+            arrival_rank=1,
+            acquired_score_sum=0,
+        )
+    )
     initially_insert_badge_data(session=session)
     session.commit()
 
@@ -46,6 +54,7 @@ def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
     # Test non-existent arrival_id
     with pytest.raises(UserArrivalNotFoundError):
         _update_achievements(session, 9999)
+
 
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
