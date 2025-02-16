@@ -16,7 +16,9 @@ WORKDIR /opt
 COPY .git .git
 RUN if [ ! -d ".git" ]; then echo ".git directory not found"; exit 1; fi
 COPY hikarie_bot hikarie_bot
-COPY pyproject.toml uv.lock .python-version .env ./
+COPY pyproject.toml uv.lock .python-version ./
+
+# Install the dependencies
 ENV PATH="/root/.local/bin:$PATH"
 RUN mkdir .db && \
     uv python pin "$(cat .python-version)" && \
