@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  hikarie-bot:
+    build:
+      context: .
+    container_name: hikarie-bot-container
+    restart: unless-stopped

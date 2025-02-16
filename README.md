@@ -51,3 +51,22 @@ To run the Hikarie Bot using Docker, follow these steps:
    ```
 
 Replace `hikarie-bot` and `hikarie-bot-container` with your preferred image and container names if needed.
+## Running the Bot with Docker Compose
+
+To run the Hikarie Bot using Docker Compose, follow these steps:
+
+1. Ensure you have Docker and Docker Compose installed on your system.
+
+2. Start the bot using Docker Compose:
+
+   ```bash
+   docker-compose up -d
+   ```
+
+3. Verify that the bot is running:
+
+   ```bash
+   docker logs hikarie-bot-container
+   ```
+
+This will build and run the bot in a container named `hikarie-bot-container`.
