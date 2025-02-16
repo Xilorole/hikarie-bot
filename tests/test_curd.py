@@ -2,17 +2,26 @@ import zoneinfo
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from hikarie_bot.curd import (
+    _update_achievements,
     initially_insert_badge_data,
     insert_arrival_action,
 )
-from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
+from hikarie_bot.exceptions import (
+    AchievementAlreadyRegisteredError,
+    UserArrivalNotFoundError,
+)
+from hikarie_bot.models import (
+    Badge,
+    BadgeType,
+    GuestArrivalInfo,
+    GuestArrivalRaw,
+    User,
+)
 
-
-from hikarie_bot.curd import _update_achievements
-from hikarie_bot.exceptions import AchievementAlreadyRegisteredError, UserArrivalNotFoundError
 
 def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
     """Test the _update_achievements function."""
@@ -28,24 +37,16 @@ def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
     session.commit()
 
     # Test normal case
-    try:
-        _update_achievements(session, arrival_id)
-    except Exception as e:
-        assert False, f"Unexpected exception raised: {e}"
+    _update_achievements(session, arrival_id)
 
     # Test already registered achievement
-    try:
+    with pytest.raises(AchievementAlreadyRegisteredError):
         _update_achievements(session, arrival_id)
-        assert False, "Expected AchievementAlreadyRegisteredError not raised"
-    except AchievementAlreadyRegisteredError:
-        pass
 
     # Test non-existent arrival_id
-    try:
+    with pytest.raises(UserArrivalNotFoundError):
         _update_achievements(session, 9999)
-        assert False, "Expected UserArrivalNotFoundError not raised"
-    except UserArrivalNotFoundError:
-        pass
+
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
 def test_temp_db(temp_db: sessionmaker[Session]) -> None:
