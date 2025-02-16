@@ -11,6 +11,41 @@ from hikarie_bot.curd import (
 from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
 
 
+from hikarie_bot.curd import _update_achievements
+from hikarie_bot.exceptions import AchievementAlreadyRegisteredError, UserArrivalNotFoundError
+
+def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
+    """Test the _update_achievements function."""
+    session = temp_db()
+
+    # Create a user and arrival info
+    user_id = "test_user"
+    arrival_id = 1
+    jst_datetime = datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+
+    session.add(GuestArrivalInfo(id=arrival_id, user_id=user_id, arrival_time=jst_datetime, arrival_rank=1, acquired_score_sum=0))
+    initially_insert_badge_data(session=session)
+    session.commit()
+
+    # Test normal case
+    try:
+        _update_achievements(session, arrival_id)
+    except Exception as e:
+        assert False, f"Unexpected exception raised: {e}"
+
+    # Test already registered achievement
+    try:
+        _update_achievements(session, arrival_id)
+        assert False, "Expected AchievementAlreadyRegisteredError not raised"
+    except AchievementAlreadyRegisteredError:
+        pass
+
+    # Test non-existent arrival_id
+    try:
+        _update_achievements(session, 9999)
+        assert False, "Expected UserArrivalNotFoundError not raised"
+    except UserArrivalNotFoundError:
+        pass
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
 def test_temp_db(temp_db: sessionmaker[Session]) -> None:
