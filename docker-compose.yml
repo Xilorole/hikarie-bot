@@ -6,3 +6,5 @@ services:
       context: .
     container_name: hikarie-bot-container
     restart: unless-stopped
+    env_file:
+      - .env
