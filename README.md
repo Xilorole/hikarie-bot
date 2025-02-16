@@ -16,6 +16,15 @@
 ## Project Structure
 
 The repository is organized as follows:
+### Setting Up the Development Environment
+
+To set up the development environment, use the following command:
+
+```bash
+uv sync --dev
+```
+
+This will create a virtual environment and install all necessary dependencies for the project.
 
 ```
 ├── .github/workflows   # GitHub Actions workflows
