@@ -5,4 +5,4 @@ echo "$(starship init zsh)" >> ~/.zshrc
 
 # install dependencies
 uv sync --dev
-uv run jupyter --paths
+# uv run jupyter --paths
