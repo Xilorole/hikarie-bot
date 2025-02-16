@@ -15,24 +15,23 @@ dependencies = [
     "aiohttp>=3.10.6",
     "asyncclick>=8.1.7.2",
     "click>=8.1.7",
-    "freezegun>=1.5.1",
     "jpholiday>=0.1.10",
     "loguru>=0.7.2",
-    "pydantic>=2.9.1",
-    "pytest-asyncio>=0.24.0",
     "python-dotenv>=1.0.1",
-    "ruff>=0.8.2",
     "slack-bolt>=1.20.1",
     "sqlalchemy-utils>=0.41.2",
     "sqlalchemy>=2.0.34",
+    "tzdata>=2025.1",
 ]
 
 [tool.uv]
 dev-dependencies = [
+    "pytest-asyncio>=0.24.0",
+    "freezegun>=1.5.1",
+    "ruff>=0.8.2",
     "pytest>=8.3.2",
     "pre-commit>=3.8.0",
     "ruff>=0.8.2",
-    "jupyter>=1.1.1",
     "pyright>=1.1.386",
     "pytest-mock>=3.14.0",
     "pytest-env>=1.1.4",

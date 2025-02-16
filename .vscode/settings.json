@@ -17,5 +17,7 @@
         {
             "file": ".vscode/.copilot-commit-message-instructions.md"
         }
-    ]
+    ],
+    "git.requireGitUserConfig": true,
+    "github.gitAuthentication": true,
 }
