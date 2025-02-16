@@ -19,6 +19,8 @@ repos:
         entry: uv run pytest
         language: system
         types: [python]
+        files: ^.*\.py$
+        exclude: ^.*_version\.py$
         args: [--maxfail=1, --disable-warnings, tests/, -q]  # Specify the directory or files where your tests are located
 
       - id: add-version-file
