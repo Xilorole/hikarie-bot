@@ -1,33 +1,26 @@
-ARG VARIANT=3.12
-FROM python:${VARIANT} AS builder
+FROM alpine:3.21 AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=True
-ENV UV_LINK_MODE=copy
+WORKDIR /opt
+
+RUN apk update && \
+    apk add --no-cache bash=5.2.37-r0 curl=8.12.1-r0 ca-certificates=20241121-r1 git=2.47.2-r0 python3=3.12.9-r0
+
+SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
+
+ADD https://astral.sh/uv/install.sh uv-installer.sh
+RUN sh uv-installer.sh
 
 WORKDIR /opt
 
 # Copy only the necessary files and directories
 COPY .git .git
+RUN if [ ! -d ".git" ]; then echo ".git directory not found"; exit 1; fi
 COPY hikarie_bot hikarie_bot
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock .python-version .env ./
+ENV PATH="/root/.local/bin:$PATH"
+RUN mkdir .db && \
+    uv python pin "$(cat .python-version)" && \
+    uv sync --no-dev
 
 # Verify the presence of the .git directory
-RUN if [ ! -d ".git" ]; then echo ".git directory not found"; exit 1; fi
-
-# hadolint ignore=DL3013,DL3042
-RUN pip install --upgrade pip && \
-    pip install uv && \
-    uv export --frozen --no-dev --format requirements-txt > requirements.txt && \
-    uv pip install -r requirements.txt --system
-
-FROM python:${VARIANT}-slim
-ARG VARIANT=3.12
-COPY --from=builder /usr/local/lib/python*/site-packages /usr/local/lib/python${VARIANT}/site-packages
-
-ENV PYTHONUNBUFFERED=True
-
-WORKDIR /
-RUN mkdir .db
-COPY hikarie_bot hikarie_bot
-
-CMD [ "python", "-m", "hikarie_bot" ]
+CMD [ "uv", "run", "--no-dev", "hikarie_bot"]
