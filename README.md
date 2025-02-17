@@ -28,6 +28,7 @@ Specifically, you can solve this problem by following the steps below.
   - Workflow to check if all the described tests can be passed with pytest
 - `ruff.yml`
   - Workflow to check if you can go through Formatter and Linter with Ruff
+
 ## Running the Bot with Docker
 
 To run the Hikarie Bot using Docker, follow these steps:
