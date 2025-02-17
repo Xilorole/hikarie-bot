@@ -8,7 +8,7 @@ name = "hikarie_bot"
 version = "0.1.0"
 description = "hikarie is GOD bot"
 authors = [{ name = "Xilorole" }]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
     "aiohappyeyeballs>=2.4.3",
@@ -28,7 +28,7 @@ dependencies = [
 dev-dependencies = [
     "pytest-asyncio>=0.24.0",
     "freezegun>=1.5.1",
-    "ruff>=0.8.2",
+    "ruff>=0.9.6",
     "pytest>=8.3.2",
     "pre-commit>=3.8.0",
     "ruff>=0.8.2",
