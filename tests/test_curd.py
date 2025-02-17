@@ -15,6 +15,7 @@ from hikarie_bot.exceptions import (
     UserArrivalNotFoundError,
 )
 from hikarie_bot.models import (
+    Achievement,
     Badge,
     BadgeType,
     GuestArrivalInfo,
@@ -26,26 +27,36 @@ from hikarie_bot.models import (
 def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
     """Test the _update_achievements function."""
     session = temp_db()
+    initially_insert_badge_data(session=session)
 
     # Create a user and arrival info
     user_id = "test_user"
     arrival_id = 1
     jst_datetime = datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
 
-    session.add(
-        GuestArrivalInfo(
-            id=arrival_id,
-            user_id=user_id,
-            arrival_time=jst_datetime,
-            arrival_rank=1,
-            acquired_score_sum=0,
-        )
+    guest_arrival_info = GuestArrivalInfo(
+        user_id=user_id,
+        arrival_time=jst_datetime,
+        arrival_rank=1,
+        acquired_score_sum=0,
     )
-    initially_insert_badge_data(session=session)
+    session.add(guest_arrival_info)
     session.commit()
+    arrival_id = guest_arrival_info.id
+
+    # assert that the user has no achievements
+    assert (
+        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).count()
+        == 0
+    )
 
     # Test normal case
     _update_achievements(session, arrival_id)
+
+    assert (
+        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).count()
+        > 0
+    )
 
     # Test already registered achievement
     with pytest.raises(AchievementAlreadyRegisteredError):
