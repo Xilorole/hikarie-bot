@@ -5,8 +5,8 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from hikarie_bot.modals import AchievementView
 from hikarie_bot.models import User
+from hikarie_bot.slack_components import open_achievement_view
 
 
 @pytest.mark.asyncio
@@ -46,8 +46,9 @@ async def test_open_achievement_view(temp_db: sessionmaker[Session]) -> None:
     session.commit()
 
     # Call the function
-    achievement_view = AchievementView(session=session, user_id=user_id)
-    await mock_client.views_open(trigger_id=trigger_id, view=achievement_view)
+    await open_achievement_view(
+        client=mock_client, session=session, trigger_id=trigger_id, user_id=user_id
+    )
 
     # Assert that the Slack client was called with the correct parameters
     mock_client.views_open.assert_called_once_with(

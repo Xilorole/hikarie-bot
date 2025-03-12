@@ -203,7 +203,9 @@ async def handle_check_achievement(
     user_id = body["user"]["id"]
     from hikarie_bot.slack_components import open_achievement_view
 
-    await open_achievement_view(client, body["trigger_id"], user_id)
+    await open_achievement_view(
+        client, get_db().__next__(), body["trigger_id"], user_id
+    )
 
 
 # Moved to a new file: hikarie_bot/slack_components.py
