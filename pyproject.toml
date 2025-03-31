@@ -25,7 +25,6 @@ dependencies = [
     "slack-bolt",
     "sqlalchemy-utils",
     "sqlalchemy",
-    "setuptools>=78.1.0",
 ]
 
 [tool.uv]
@@ -39,7 +38,6 @@ dev-dependencies = [
     "matplotlib",
     "ing-theme-matplotlib",
     "pre-commit-uv>=4.1.4",
-    "setuptools>=78.1.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -56,4 +54,3 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.pytest_env]
 ENV = "test"
-

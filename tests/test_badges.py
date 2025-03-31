@@ -1077,3 +1077,83 @@ def test_badge_checker_id18_specific_time(temp_db: sessionmaker) -> None:
             logger.info(f"expected: {expected}, data: {data}, actual: {actual}")
 
             assert expected == actual
+
+
+def test_badge_checker_id18_specific_time_added_badge(temp_db: sessionmaker) -> None:
+    """Test the specific time badge."""
+    with temp_db() as session:
+        initially_insert_badge_data(session)
+
+        # > BadgeData(
+        # >     id=1805,
+        # >     message="もしやあなたはモフ好きですね",
+        # >     condition="11:22に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1806,
+        # >     message="今夜は:yakiniku:",
+        # >     condition="11:29に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1807,
+        # >     message="真実はいつもひとつ",
+        # >     condition="9:10に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
+
+        badge_animal = BadgeChecker.get_badge(session=session, badge_id=1805)
+        badge_meat = BadgeChecker.get_badge(session=session, badge_id=1806)
+        badge_truth = BadgeChecker.get_badge(session=session, badge_id=1807)
+
+        checker = BadgeChecker([18])
+
+        # test scenario
+        # 1. 2025-12-27 11:22:00 -> animal
+        # 2. 2025-12-27 11:29:00 -> meat
+        # 3. 2025-12-27 09:10:00 -> truth
+        # 4. 2025-12-27 09:11:00 -> x
+        # 5. 2025-12-27 11:21:00 -> x
+        # 6. 2025-12-27 11:30:00 -> x
+
+        test_data = (
+            UserData(jst_datetime="2025-12-27 11:22:00", user_id="user_1"),
+            UserData(jst_datetime="2025-12-27 11:29:00", user_id="user_2"),
+            UserData(jst_datetime="2025-12-27 09:10:00", user_id="user_3"),
+            UserData(jst_datetime="2025-12-27 09:11:00", user_id="user_4"),
+            UserData(jst_datetime="2025-12-27 11:21:00", user_id="user_5"),
+            UserData(jst_datetime="2025-12-27 11:30:00", user_id="user_6"),
+        )
+
+        check_data = (
+            ([badge_animal], UserData(jst_datetime="2025-12-27", user_id="user_1")),
+            ([badge_meat], UserData(jst_datetime="2025-12-27", user_id="user_2")),
+            ([badge_truth], UserData(jst_datetime="2025-12-27", user_id="user_3")),
+            ([], UserData(jst_datetime="2025-12-27", user_id="user_4")),
+            ([], UserData(jst_datetime="2025-12-27", user_id="user_5")),
+            ([], UserData(jst_datetime="2025-12-27", user_id="user_6")),
+        )
+
+        for data in test_data:
+            insert_arrival_action(
+                session=session,
+                jst_datetime=data.jst_datetime,
+                user_id=data.user_id,
+            )
+
+        for expected, data in check_data:
+            actual = checker.check_specific_time(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
+            logger.info(f"expected: {expected}, data: {data}, actual: {actual}")
+
+            assert expected == actual

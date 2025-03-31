@@ -18,7 +18,6 @@ from hikarie_bot._version import version
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.database import BaseSchema, SessionLocal, engine
 from hikarie_bot.modals import (
-    AchievementMessage,
     ActionID,
     PointGetMessage,
     RegistryMessage,
@@ -202,17 +201,14 @@ async def handle_check_achievement(
     """Handle the check achievement button click event."""
     await ack()
     user_id = body["user"]["id"]
-    channel_id = body["channel"]["id"]
-    achievement_message = AchievementMessage(
-        session=get_db().__next__(), user_id=user_id
+    from hikarie_bot.slack_components import open_achievement_view
+
+    await open_achievement_view(
+        client, get_db().__next__(), body["trigger_id"], user_id
     )
-    logger.info(f"Checking achievement for {user_id}")
-    await client.chat_postEphemeral(
-        channel=channel_id,
-        user=user_id,
-        text=achievement_message.to_text(),
-        blocks=achievement_message.render(),
-    )
+
+
+# Moved to a new file: hikarie_bot/slack_components.py
 
 
 if __name__ == "__main__":

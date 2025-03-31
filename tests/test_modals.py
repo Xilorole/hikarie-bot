@@ -1,6 +1,7 @@
 import zoneinfo
 from datetime import datetime
 from textwrap import dedent
+from unittest import mock
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -294,6 +295,7 @@ def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
+@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1])
 def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
     """Test the achievement message."""
     session = temp_db()
@@ -324,85 +326,21 @@ def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
             "type": "divider",
         },
         {
-            "fields": [
-                {
-                    "text": "*取得条件*",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "*初めて取得した日*",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "出社登録BOTを初めて利用した",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "2024-01-01",
-                    "type": "mrkdwn",
-                },
-            ],
             "text": {
-                "text": "`101`  : *はじめての出社登録* [2pt x1]",
+                "text": "*1* : 出社登録BOTを初めて利用した",
                 "type": "mrkdwn",
             },
             "type": "section",
         },
         {
-            "type": "divider",
-        },
-        {
-            "fields": [
+            "elements": [
                 {
-                    "text": "*取得条件*",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "*初めて取得した日*",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "最速で出社登録を行った",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "2024-01-01",
-                    "type": "mrkdwn",
-                },
+                    "alt_text": "【はじめての出社登録】出社登録BOTを初めて利用した @ 2024-01-01",
+                    "image_url": "https://gist.github.com/user-attachments/assets/d9bddfb0-199c-4252-b821-52a62954811f",
+                    "type": "image",
+                }
             ],
-            "text": {
-                "text": "`201`  : *最速出社* [2pt x1]",
-                "type": "mrkdwn",
-            },
-            "type": "section",
-        },
-        {
-            "type": "divider",
-        },
-        {
-            "fields": [
-                {
-                    "text": "*取得条件*",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "*初めて取得した日*",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "7-9時の間に出社登録をした",
-                    "type": "mrkdwn",
-                },
-                {
-                    "text": "2024-01-01",
-                    "type": "mrkdwn",
-                },
-            ],
-            "text": {
-                "text": "`501`  : *朝型出社* [3pt x1]",
-                "type": "mrkdwn",
-            },
-            "type": "section",
+            "type": "context",
         },
         {
             "type": "divider",

@@ -1,5 +1,6 @@
 {
     "name": "uv",
+<<<<<<< HEAD
     "build": {"context": "..", "dockerfile": "Dockerfile"},
     "containerEnv": {
         "PYTHONUNBUFFERED": "True",
@@ -8,6 +9,12 @@
         "VIRTUAL_ENV_DISABLE_PROMPT": "1",
     },
     "features": {},
+=======
+    "build": {
+        "context": "..",
+        "dockerfile": "Dockerfile"
+    },
+>>>>>>> main
     "customizations": {
         "vscode": {
             "extensions": [

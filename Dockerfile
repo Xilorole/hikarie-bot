@@ -1,5 +1,4 @@
-ARG VARIANT=3.12
-FROM python:${VARIANT} AS builder
+FROM alpine:3.21 AS builder
 
 WORKDIR /opt
 
@@ -16,26 +15,15 @@ WORKDIR /opt
 
 # Copy only the necessary files and directories
 COPY .git .git
+RUN if [ ! -d ".git" ]; then echo ".git directory not found"; exit 1; fi
 COPY hikarie_bot hikarie_bot
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock .python-version ./
+
+# Install the dependencies
+ENV PATH="/root/.local/bin:$PATH"
+RUN mkdir .db && \
+    uv python pin "$(cat .python-version)" && \
+    uv sync --no-dev
 
 # Verify the presence of the .git directory
-RUN if [ ! -d ".git" ]; then echo ".git directory not found"; exit 1; fi
-
-# hadolint ignore=DL3013,DL3042
-RUN pip install --upgrade pip && \
-    pip install uv && \
-    uv export --frozen --no-dev --format requirements-txt > requirements.txt && \
-    uv pip install -r requirements.txt --system
-
-FROM python:${VARIANT}-slim
-ARG VARIANT=3.12
-COPY --from=builder /usr/local/lib/python*/site-packages /usr/local/lib/python${VARIANT}/site-packages
-
-ENV PYTHONUNBUFFERED=True
-
-WORKDIR /
-RUN mkdir .db
-COPY hikarie_bot hikarie_bot
-
-CMD [ "python", "-m", "hikarie_bot" ]
+CMD [ "uv", "run", "--no-dev", "hikarie_bot"]

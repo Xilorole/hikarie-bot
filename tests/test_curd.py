@@ -2,13 +2,69 @@ import zoneinfo
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from hikarie_bot.curd import (
+    _update_achievements,
     initially_insert_badge_data,
     insert_arrival_action,
 )
-from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
+from hikarie_bot.exceptions import (
+    AchievementAlreadyRegisteredError,
+    UserArrivalNotFoundError,
+)
+from hikarie_bot.models import (
+    Achievement,
+    Badge,
+    BadgeType,
+    GuestArrivalInfo,
+    GuestArrivalRaw,
+    User,
+)
+
+
+def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
+    """Test the _update_achievements function."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+
+    # Create a user and arrival info
+    user_id = "test_user"
+    arrival_id = 1
+    jst_datetime = datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+
+    guest_arrival_info = GuestArrivalInfo(
+        user_id=user_id,
+        arrival_time=jst_datetime,
+        arrival_rank=1,
+        acquired_score_sum=0,
+    )
+    session.add(guest_arrival_info)
+    session.commit()
+    arrival_id = guest_arrival_info.id
+
+    # assert that the user has no achievements
+    assert (
+        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).count()
+        == 0
+    )
+
+    # Test normal case
+    _update_achievements(session, arrival_id)
+
+    assert (
+        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).count()
+        > 0
+    )
+
+    # Test already registered achievement
+    with pytest.raises(AchievementAlreadyRegisteredError):
+        _update_achievements(session, arrival_id)
+
+    # Test non-existent arrival_id
+    with pytest.raises(UserArrivalNotFoundError):
+        _update_achievements(session, 9999)
 
 
 # 最速出社と時間帯出社の部分をmockする

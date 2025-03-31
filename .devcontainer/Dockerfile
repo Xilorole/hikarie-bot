@@ -17,11 +17,9 @@ RUN apk update && \
 
 SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
 
-# Download the latest installer
 ADD https://astral.sh/uv/install.sh uv-installer.sh
 ADD https://starship.rs/install.sh starship-installer.sh
 
-# Run the installer then remove it
 RUN sh uv-installer.sh \
     && sh starship-installer.sh -y
 

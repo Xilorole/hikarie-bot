@@ -4,14 +4,27 @@ from textwrap import dedent
 from loguru import logger
 from slack_sdk.models.blocks import (
     Block,
-    MarkdownTextObject,
     basic_components,
     block_elements,
     blocks,
 )
+from slack_sdk.models.views import View
 from sqlalchemy.orm import Session
 
-from hikarie_bot.models import Achievement, Badge, GuestArrivalInfo, User, UserBadge
+from hikarie_bot.constants import (
+    ACHIEVED_BADGE_IMAGE_URL,
+    BADGE_TYPES_TO_CHECK,
+    CONTEXT_ITEM_MAX,
+    NOT_ACHIEVED_BADGE_IMAGE_URL,
+)
+from hikarie_bot.models import (
+    Achievement,
+    Badge,
+    BadgeType,
+    GuestArrivalInfo,
+    User,
+    UserBadge,
+)
 from hikarie_bot.utils import (
     get_current_level_point,
     get_level,
@@ -288,34 +301,144 @@ class AchievementMessage(BaseMessage):
         """Initialize the AchievementMessage with the user ID."""
         super().__init__()
 
-        user_badges = (
-            session.query(UserBadge).filter(UserBadge.user_id == user_id).all()
+        # バッジの全量を表示する
+        all_badge_types = (
+            session.query(BadgeType)
+            .filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK))
+            .order_by(BadgeType.id)
+            .all()
         )
+
         self.blocks.extend(
             [
                 blocks.SectionBlock(text=f"<@{user_id}>が獲得したバッジ:\n"),
                 blocks.DividerBlock(),
             ]
         )
-        for user_badge in sorted(user_badges, key=lambda x: x.badge_id):
+        for badge_type in all_badge_types:
+            # for each badge type, first, print the badge id and the badge type description  # noqa: E501
             self.blocks.extend(
                 [
                     blocks.SectionBlock(
-                        text=f"`{user_badge.badge_id}`  : *{user_badge.badge.message}* [{user_badge.badge.score}pt x{user_badge.count}]",  # noqa: E501
-                        fields=[
-                            MarkdownTextObject(
-                                text="*取得条件*",
-                            ),
-                            MarkdownTextObject(
-                                text="*初めて取得した日*",
-                            ),
-                            MarkdownTextObject(
-                                text=f"{user_badge.badge.condition}",
-                            ),
-                            MarkdownTextObject(
-                                text=f"{user_badge.initially_acquired_datetime:%Y-%m-%d}",
-                            ),
-                        ],
+                        text=f"*{badge_type.id}* : {badge_type.description}",
+                    ),
+                ]
+            )
+            elements = []
+            all_badges = (
+                session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
+            )
+            for i, badge in enumerate(all_badges):
+                if i == CONTEXT_ITEM_MAX:
+                    self.blocks.append(
+                        blocks.ContextBlock(
+                            elements=elements,
+                        )
+                    )
+                    elements = []
+
+                if user_badge := (
+                    session.query(UserBadge)
+                    .filter(
+                        UserBadge.user_id == user_id, UserBadge.badge_id == badge.id
+                    )
+                    .one_or_none()
+                ):
+                    elements.append(
+                        block_elements.ImageElement(
+                            image_url=ACHIEVED_BADGE_IMAGE_URL,
+                            alt_text=f"【{badge.message}】{badge.condition} "
+                            f"@ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
+                        )
+                    )
+                else:
+                    elements.append(
+                        block_elements.ImageElement(
+                            image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
+                            alt_text=f"【{badge.message}】???",
+                        )
+                    )
+            self.blocks.extend(
+                [
+                    blocks.ContextBlock(
+                        elements=elements,
+                    ),
+                    blocks.DividerBlock(),
+                ]
+            )
+
+
+class AchievementView(View):
+    """Class for creating the achievement Slack view."""
+
+    def __init__(self, session: Session, user_id: str) -> None:
+        """Initialize the AchievementView with the user ID."""
+        super().__init__(type="modal", title="Achievements", close="閉じる")
+
+        self.session = session
+        self.user_id = user_id
+
+        # バッジの全量を表示する
+        all_badge_types = (
+            session.query(BadgeType)
+            .filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK))
+            .order_by(BadgeType.id)
+            .all()
+        )
+
+        self.blocks.extend(
+            [
+                blocks.SectionBlock(text=f"<@{user_id}>が獲得したバッジ:\n"),
+                blocks.DividerBlock(),
+            ]
+        )
+        for badge_type in all_badge_types:
+            # for each badge type, first, print the badge id and the badge type description  # noqa: E501
+            self.blocks.extend(
+                [
+                    blocks.SectionBlock(
+                        text=f"*{badge_type.id}* : {badge_type.description}",
+                    ),
+                ]
+            )
+            elements = []
+            all_badges = (
+                session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
+            )
+            for i, badge in enumerate(all_badges):
+                if i == CONTEXT_ITEM_MAX:
+                    self.blocks.append(
+                        blocks.ContextBlock(
+                            elements=elements,
+                        )
+                    )
+                    elements = []
+
+                if user_badge := (
+                    session.query(UserBadge)
+                    .filter(
+                        UserBadge.user_id == user_id, UserBadge.badge_id == badge.id
+                    )
+                    .one_or_none()
+                ):
+                    elements.append(
+                        block_elements.ImageElement(
+                            image_url=ACHIEVED_BADGE_IMAGE_URL,
+                            alt_text=f"【{badge.message}】{badge.condition} "
+                            f"@ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
+                        )
+                    )
+                else:
+                    elements.append(
+                        block_elements.ImageElement(
+                            image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
+                            alt_text=f"【{badge.message}】???",
+                        )
+                    )
+            self.blocks.extend(
+                [
+                    blocks.ContextBlock(
+                        elements=elements,
                     ),
                     blocks.DividerBlock(),
                 ]

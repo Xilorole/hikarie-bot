@@ -829,11 +829,38 @@ class BadgeChecker:
         # >     score=5,
         # >     badge_type_id=18,
         # > ),
+        # > BadgeData(
+        # >     id=1805,
+        # >     message="もしやあなたはモフ好きですね",
+        # >     condition="11:22に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1806,
+        # >     message="今夜は:yakiniku:",
+        # >     condition="11:29に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
+        # > BadgeData(
+        # >     id=1807,
+        # >     message="真実はいつもひとつ",
+        # >     condition="9:10に出社した",
+        # >     level=4,
+        # >     score=5,
+        # >     badge_type_id=18,
+        # > ),
 
         ID_lv1 = 1801  # noqa: N806
         ID_lv2 = 1802  # noqa: N806
-        ID_lv3 = 1803  # noqa: N806
-        ID_lv4 = 1804  # noqa: N806
+        ID_lv3_1234 = 1803  # noqa: N806
+        ID_lv3_1111 = 1804  # noqa: N806
+        ID_lv3_1122 = 1805  # noqa: N806
+        ID_lv3_1129 = 1806  # noqa: N806
+        ID_lv3_0910 = 1807  # noqa: N806
 
         if not cls.apply_start_check(
             session=session, target_date=target_date, badge_type_id=18
@@ -848,10 +875,19 @@ class BadgeChecker:
         hour, minute = arrival_time.hour, arrival_time.minute
 
         if hour == minute == 11:  # noqa: PLR2004
-            return [session.query(Badge).filter(Badge.id == ID_lv4).one()]
+            return [session.query(Badge).filter(Badge.id == ID_lv3_1111).one()]
+
+        if (hour, minute) == (11, 22):
+            return [session.query(Badge).filter(Badge.id == ID_lv3_1122).one()]
+
+        if (hour, minute) == (11, 29):
+            return [session.query(Badge).filter(Badge.id == ID_lv3_1129).one()]
+
+        if (hour, minute) == (9, 10):
+            return [session.query(Badge).filter(Badge.id == ID_lv3_0910).one()]
 
         if (hour, minute) == (12, 34):
-            return [session.query(Badge).filter(Badge.id == ID_lv3).one()]
+            return [session.query(Badge).filter(Badge.id == ID_lv3_1234).one()]
 
         if hour == minute:
             return [session.query(Badge).filter(Badge.id == ID_lv2).one()]
@@ -1462,8 +1498,32 @@ Badges = [
         id=1804,
         message="せーの...ポッキー!",
         condition="11:11に出社した",
-        level=4,
-        score=5,
+        level=3,
+        score=4,
+        badge_type_id=18,
+    ),
+    BadgeData(
+        id=1805,
+        message="もしやあなたはモフ好きですね",
+        condition="11:22に出社した",
+        level=3,
+        score=4,
+        badge_type_id=18,
+    ),
+    BadgeData(
+        id=1806,
+        message="今夜は:yakiniku:",
+        condition="11:29に出社した",
+        level=3,
+        score=4,
+        badge_type_id=18,
+    ),
+    BadgeData(
+        id=1807,
+        message="真実はいつもひとつ",
+        condition="9:10に出社した",
+        level=3,
+        score=4,
         badge_type_id=18,
     ),
 ]
