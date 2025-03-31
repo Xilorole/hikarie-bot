@@ -1,40 +1,50 @@
-FROM debian:bookworm-slim AS builder
+################################
+# prepare step
+################################
 
-WORKDIR /opt
+FROM hadolint/hadolint:latest-alpine AS hadolint
 
-# The installer requires curl (and certificates) to download the release archive
-# hadolint ignore=DL3008
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl
+################################
+# build step
+################################
+
+# hadolint ignore=DL3007
+FROM alpine:latest AS builder
+
+# hadolint ignore=DL3018
+RUN apk update && \
+    apk add --no-cache bash curl ca-certificates gcc musl-dev linux-headers
 
 SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
 
 # Download the latest installer
 ADD https://astral.sh/uv/install.sh uv-installer.sh
-ADD https://starship.rs/install.sh  starship-installer.sh
+ADD https://starship.rs/install.sh starship-installer.sh
 
 # Run the installer then remove it
 RUN sh uv-installer.sh \
     && sh starship-installer.sh -y
 
+################################
+# install step
+################################
 
-FROM mcr.microsoft.com/vscode/devcontainers/base:bookworm
+FROM mcr.microsoft.com/vscode/devcontainers/base:alpine
 
-ENV CARGO_HOME="/opt/.cargo/bin"
-ENV PATH="$CARGO_HOME/:$PATH"
-
-ENV PYTHONUNBUFFERED=True
-ENV UV_LINK_MODE=copy
-ENV JUPYTER_PLATFORM_DIRS=1
-ENV VIRTUAL_ENV_DISABLE_PROMPT=1
+# Add hadolint and GitHub CLI
+# hadolint ignore=DL3018
+RUN apk update && \
+    apk add --no-cache github-cli musl-dev linux-headers
 
 WORKDIR /opt
 
-COPY --from=builder /usr/local/bin/starship /usr/local/bin/starship
-COPY --from=builder /root/.local/bin/uv $CARGO_HOME/uv
+
+ENV BIN_PATH="/usr/local/bin"
+
+COPY --from=hadolint /bin/hadolint $BIN_PATH/hadolint
+COPY --from=builder /usr/local/bin/starship $BIN_PATH/starship
+COPY --from=builder /root/.local/bin/uv $BIN_PATH/uv
+COPY --from=builder /root/.local/bin/uvx $BIN_PATH/uvx
 COPY ./.python-version ./
 
 RUN uv python pin "$(cat .python-version)"
-RUN chown -R vscode $CARGO_HOME

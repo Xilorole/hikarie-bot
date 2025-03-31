@@ -1,8 +1,16 @@
 ARG VARIANT=3.12
 FROM python:${VARIANT} AS builder
 
-ENV PYTHONDONTWRITEBYTECODE=True
-ENV UV_LINK_MODE=copy
+WORKDIR /opt
+
+# hadolint ignore=DL3018
+RUN apk update && \
+    apk add --no-cache bash curl ca-certificates git
+
+SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
+
+ADD https://astral.sh/uv/install.sh uv-installer.sh
+RUN sh uv-installer.sh
 
 WORKDIR /opt
 
