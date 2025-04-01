@@ -20,6 +20,7 @@ from .models import (
     GuestArrivalRaw,
     User,
     UserBadge,
+    UserInfoRaw,
 )
 from .utils import (
     get_current_level_point,
@@ -267,6 +268,24 @@ def insert_arrival_action(
             current_level_point=current_level_point,
         )
         session.add(new_user_score)
+    session.commit()
+
+    # get the currently inserted arrival score to the db
+    user_entry = session.query(User).filter_by(id=user_id).one()
+    session.add(
+        UserInfoRaw(
+            user_id=user_entry.id,
+            current_score=user_entry.current_score,
+            previous_score=user_entry.previous_score,
+            update_datetime=user_entry.update_datetime,
+            level=user_entry.level,
+            level_name=user_entry.level_name,
+            level_uped=user_entry.level_uped,
+            point_to_next_level=user_entry.point_to_next_level,
+            point_range_to_next_level=user_entry.point_range_to_next_level,
+            current_level_point=user_entry.current_level_point,
+        )
+    )
 
     session.commit()
     return True
