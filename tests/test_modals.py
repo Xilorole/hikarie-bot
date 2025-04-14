@@ -60,16 +60,12 @@ def test_registry_message(temp_db: sessionmaker[Session]) -> None:
 
     insert_arrival_action(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_1st",
     )
     message = RegistryMessage(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
     )
     assert message.render() == [
         {
@@ -120,23 +116,17 @@ def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
 
     insert_arrival_action(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_1st",
     )
     insert_arrival_action(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 1, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 6, 1, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_2nd",
     )
     message = RegistryMessage(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
     )
     assert message.render() == [
         {
@@ -190,16 +180,12 @@ def test_fastest_arrival_message(temp_db: sessionmaker[Session]) -> None:
 
     insert_arrival_action(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
     )
     message = FastestArrivalMessage(
         user_id="test_user",
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
     )
 
     assert message.render() == [
@@ -208,8 +194,7 @@ def test_fastest_arrival_message(temp_db: sessionmaker[Session]) -> None:
             "block_id": "FASTEST_ARRIVAL_REPLY",
             "text": {
                 "type": "mrkdwn",
-                "text": "ヒカリエは正義 :hikarie:\n"
-                "本日の最速出社: <@test_user> @ 2024-01-01 06:00:00",
+                "text": "ヒカリエは正義 :hikarie:\n本日の最速出社: <@test_user> @ 2024-01-01 06:00:00",
             },
         }
     ]
@@ -222,18 +207,14 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
 
     insert_arrival_action(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
     )
 
     message = PointGetMessage(
         session,
         user_id="test_user",
-        jst_datetime=datetime(
-            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         initial_arrival=True,
     )
 
@@ -277,9 +258,7 @@ def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
 
     message = AlreadyRegisteredMessage(
         user_id="test_user",
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
     )
 
     assert message.render() == [
@@ -288,8 +267,7 @@ def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
             "block_id": "ALREADY_REGISTERED_REPLY",
             "text": {
                 "type": "mrkdwn",
-                "text": "本日の出社登録はすでに完了しています\n"
-                "<@test_user> @ 2024-01-01 06:00:00",
+                "text": "本日の出社登録はすでに完了しています\n<@test_user> @ 2024-01-01 06:00:00",
             },
         }
     ]
@@ -303,9 +281,7 @@ def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
 
     insert_arrival_action(
         session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
+        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
     )
 

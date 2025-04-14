@@ -46,9 +46,7 @@ async def test_open_achievement_view(temp_db: sessionmaker[Session]) -> None:
     session.commit()
 
     # Call the function
-    await open_achievement_view(
-        client=mock_client, session=session, trigger_id=trigger_id, user_id=user_id
-    )
+    await open_achievement_view(client=mock_client, session=session, trigger_id=trigger_id, user_id=user_id)
 
     # Assert that the Slack client was called with the correct parameters
     mock_client.views_open.assert_called_once_with(

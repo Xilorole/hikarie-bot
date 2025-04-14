@@ -47,18 +47,12 @@ def _update_achievements(session: Session, arrival_id: int) -> None:
         _description_
     """
     # initially check whether user has already achieved the badge
-    achievements = (
-        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).all()
-    )
+    achievements = session.query(Achievement).filter(Achievement.arrival_id == arrival_id).all()
     if achievements:
         logger.error("User has already achieved the badge")
         raise AchievementAlreadyRegisteredError
 
-    user_arrival = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.id == arrival_id)
-        .one_or_none()
-    )
+    user_arrival = session.query(GuestArrivalInfo).filter(GuestArrivalInfo.id == arrival_id).one_or_none()
 
     if user_arrival is None:
         logger.error(f"User arrival not found for arrival_id: {arrival_id}")
@@ -79,9 +73,7 @@ def _update_achievements(session: Session, arrival_id: int) -> None:
             )
         )
         user_badge = (
-            session.query(UserBadge)
-            .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
-            .one_or_none()
+            session.query(UserBadge).filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id).one_or_none()
         )
         if user_badge is None:
             session.add(
@@ -114,11 +106,7 @@ def _update_arrival_rank(session: Session, arrival_id: int) -> None:
     -------
     None
     """
-    user_arrival = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.id == arrival_id)
-        .one_or_none()
-    )
+    user_arrival = session.query(GuestArrivalInfo).filter(GuestArrivalInfo.id == arrival_id).one_or_none()
     if user_arrival is None:
         logger.error(f"User arrival not found for arrival_id: {arrival_id}")
         raise UserArrivalNotFoundError(arrival_id)
@@ -164,17 +152,13 @@ def _update_acquired_score_sum(session: Session, arrival_id: int) -> None:
 
     logger.info(f"acquired_score_sum: {acquired_score_sum}")
     session.execute(
-        update(GuestArrivalInfo)
-        .where(GuestArrivalInfo.id == arrival_id)
-        .values(acquired_score_sum=acquired_score_sum)
+        update(GuestArrivalInfo).where(GuestArrivalInfo.id == arrival_id).values(acquired_score_sum=acquired_score_sum)
     )
 
     session.commit()
 
 
-def insert_arrival_action(
-    session: Session, jst_datetime: datetime, user_id: str
-) -> bool:
+def insert_arrival_action(session: Session, jst_datetime: datetime, user_id: str) -> bool:
     """Insert the arrival action into the database.
 
     Args:

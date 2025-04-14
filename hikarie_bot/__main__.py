@@ -54,7 +54,7 @@ async def initially_create_db(app: AsyncApp) -> None:
         SlackApiError: If there is an error with the Slack API request.
         asyncio.TimeoutError: If the request to the Slack API times out.
 
-    """  # noqa: E501
+    """
     messages = await get_messages(app=app)
 
     # get the threading messages
@@ -66,18 +66,14 @@ async def initially_create_db(app: AsyncApp) -> None:
 
     with get_db() as session:
         for message in sorted(messages, key=lambda x: x["ts"]):
-            if (user_id := MessageFilter.extract_user_id(message)) and message.get(
-                "subtype"
-            ) != "channel_join":
+            if (user_id := MessageFilter.extract_user_id(message)) and message.get("subtype") != "channel_join":
                 jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
                 insert_arrival_action(session, jst_message_datetime, user_id)
 
 
 @click.command()
 @click.option("--dev", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
-@click.option(
-    "--skip-db-create", is_flag=True, help="Set LOGURU_LEVEL to INFO for development."
-)
+@click.option("--skip-db-create", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
 async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
     """Run the app."""
     log_level = "DEBUG" if dev else "INFO"  # Default log level
@@ -142,9 +138,7 @@ async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
 
 @app.action(ActionID.ARRIVED_OFFICE)
 @app.action(ActionID.FASTEST_ARRIVAL)
-async def handle_button_click(
-    ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient
-) -> None:
+async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Handle the button click event."""
     await ack()
     user_id = body["user"]["id"]
@@ -153,23 +147,16 @@ async def handle_button_click(
     message_ts = body["message"]["ts"]
     jst_message_datetime = unix_timestamp_to_jst(float(message_ts))
 
-    logger.debug(
-        f"user_id: {user_id}, action_id: {action_id}, "
-        f"jst_message_datetime: {jst_message_datetime}"
-    )
+    logger.debug(f"user_id: {user_id}, action_id: {action_id}, jst_message_datetime: {jst_message_datetime}")
     now = get_current_jst_datetime()
 
     # replace the message datetime at 6AM
-    jst_message_datetime_at6 = jst_message_datetime.replace(
-        hour=6, minute=0, second=0, microsecond=0
-    )
+    jst_message_datetime_at6 = jst_message_datetime.replace(hour=6, minute=0, second=0, microsecond=0)
 
     # check if the message was sent within a day
     # the action is only valid from 6AM to 6PM JST
     # if not, send a ephemeral message to the user
-    if not (
-        jst_message_datetime_at6 < now < jst_message_datetime_at6 + timedelta(hours=12)
-    ):
+    if not (jst_message_datetime_at6 < now < jst_message_datetime_at6 + timedelta(hours=12)):
         await client.chat_postEphemeral(
             channel=channel_id,
             user=user_id,
@@ -218,9 +205,7 @@ async def handle_button_click(
 
 
 @app.action(ActionID.CHECK_ACHIEVEMENT)
-async def handle_check_achievement(
-    ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient
-) -> None:
+async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Handle the check achievement button click event."""
     await ack()
     user_id = body["user"]["id"]

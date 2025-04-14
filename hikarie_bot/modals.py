@@ -127,8 +127,7 @@ class RegistryMessage(BaseMessage):
         arrived_user_text = "本日の出社ユーザー :hikarie: :\n"
         arrived_user_text += "\n".join(
             [
-                f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>"
-                f"{':crown:' if idx == 0 else ''}"
+                f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>{':crown:' if idx == 0 else ''}"
                 for idx, user in enumerate(arrived_users)
             ]
         )
@@ -153,12 +152,7 @@ class RegistryMessage(BaseMessage):
                 blocks.DividerBlock(),
                 blocks.SectionBlock(
                     text="本日の出社ユーザー :hikarie: :\n"
-                    + "\n".join(
-                        [
-                            f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>"
-                            for user in arrived_users
-                        ]
-                    ),
+                    + "\n".join([f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>" for user in arrived_users]),
                 ),
             ]
         )
@@ -168,13 +162,12 @@ class FastestArrivalMessage(BaseMessage):
     """Class for creating the fastest arrival Slack message."""
 
     def __init__(self, user_id: str, jst_datetime: datetime) -> None:
-        """Initialize the FastestArrivalMessage with the fastest arrival user ID and time."""  # noqa: E501
+        """Initialize the FastestArrivalMessage with the fastest arrival user ID and time."""
         super().__init__()
         self.blocks.extend(
             [
                 blocks.SectionBlock(
-                    text="ヒカリエは正義 :hikarie:\n"
-                    f"本日の最速出社: <@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
+                    text=f"ヒカリエは正義 :hikarie:\n本日の最速出社: <@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
                     block_id=BlockID.FASTEST_ARRIVAL_REPLY,
                 )
             ]
@@ -241,9 +234,7 @@ class PointGetMessage(BaseMessage):
             .order_by(Achievement.badge_id)
             .all()
         )
-        achievements_text = "\n".join(
-            [f" - {badge.message}:*+{badge.score}pt*" for badge in badges]
-        )
+        achievements_text = "\n".join([f" - {badge.message}:*+{badge.score}pt*" for badge in badges])
 
         context = dedent(
             f"""\
@@ -251,7 +242,7 @@ class PointGetMessage(BaseMessage):
             つぎのレベルまで: *{point_to_next_level}pt*
             しんこうど: `{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)
             うちわけ:
-            """  # noqa: E501
+            """
         ) + (achievements_text)
 
         self.blocks.extend(
@@ -285,8 +276,7 @@ class AlreadyRegisteredMessage(BaseMessage):
         self.blocks.extend(
             [
                 blocks.SectionBlock(
-                    text=f"本日の出社登録はすでに完了しています\n"
-                    f"<@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
+                    text=f"本日の出社登録はすでに完了しています\n<@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
                     block_id=BlockID.ALREADY_REGISTERED_REPLY,
                 )
             ]
@@ -306,10 +296,7 @@ class AchievementMessage(BaseMessage):
 
         # バッジの全量を表示する
         all_badge_types = (
-            session.query(BadgeType)
-            .filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK))
-            .order_by(BadgeType.id)
-            .all()
+            session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
         )
 
         self.blocks.extend(
@@ -319,7 +306,7 @@ class AchievementMessage(BaseMessage):
             ]
         )
         for badge_type in all_badge_types:
-            # for each badge type, first, print the badge id and the badge type description  # noqa: E501
+            # for each badge type, first, print the badge id and the badge type description
             self.blocks.extend(
                 [
                     blocks.SectionBlock(
@@ -328,9 +315,7 @@ class AchievementMessage(BaseMessage):
                 ]
             )
             elements = []
-            all_badges = (
-                session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
-            )
+            all_badges = session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
             for i, badge in enumerate(all_badges):
                 if i == CONTEXT_ITEM_MAX:
                     self.blocks.append(
@@ -342,9 +327,7 @@ class AchievementMessage(BaseMessage):
 
                 if user_badge := (
                     session.query(UserBadge)
-                    .filter(
-                        UserBadge.user_id == user_id, UserBadge.badge_id == badge.id
-                    )
+                    .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
                     .one_or_none()
                 ):
                     elements.append(
@@ -383,10 +366,7 @@ class AchievementView(View):
 
         # バッジの全量を表示する
         all_badge_types = (
-            session.query(BadgeType)
-            .filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK))
-            .order_by(BadgeType.id)
-            .all()
+            session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
         )
 
         self.blocks.extend(
@@ -396,7 +376,7 @@ class AchievementView(View):
             ]
         )
         for badge_type in all_badge_types:
-            # for each badge type, first, print the badge id and the badge type description  # noqa: E501
+            # for each badge type, first, print the badge id and the badge type description
             self.blocks.extend(
                 [
                     blocks.SectionBlock(
@@ -405,9 +385,7 @@ class AchievementView(View):
                 ]
             )
             elements = []
-            all_badges = (
-                session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
-            )
+            all_badges = session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
             for i, badge in enumerate(all_badges):
                 if i == CONTEXT_ITEM_MAX:
                     self.blocks.append(
@@ -419,9 +397,7 @@ class AchievementView(View):
 
                 if user_badge := (
                     session.query(UserBadge)
-                    .filter(
-                        UserBadge.user_id == user_id, UserBadge.badge_id == badge.id
-                    )
+                    .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
                     .one_or_none()
                 ):
                     elements.append(
@@ -518,76 +494,47 @@ class WeeklyMessage(BaseMessage):
 
         # Calculate the start and end of the week
         # Assuming the week ends on Sunday and we want the last 7 days
-        self.end_of_week = report_date.replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        self.end_of_week = report_date.replace(hour=0, minute=0, second=0, microsecond=0)
         self.start_of_week = self.end_of_week - timedelta(days=7)
 
         # Get total check-ins for the week and compare with last week
-        current_week_checkins = self._get_weekly_checkins(
-            session, self.start_of_week, self.end_of_week
-        )
+        current_week_checkins = self._get_weekly_checkins(session, self.start_of_week, self.end_of_week)
         last_week_start = self.start_of_week - timedelta(days=7)
         last_week_end = self.end_of_week - timedelta(days=7)
-        last_week_checkins = self._get_weekly_checkins(
-            session, last_week_start, last_week_end
-        )
+        last_week_checkins = self._get_weekly_checkins(session, last_week_start, last_week_end)
 
         # Calculate week-over-week change
         checkin_change = 0
         if last_week_checkins > 0:
-            checkin_change = int(
-                ((current_week_checkins - last_week_checkins) / last_week_checkins)
-                * 100
-            )
+            checkin_change = int(((current_week_checkins - last_week_checkins) / last_week_checkins) * 100)
 
         # Find the most active day of the week
-        most_active_day, day_count = self._get_most_active_day(
-            session, self.start_of_week, self.end_of_week
-        )
+        most_active_day, day_count = self._get_most_active_day(session, self.start_of_week, self.end_of_week)
 
         # Get level-up users for the week
-        level_up_users = self._get_level_up_users(
-            session, self.start_of_week, self.end_of_week
-        )
+        level_up_users = self._get_level_up_users(session, self.start_of_week, self.end_of_week)
 
         # Get top score gainers
-        top_score_gainers = self._get_top_score_gainers(
-            session, self.start_of_week, self.end_of_week, limit=3
-        )
+        top_score_gainers = self._get_top_score_gainers(session, self.start_of_week, self.end_of_week, limit=3)
 
         # Get newly achieved badges
-        new_achievements = self._get_new_achievements(
-            session, self.start_of_week, self.end_of_week
-        )
+        new_achievements = self._get_new_achievements(session, self.start_of_week, self.end_of_week)
 
         # Get most acquired badge
-        most_acquired_badge, badge_count = self._get_most_acquired_badge(
-            session, self.start_of_week, self.end_of_week
-        )
+        most_acquired_badge, badge_count = self._get_most_acquired_badge(session, self.start_of_week, self.end_of_week)
 
         # Get unique records (early birds, consecutive days)
-        early_birds = self._get_early_birds(
-            session, self.start_of_week, self.end_of_week, limit=1
-        )
-        perfect_attendance = self._get_perfect_attendance(
-            session, self.start_of_week, self.end_of_week
-        )
+        early_birds = self._get_early_birds(session, self.start_of_week, self.end_of_week, limit=1)
+        perfect_attendance = self._get_perfect_attendance(session, self.start_of_week, self.end_of_week)
 
         # Build the blocks
         self._build_header_block(self.start_of_week, self.end_of_week)
-        self._build_summary_block(
-            current_week_checkins, checkin_change, most_active_day, day_count
-        )
+        self._build_summary_block(current_week_checkins, checkin_change, most_active_day, day_count)
         self._build_growth_highlights_block(session, level_up_users, top_score_gainers)
-        self._build_achievements_block(
-            new_achievements, most_acquired_badge, badge_count
-        )
+        self._build_achievements_block(new_achievements, most_acquired_badge, badge_count)
         self._build_records_block(early_birds, perfect_attendance)
 
-    def _get_weekly_checkins(
-        self, session: Session, start_date: datetime, end_date: datetime
-    ) -> int:
+    def _get_weekly_checkins(self, session: Session, start_date: datetime, end_date: datetime) -> int:
         """Get the number of check-ins for the given date range."""
         return (
             session.query(GuestArrivalInfo)
@@ -598,11 +545,9 @@ class WeeklyMessage(BaseMessage):
             .count()
         )
 
-    def _get_most_active_day(
-        self, session: Session, start_date: datetime, end_date: datetime
-    ) -> tuple[str, int]:
+    def _get_most_active_day(self, session: Session, start_date: datetime, end_date: datetime) -> tuple[str, int]:
         """Get the most active day of the week in the given date range."""
-        # This is a simplified implementation - in real SQL you might want to use date functions  # noqa: E501
+        # This is a simplified implementation - in real SQL you might want to use date functions
         # to extract the day of week and group by it
         day_counts = {}
         arrivals = (
@@ -627,10 +572,8 @@ class WeeklyMessage(BaseMessage):
         most_active_day = max(day_counts, key=get_count)
         return most_active_day, day_counts[most_active_day]
 
-    def _get_level_up_users(
-        self, session: Session, start_date: datetime, end_date: datetime
-    ) -> list[LevelUpUser]:
-        """Get users who leveled up during the given date range using UserInfoRaw for historical data."""  # noqa: E501
+    def _get_level_up_users(self, session: Session, start_date: datetime, end_date: datetime) -> list[LevelUpUser]:
+        """Get users who leveled up during the given date range using UserInfoRaw for historical data."""
         # Use UserInfoRaw to find level-up events within the date range
         # We need to find distinct user_ids where level_uped is True
         from hikarie_bot.models import UserInfoRaw
@@ -691,7 +634,7 @@ class WeeklyMessage(BaseMessage):
             .subquery()
         )
 
-        # Get the earliest UserInfoRaw record for each user within or before the date range  # noqa: E501
+        # Get the earliest UserInfoRaw record for each user within or before the date range
         subquery_earliest = (
             session.query(
                 UserInfoRaw.user_id,
@@ -717,36 +660,24 @@ class WeeklyMessage(BaseMessage):
         score_diff_query = (
             session.query(
                 latest_records.c.user_id,
-                (
-                    latest_records.c.current_score
-                    - func.coalesce(earliest_records.c.current_score, 0)
-                ).label("score_diff"),
+                (latest_records.c.current_score - func.coalesce(earliest_records.c.current_score, 0)).label(
+                    "score_diff"
+                ),
             )
-            .outerjoin(
-                earliest_records, latest_records.c.user_id == earliest_records.c.user_id
-            )
-            .filter(
-                (latest_records.c.update_datetime >= start_date)
-                & (latest_records.c.update_datetime < end_date)
-            )
+            .outerjoin(earliest_records, latest_records.c.user_id == earliest_records.c.user_id)
+            .filter((latest_records.c.update_datetime >= start_date) & (latest_records.c.update_datetime < end_date))
             .order_by(
                 # SQLite compatible ordering
-                (
-                    latest_records.c.current_score
-                    - func.coalesce(earliest_records.c.current_score, 0)
-                ).desc()
+                (latest_records.c.current_score - func.coalesce(earliest_records.c.current_score, 0)).desc()
             )
             .limit(limit)
         )
 
         score_diff = score_diff_query.all()
 
-        result = [
-            ScoreGainer(user_id=record.user_id, score_gained=record.score_diff)
-            for record in score_diff
-        ]
+        result = [ScoreGainer(user_id=record.user_id, score_gained=record.score_diff) for record in score_diff]
 
-        # If we don't have enough records from score diff (perhaps due to lack of historical data),  # noqa: E501
+        # If we don't have enough records from score diff (perhaps due to lack of historical data),
         # fall back to using GuestArrivalInfo
         if len(result) < limit:
             fallback_limit = limit - len(result)
@@ -769,12 +700,7 @@ class WeeklyMessage(BaseMessage):
             )
 
             result.extend(
-                [
-                    ScoreGainer(
-                        user_id=arrival.user_id, score_gained=arrival.total_score
-                    )
-                    for arrival in arrivals
-                ]
+                [ScoreGainer(user_id=arrival.user_id, score_gained=arrival.total_score) for arrival in arrivals]
             )
 
         return result
@@ -860,11 +786,7 @@ class WeeklyMessage(BaseMessage):
             )
 
             if earliest:
-                all_days.append(
-                    EarlyBird(
-                        user_id=earliest.user_id, arrival_time=earliest.arrival_time
-                    )
-                )
+                all_days.append(EarlyBird(user_id=earliest.user_id, arrival_time=earliest.arrival_time))
 
             current_date = next_day
 
@@ -872,9 +794,7 @@ class WeeklyMessage(BaseMessage):
         all_days.sort(key=lambda x: x.arrival_time.time())
         return all_days[:limit]
 
-    def _get_perfect_attendance(
-        self, session: Session, start_date: datetime, end_date: datetime
-    ) -> list[str]:
+    def _get_perfect_attendance(self, session: Session, start_date: datetime, end_date: datetime) -> list[str]:
         """Get users who checked in every day during the given date range."""
         # Get all unique days in the date range
         all_days = set()
@@ -909,11 +829,7 @@ class WeeklyMessage(BaseMessage):
 
     def _build_header_block(self, start_date: datetime, end_date: datetime) -> None:
         """Build the header block of the report."""
-        self.blocks.append(
-            blocks.HeaderBlock(
-                text=f"出社BOT 週次レポート({start_date:%m/%d}~{end_date:%m/%d})"
-            )
-        )
+        self.blocks.append(blocks.HeaderBlock(text=f"出社BOT 週次レポート({start_date:%m/%d}~{end_date:%m/%d})"))
         self.blocks.append(blocks.DividerBlock())
 
     def _build_summary_block(
@@ -929,7 +845,7 @@ class WeeklyMessage(BaseMessage):
 
         self.blocks.append(
             blocks.SectionBlock(
-                text=f"*今週の出社総数*: {total_checkins}人 {change_emoji} *前週比*: {change_sign}{checkin_change}%\n"  # noqa: E501
+                text=f"*今週の出社総数*: {total_checkins}人 {change_emoji} *前週比*: {change_sign}{checkin_change}%\n"
                 f"*最も賑わった日*: {most_active_day} ({day_count}人)"
             )
         )
@@ -960,10 +876,7 @@ class WeeklyMessage(BaseMessage):
         score_gainers_text = "*スコア伸び率TOP3* 📈\n"
         if top_score_gainers:
             score_gainers_text += "\n".join(
-                [
-                    f"• <@{user.user_id}> +{user.score_gained}pt"
-                    for user in top_score_gainers
-                ]
+                [f"• <@{user.user_id}> +{user.score_gained}pt" for user in top_score_gainers]
             )
         else:
             score_gainers_text += "今週はスコア獲得がありませんでした"
@@ -1018,9 +931,7 @@ class WeeklyMessage(BaseMessage):
             new_achievements_text += "\n".join(
                 [
                     f"• 「{achievement.message}」- <@{achievement.user_id}>さん"
-                    for user_id, achievement in list(user_achievements.items())[
-                        :2
-                    ]  # Limit to 2
+                    for user_id, achievement in list(user_achievements.items())[:2]  # Limit to 2
                 ]
             )
         else:
@@ -1029,9 +940,7 @@ class WeeklyMessage(BaseMessage):
         # Format most acquired badge text
         most_acquired_text = "*最も獲得された実績*\n"
         if most_acquired_badge.badge_id is not None:
-            most_acquired_text += (
-                f"「{most_acquired_badge.message}」- {badge_count}人獲得!"
-            )
+            most_acquired_text += f"「{most_acquired_badge.message}」- {badge_count}人獲得!"
         else:
             most_acquired_text += "今週は実績獲得がありませんでした"
 
@@ -1044,9 +953,7 @@ class WeeklyMessage(BaseMessage):
             )
         )
 
-    def _build_records_block(
-        self, early_birds: list[EarlyBird], perfect_attendance: list[str]
-    ) -> None:
+    def _build_records_block(self, early_birds: list[EarlyBird], perfect_attendance: list[str]) -> None:
         """Build the records block of the report."""
         self.blocks.append(blocks.SectionBlock(text="🌟 *特別な記録* 🌟"))
 
@@ -1054,9 +961,7 @@ class WeeklyMessage(BaseMessage):
         attendance_text = "*皆勤賞* 👑\n"
         if perfect_attendance:
             attendance_text += "毎日出社した勇者たち\n"
-            attendance_text += ", ".join(
-                [f"<@{user_id}>" for user_id in perfect_attendance[:5]]
-            )  # Limit to 5
+            attendance_text += ", ".join([f"<@{user_id}>" for user_id in perfect_attendance[:5]])  # Limit to 5
         else:
             attendance_text += "今週は毎日出社した人はいませんでした"
 
@@ -1064,7 +969,7 @@ class WeeklyMessage(BaseMessage):
         early_bird_text = "*アーリーバード* 🐦\n"
         if early_birds:
             earliest = early_birds[0]
-            early_bird_text += f"最も早い出社 {earliest.arrival_time:%H:%M}am <@{earliest.user_id}>さん"  # noqa: E501
+            early_bird_text += f"最も早い出社 {earliest.arrival_time:%H:%M}am <@{earliest.user_id}>さん"
         else:
             early_bird_text += "今週はだれも出社していませんでした"
 
@@ -1096,7 +1001,7 @@ class WeeklyMessage(BaseMessage):
         )
 
     def _get_almost_level_up_users(self, session: Session) -> list[AlmostLevelUpUser]:
-        """Find users who are close to leveling up, using most recent UserInfoRaw data."""  # noqa: E501
+        """Find users who are close to leveling up, using most recent UserInfoRaw data."""
         # Get the most recent UserInfoRaw record for each user
         subquery = (
             session.query(
@@ -1112,13 +1017,12 @@ class WeeklyMessage(BaseMessage):
             session.query(UserInfoRaw)
             .join(
                 subquery,
-                (UserInfoRaw.user_id == subquery.c.user_id)
-                & (UserInfoRaw.update_datetime == subquery.c.max_datetime),
+                (UserInfoRaw.user_id == subquery.c.user_id) & (UserInfoRaw.update_datetime == subquery.c.max_datetime),
             )
             .all()
         )
 
-        # Find users who are close to leveling up (less than 20% of points to next level)  # noqa: E501
+        # Find users who are close to leveling up (less than 20% of points to next level)
         almost_level_up = []
         for user in user_records:
             if (
@@ -1128,9 +1032,7 @@ class WeeklyMessage(BaseMessage):
             ):  # Within 20% of next level
                 # We need to determine next level name
                 next_level = user.level + 1
-                next_level_name = get_level_name(
-                    user.current_score + user.point_to_next_level
-                )
+                next_level_name = get_level_name(user.current_score + user.point_to_next_level)
 
                 almost_level_up.append(
                     AlmostLevelUpUser(

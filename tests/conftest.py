@@ -25,9 +25,7 @@ def temp_db() -> Generator[sessionmaker[Session], Any, Any]:
     with tempfile.TemporaryDirectory() as tmpdirname:
         # settings of test database
         TEST_SQLALCHEMY_DATABASE_URL = f"sqlite:///{tmpdirname}/.temp.db"  # noqa: N806
-        engine = create_engine(
-            TEST_SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-        )
+        engine = create_engine(TEST_SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 
         if database_exists(TEST_SQLALCHEMY_DATABASE_URL):
             raise DatabaseExistsError(TEST_SQLALCHEMY_DATABASE_URL)

@@ -22,17 +22,12 @@ class GuestArrivalRaw(BaseSchema):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(
-        String, ForeignKey("user_raw.user_id"), nullable=False
-    )
+    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
     arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
     def __repr__(self) -> str:
         """Return the string representation of the GuestArrivalRaw class."""
-        return (
-            f"<GuestArrivalRaw(user_id={self.user_id}, "
-            f"arrival_time={self.arrival_time})>"
-        )
+        return f"<GuestArrivalRaw(user_id={self.user_id}, arrival_time={self.arrival_time})>"
 
 
 # Add event listener to automatically set user_info_raw_id from user_id
@@ -60,9 +55,7 @@ class GuestArrivalInfo(BaseSchema):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(
-        String, ForeignKey("user_raw.user_id"), nullable=False
-    )
+    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
     arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     arrival_rank: Mapped[int] = mapped_column(Integer)
     acquired_score_sum: Mapped[int] = mapped_column(Integer)
@@ -99,15 +92,9 @@ class Achievement(BaseSchema):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
     user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(
-        String, ForeignKey("user_raw.user_id"), nullable=False
-    )
-    arrival_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("guest_arrival_info.id"), nullable=False
-    )
-    badge_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("badges.id"), nullable=False
-    )
+    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
+    arrival_id: Mapped[int] = mapped_column(Integer, ForeignKey("guest_arrival_info.id"), nullable=False)
+    badge_id: Mapped[int] = mapped_column(Integer, ForeignKey("badges.id"), nullable=False)
     achieved_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
     user = relationship("User", backref="achievement")
@@ -181,9 +168,7 @@ class UserInfoRaw(BaseSchema):
     __tablename__ = "user_raw"
 
     # the UserInfoRaw.id is just the auto incremented id
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, unique=True, autoincrement=True
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True, autoincrement=True)
 
     # the user_id is the same as the user.id
     user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
@@ -239,19 +224,14 @@ class Badge(BaseSchema):
     condition: Mapped[str] = mapped_column(String)
     level: Mapped[int] = mapped_column(Integer, nullable=False)
     score: Mapped[int] = mapped_column(Integer, nullable=False)
-    badge_type_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("badge_types.id"), nullable=False
-    )
+    badge_type_id: Mapped[int] = mapped_column(Integer, ForeignKey("badge_types.id"), nullable=False)
 
     badge_type = relationship("BadgeType", back_populates="badges")
     users = relationship("UserBadge", back_populates="badge")
 
     def __repr__(self) -> str:
         """Return the string representation of the Badge class."""
-        return (
-            f"<Badge(message={self.message}, condition={self.condition}, "
-            f"level={self.level}, score={self.score})>"
-        )
+        return f"<Badge(message={self.message}, condition={self.condition}, level={self.level}, score={self.score})>"
 
 
 class UserBadge(BaseSchema):
@@ -261,16 +241,10 @@ class UserBadge(BaseSchema):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
-    user_info_raw_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("user_raw.user_id")
-    )
+    user_info_raw_id: Mapped[int] = mapped_column(Integer, ForeignKey("user_raw.user_id"))
     badge_id: Mapped[int] = mapped_column(Integer, ForeignKey("badges.id"))
-    initially_acquired_datetime: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now()
-    )
-    last_acquired_datetime: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now()
-    )
+    initially_acquired_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    last_acquired_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     count: Mapped[int] = mapped_column(Integer)
 
     user = relationship("User", back_populates="badges")

@@ -186,9 +186,7 @@ async def check_bot_has_sent_message(
             oldest=str(from_datetime.timestamp()),
             latest=str(to_datetime.timestamp()),
         )
-        return any(
-            message.get("bot_id") == BOT_ID for message in messages.get("messages", [])
-        )
+        return any(message.get("bot_id") == BOT_ID for message in messages.get("messages", []))
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error checking conversation history: {e}")
         return False
@@ -297,9 +295,7 @@ async def send_weekly_message(  # noqa: PLR0913
         now = datetime.now(JST)
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         logger.debug(f"Current time: {now}")
-        logger.debug(
-            f"{now.hour} == {at_hour} and {now.minute} == {at_minute} and {now.weekday()} == {weekday}"
-        )
+        logger.debug(f"{now.hour} == {at_hour} and {now.minute} == {at_minute} and {now.weekday()} == {weekday}")
         if now.hour == at_hour and now.minute == at_minute and now.weekday() == weekday:
             logger.info("Attempting to fetch weekly summary message")
             message = WeeklyMessage(session=session, report_date=now)
@@ -353,9 +349,7 @@ async def get_messages(app: AsyncApp) -> list[dict[str, Any]]:
     )
     messages += _messages.get("messages", [])
     while _messages["has_more"]:
-        jst_message_datetime = unix_timestamp_to_jst(
-            float(_messages["messages"][-1]["ts"])
-        )
+        jst_message_datetime = unix_timestamp_to_jst(float(_messages["messages"][-1]["ts"]))
         logger.info(f"loading. latest message: {jst_message_datetime}")
         _messages = await app.client.conversations_history(
             channel=OUTPUT_CHANNEL,
@@ -367,9 +361,7 @@ async def get_messages(app: AsyncApp) -> list[dict[str, Any]]:
     return messages
 
 
-async def retrieve_thread_messages(
-    app: AsyncApp, message: dict[str, Any]
-) -> list[dict[str, Any]]:
+async def retrieve_thread_messages(app: AsyncApp, message: dict[str, Any]) -> list[dict[str, Any]]:
     """Retrieve thread messages from a Slack channel.
 
     Parameters
@@ -390,9 +382,7 @@ async def retrieve_thread_messages(
     if message.get("thread_ts") and (message.get("bot_id") == BOT_ID):
         jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
         logger.info(f"loading thread. latest message: {jst_message_datetime}")
-        _thread_messages = await app.client.conversations_replies(
-            channel=OUTPUT_CHANNEL, ts=message["ts"], limit=100
-        )
+        _thread_messages = await app.client.conversations_replies(channel=OUTPUT_CHANNEL, ts=message["ts"], limit=100)
         thread_messages += _thread_messages.get("messages", [])
         await asyncio.sleep(0.1)
     return thread_messages

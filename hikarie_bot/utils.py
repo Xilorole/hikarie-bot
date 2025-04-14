@@ -112,9 +112,7 @@ def get_point_range_to_next_level(point: int) -> int:
     """
     for idx, level_info in sorted(level_map.items(), key=lambda kv: kv[0]):
         if point < level_info["point"]:
-            previous_level_point = (
-                level_map[idx - 1].get("point") if level_map.get(idx - 1) else 0
-            )
+            previous_level_point = level_map[idx - 1].get("point") if level_map.get(idx - 1) else 0
             return level_info["point"] - previous_level_point
     # if the point is greater than the last level point, return undefined
     raise InvalidPointError(point=point)
@@ -138,9 +136,7 @@ def get_current_level_point(point: int) -> int:
     """
     for idx, level_info in sorted(level_map.items(), key=lambda kv: kv[0]):
         if point < level_info["point"]:
-            previous_level_point = (
-                level_map[idx - 1]["point"] if level_map.get(idx - 1) else 0
-            )
+            previous_level_point = level_map[idx - 1]["point"] if level_map.get(idx - 1) else 0
             return point - previous_level_point
     raise InvalidPointError(point=point)
 
@@ -156,7 +152,7 @@ def unix_timestamp_to_jst(unix_timestamp: float) -> datetime:
     -------
         datetime: A datetime object representing the date and time in JST.
 
-    """  # noqa: E501
+    """
     # Convert to a timezone-aware datetime object in UTC
     utc_time = datetime.fromtimestamp(float(unix_timestamp), UTC)
 

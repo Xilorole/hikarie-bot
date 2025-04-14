@@ -163,16 +163,14 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
         test_data = (
             *[
                 UserData(
-                    jst_datetime=datetime.fromisoformat("20200101 06:00:00")
-                    + timedelta(days=i),
+                    jst_datetime=datetime.fromisoformat("20200101 06:00:00") + timedelta(days=i),
                     user_id="user",
                 )
                 for i in range(5)
             ],
             *[
                 UserData(
-                    jst_datetime=datetime.fromisoformat("20200101 06:00:00")
-                    + timedelta(days=i),
+                    jst_datetime=datetime.fromisoformat("20200101 06:00:00") + timedelta(days=i),
                     user_id="user_4",
                 )
                 for i in range(4)
@@ -455,8 +453,7 @@ def test_badge_checker_id6_kiriban(
         test_data = (
             *[
                 UserData(
-                    jst_datetime=datetime.fromisoformat("20200101 06:00:00")
-                    + timedelta(seconds=i),
+                    jst_datetime=datetime.fromisoformat("20200101 06:00:00") + timedelta(seconds=i),
                     user_id=f"user_{i}",
                 )
                 for i in range(9)
