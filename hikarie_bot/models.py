@@ -241,7 +241,7 @@ class UserBadge(BaseSchema):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
-    user_info_raw_id: Mapped[int] = mapped_column(Integer, ForeignKey("user_raw.user_id"))
+    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"))
     badge_id: Mapped[int] = mapped_column(Integer, ForeignKey("badges.id"))
     initially_acquired_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     last_acquired_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
