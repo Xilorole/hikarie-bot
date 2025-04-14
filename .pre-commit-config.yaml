@@ -10,12 +10,12 @@ repos:
       language: python
       types_or: [python, pyi, jupyter]
 
-    - id: ruff-format
-      name: Ruff format
-      description: "Run 'ruff format' for extremely fast Python formatting"
-      entry: uv run ruff format
-      language: python
-      types_or: [python, pyi, jupyter]
+    # - id: ruff-format
+    #   name: Ruff format
+    #   description: "Run 'ruff format' for extremely fast Python formatting"
+    #   entry: uv run ruff format
+    #   language: python
+    #   types_or: [python, pyi, jupyter]
 
   - repo: local
     hooks:

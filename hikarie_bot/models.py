@@ -140,7 +140,7 @@ class User(BaseSchema):
     """Define the UserScore table.
 
     The UserScore table stores the user ID, the current score, the previous score,
-    and the update datetime.
+    and the update datetime. This table only stores the latest data.
     """
 
     __tablename__ = "user"
