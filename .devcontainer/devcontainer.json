@@ -1,9 +1,13 @@
 {
     "name": "uv",
-    "build": {
-        "context": "..",
-        "dockerfile": "Dockerfile"
+    "build": {"context": "..", "dockerfile": "Dockerfile"},
+    "containerEnv": {
+        "PYTHONUNBUFFERED": "True",
+        "UV_LINK_MODE": "copy",
+        "JUPYTER_PLATFORM_DIRS": "1",
+        "VIRTUAL_ENV_DISABLE_PROMPT": "1",
     },
+    "features": {},
     "customizations": {
         "vscode": {
             "extensions": [
@@ -24,7 +28,8 @@
                 "GitHub.copilot",
                 "GitHub.vscode-pull-request-github",
                 "github.vscode-github-actions",
-                "tamasfe.even-better-toml"
+                "tamasfe.even-better-toml",
+                "ms-toolsai.jupyter",
             ],
             "settings": {
                 "python.defaultInterpreterPath": "/root/.local/share/uv/python",
@@ -32,22 +37,18 @@
                     "editor.defaultFormatter": "charliermarsh.ruff",
                     "editor.codeActionsOnSave": {
                         "source.fixAll.ruff": "explicit",
-                        "source.organizeImports.ruff": "explicit"
+                        "source.organizeImports.ruff": "explicit",
                     },
-                    "editor.formatOnSave": true
+                    "editor.formatOnSave": true,
                 },
                 "files.insertFinalNewline": true,
                 "files.trimTrailingWhitespace": true,
                 "terminal.integrated.defaultProfile.linux": "zsh",
-                "terminal.integrated.profiles.linux": {
-                    "zsh": {
-                        "path": "/bin/zsh"
-                    }
-                }
-            }
+                "terminal.integrated.profiles.linux": {"zsh": {"path": "/bin/zsh"}},
+            },
         }
     },
     "postCreateCommand": "bash .devcontainer/postCreateCommand.sh",
     "postStartCommand": "uv run pre-commit install",
-    "remoteUser": "vscode"
+    "remoteUser": "vscode",
 }

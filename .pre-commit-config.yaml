@@ -1,16 +1,21 @@
-default_stages: [commit]
+default_stages: [pre-commit]
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+  - repo: local
     hooks:
     - id: ruff
       name: Ruff check
       description: "Run 'ruff check' for extremely fast Python linting"
-      args: [ --fix ]
+      entry: uv run ruff check
+      args: [--fix]
+      language: python
+      types_or: [python, pyi, jupyter]
 
     - id: ruff-format
       name: Ruff format
       description: "Run 'ruff format' for extremely fast Python formatting"
+      entry: uv run ruff format
+      language: python
+      types_or: [python, pyi, jupyter]
 
   - repo: local
     hooks:
@@ -29,7 +34,7 @@ repos:
         language: system
 
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
+    rev: v2.13.1-beta
     hooks:
       - id: hadolint
         name: Lint Dockerfiles

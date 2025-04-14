@@ -22,8 +22,7 @@ def test_filter(mocker: MockerFixture) -> None:
     message = {
         "user": "test_user",
         "bot_id": "test_v1_bot_id",
-        "text": "ヒカリエは正義 :hikarie:¥n"
-        "本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
+        "text": "ヒカリエは正義 :hikarie:¥n本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
     }
     assert MessageFilter.run(message) is True
 
@@ -37,8 +36,7 @@ def test_filter(mocker: MockerFixture) -> None:
     message = {
         "user": "TST",
         "bot_id": "test_bot_id",
-        "text": "ヒカリエは正義 :hikarie:¥n"
-        "本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
+        "text": "ヒカリエは正義 :hikarie:¥n本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
     }
     assert MessageFilter.run(message) is True
 
@@ -51,9 +49,7 @@ async def test_send_daily_message(mocker: MockerFixture) -> None:
 
     # Mock the app.client methods
     mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {
-        "messages": [{"user": "other_user_id"}]
-    }
+    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
     mock_app.client.chat_postMessage.return_value = None
 
     # Freeze time to a specific datetime
@@ -83,9 +79,7 @@ async def test_not_sending_message_on_holiday(mocker: MockerFixture) -> None:
 
     # Mock the app.client methods
     mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {
-        "messages": [{"user": "other_user_id"}]
-    }
+    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
     mock_app.client.chat_postMessage.return_value = None
 
     # Freeze time to a specific datetime
@@ -119,9 +113,7 @@ async def test_not_sending_message_0559_and_0601(mocker: MockerFixture) -> None:
 
     # Mock the app.client methods
     mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {
-        "messages": [{"user": "other_user_id"}]
-    }
+    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
     mock_app.client.chat_postMessage.return_value = None
 
     # Freeze time to a specific datetime
@@ -147,9 +139,7 @@ async def test_not_sending_message_0559_and_0601(mocker: MockerFixture) -> None:
 
     # 一応再初期化
     mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {
-        "messages": [{"user": "other_user_id"}]
-    }
+    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
     mock_app.client.chat_postMessage.return_value = None
 
     # Freeze time to a specific datetime

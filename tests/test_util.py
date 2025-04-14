@@ -166,18 +166,14 @@ def test_unix_timestamp_to_jst() -> None:
     # Japan Standard Time (JST).
     # this Returns:
     #     datetime: A datetime object representing the date and time in JST.
-    assert (
-        unix_timestamp_to_jst(0).strftime("%Y-%m-%d %H:%M:%S") == "1970-01-01 09:00:00"
-    )
+    assert unix_timestamp_to_jst(0).strftime("%Y-%m-%d %H:%M:%S") == "1970-01-01 09:00:00"
 
 
 def test_is_jp_bizday() -> None:
     "Test the function is_jp_bizday."
     import datetime
 
-    assert not is_jp_bizday(
-        datetime.date(2020, 12, 31)
-    )  # friday but the end of the year
+    assert not is_jp_bizday(datetime.date(2020, 12, 31))  # friday but the end of the year
 
     assert not is_jp_bizday(datetime.date(2024, 1, 1))
     assert not is_jp_bizday(datetime.date(2024, 1, 2))

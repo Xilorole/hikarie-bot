@@ -20,6 +20,7 @@ from .models import (
     GuestArrivalRaw,
     User,
     UserBadge,
+    UserInfoRaw,
 )
 from .utils import (
     get_current_level_point,
@@ -46,18 +47,12 @@ def _update_achievements(session: Session, arrival_id: int) -> None:
         _description_
     """
     # initially check whether user has already achieved the badge
-    achievements = (
-        session.query(Achievement).filter(Achievement.arrival_id == arrival_id).all()
-    )
+    achievements = session.query(Achievement).filter(Achievement.arrival_id == arrival_id).all()
     if achievements:
         logger.error("User has already achieved the badge")
         raise AchievementAlreadyRegisteredError
 
-    user_arrival = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.id == arrival_id)
-        .one_or_none()
-    )
+    user_arrival = session.query(GuestArrivalInfo).filter(GuestArrivalInfo.id == arrival_id).one_or_none()
 
     if user_arrival is None:
         logger.error(f"User arrival not found for arrival_id: {arrival_id}")
@@ -78,9 +73,7 @@ def _update_achievements(session: Session, arrival_id: int) -> None:
             )
         )
         user_badge = (
-            session.query(UserBadge)
-            .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
-            .one_or_none()
+            session.query(UserBadge).filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id).one_or_none()
         )
         if user_badge is None:
             session.add(
@@ -113,11 +106,7 @@ def _update_arrival_rank(session: Session, arrival_id: int) -> None:
     -------
     None
     """
-    user_arrival = (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.id == arrival_id)
-        .one_or_none()
-    )
+    user_arrival = session.query(GuestArrivalInfo).filter(GuestArrivalInfo.id == arrival_id).one_or_none()
     if user_arrival is None:
         logger.error(f"User arrival not found for arrival_id: {arrival_id}")
         raise UserArrivalNotFoundError(arrival_id)
@@ -163,17 +152,13 @@ def _update_acquired_score_sum(session: Session, arrival_id: int) -> None:
 
     logger.info(f"acquired_score_sum: {acquired_score_sum}")
     session.execute(
-        update(GuestArrivalInfo)
-        .where(GuestArrivalInfo.id == arrival_id)
-        .values(acquired_score_sum=acquired_score_sum)
+        update(GuestArrivalInfo).where(GuestArrivalInfo.id == arrival_id).values(acquired_score_sum=acquired_score_sum)
     )
 
     session.commit()
 
 
-def insert_arrival_action(
-    session: Session, jst_datetime: datetime, user_id: str
-) -> bool:
+def insert_arrival_action(session: Session, jst_datetime: datetime, user_id: str) -> bool:
     """Insert the arrival action into the database.
 
     Args:
@@ -267,6 +252,24 @@ def insert_arrival_action(
             current_level_point=current_level_point,
         )
         session.add(new_user_score)
+    session.commit()
+
+    # get the currently inserted arrival score to the db
+    user_entry = session.query(User).filter_by(id=user_id).one()
+    session.add(
+        UserInfoRaw(
+            user_id=user_entry.id,
+            current_score=user_entry.current_score,
+            previous_score=user_entry.previous_score,
+            update_datetime=user_entry.update_datetime,
+            level=user_entry.level,
+            level_name=user_entry.level_name,
+            level_uped=user_entry.level_uped,
+            point_to_next_level=user_entry.point_to_next_level,
+            point_range_to_next_level=user_entry.point_range_to_next_level,
+            current_level_point=user_entry.current_level_point,
+        )
+    )
 
     session.commit()
     return True

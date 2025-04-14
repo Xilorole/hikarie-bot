@@ -5,9 +5,7 @@ from sqlalchemy.orm import Session
 from hikarie_bot.modals import AchievementView
 
 
-async def open_achievement_view(
-    client: AsyncWebClient, session: Session, trigger_id: str, user_id: str
-) -> None:
+async def open_achievement_view(client: AsyncWebClient, session: Session, trigger_id: str, user_id: str) -> None:
     """Open the achievement view modal."""
     achievement_view = AchievementView(session=session, user_id=user_id)
     logger.info(f"Opening achievement view for user {user_id}")

@@ -1,41 +1,48 @@
-# to use hadolint binary
+################################
+# prepare step
+################################
+
 FROM hadolint/hadolint:latest-alpine AS hadolint
 
-FROM alpine:3.21 AS builder
+################################
+# build step
+################################
 
-WORKDIR /opt
+# hadolint ignore=DL3007
+FROM alpine:latest AS builder
 
+# hadolint ignore=DL3018
 RUN apk update && \
-    apk add --no-cache bash=5.2.37-r0 curl=8.12.1-r0 ca-certificates=20241121-r1
+    apk add --no-cache bash curl ca-certificates gcc musl-dev linux-headers
 
 SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
 
 ADD https://astral.sh/uv/install.sh uv-installer.sh
-ADD https://starship.rs/install.sh  starship-installer.sh
+ADD https://starship.rs/install.sh starship-installer.sh
 
 RUN sh uv-installer.sh \
     && sh starship-installer.sh -y
 
+################################
+# install step
+################################
 
 FROM mcr.microsoft.com/vscode/devcontainers/base:alpine
 
 # Add hadolint and GitHub CLI
+# hadolint ignore=DL3018
 RUN apk update && \
-    apk add --no-cache musl-dev=1.2.5-r0 linux-headers=6.6-r0 github-cli=2.47.0-r4
-
-ENV CARGO_HOME="/opt/.cargo/bin"
-ENV PATH="$CARGO_HOME:$PATH"
-ENV PYTHONUNBUFFERED=True
-ENV UV_LINK_MODE=copy
-ENV JUPYTER_PLATFORM_DIRS=1
-ENV VIRTUAL_ENV_DISABLE_PROMPT=1
+    apk add --no-cache github-cli musl-dev linux-headers
 
 WORKDIR /opt
 
-COPY --from=builder /usr/local/bin/starship /usr/local/bin/starship
-COPY --from=builder /root/.local/bin/uv $CARGO_HOME/uv
-COPY --from=hadolint /bin/hadolint /usr/local/bin/hadolint
+
+ENV BIN_PATH="/usr/local/bin"
+
+COPY --from=hadolint /bin/hadolint $BIN_PATH/hadolint
+COPY --from=builder /usr/local/bin/starship $BIN_PATH/starship
+COPY --from=builder /root/.local/bin/uv $BIN_PATH/uv
+COPY --from=builder /root/.local/bin/uvx $BIN_PATH/uvx
 COPY ./.python-version ./
 
 RUN uv python pin "$(cat .python-version)"
-RUN chown -R vscode "$CARGO_HOME"

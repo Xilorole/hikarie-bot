@@ -2,12 +2,14 @@ import asyncio
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import jpholiday
 from loguru import logger
 from slack_bolt.app.async_app import AsyncApp
+from sqlalchemy.orm import Session
 
-from hikarie_bot.modals import InitialMessage
+from hikarie_bot.modals import InitialMessage, WeeklyMessage
 from hikarie_bot.settings import BOT_ID, OUTPUT_CHANNEL, V1_BOT_ID, V2_BOT_ID
 from hikarie_bot.utils import unix_timestamp_to_jst
 
@@ -91,7 +93,6 @@ class MessageFilter:
             - The message includes the mentioned user's ID.
 
         """
-        logger.debug(f"message: {message}, user: {V1_BOT_ID}")
         if (
             message.get("bot_id") == V1_BOT_ID
             and message.get("text")
@@ -120,7 +121,6 @@ class MessageFilter:
             - The message includes the mentioned user's ID.
 
         """
-        logger.debug(f"message: {message}")
         if (
             message.get("bot_id") == V2_BOT_ID
             and message.get("text")
@@ -149,7 +149,6 @@ class MessageFilter:
             - The message includes the mentioned user's ID.
 
         """
-        logger.debug(f"message: {message}, user: {BOT_ID}")
         if (
             message.get("bot_id") == BOT_ID
             and message.get("text")
@@ -159,8 +158,46 @@ class MessageFilter:
         return None
 
 
+async def check_bot_has_sent_message(
+    app: AsyncApp, channel_id: str, from_datetime: datetime, to_datetime: datetime
+) -> bool:
+    """Check if the bot has sent a message in the channel.
+
+    Parameters
+    ----------
+    app : AsyncApp
+        The Slack application instance used to interact with the Slack API.
+    channel_id : str
+        The ID of the Slack channel to check.
+    from_datetime : datetime
+        The start datetime to check for messages.
+    to_datetime : datetime
+        The end datetime to check for messages.
+
+    Returns
+    -------
+    bool
+        True if the bot has sent a message, False otherwise.
+
+    """
+    try:
+        messages = await app.client.conversations_history(
+            channel=channel_id,
+            oldest=str(from_datetime.timestamp()),
+            latest=str(to_datetime.timestamp()),
+        )
+        return any(message.get("bot_id") == BOT_ID for message in messages.get("messages", []))
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error checking conversation history: {e}")
+        return False
+
+
 async def send_daily_message(
-    app: AsyncApp, at_hour: int = 6, at_minute: int = 0, check_interval: int = 5
+    app: AsyncApp,
+    at_hour: int = 6,
+    at_minute: int = 0,
+    check_interval: int = 50,
+    force_send: bool = False,  # noqa: FBT001, FBT002
 ) -> None:
     "Run task every weekday 06:00 JST."
     # タイムゾーンの生成
@@ -173,7 +210,7 @@ async def send_daily_message(
     while True:
         # check if the time is 06:00 JST
         now = datetime.now(JST)
-        next_day = now + timedelta(days=1)
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         logger.debug(f"Current time: {now}")
         if (
             now.hour == at_hour
@@ -185,28 +222,14 @@ async def send_daily_message(
             # check if the BOT already sent to channel
             logger.debug(f"Channel ID: {channel_id}")
             try:
-                messages = await app.client.conversations_history(
-                    channel=channel_id,
-                    oldest=str(
-                        datetime(
-                            year=now.year,
-                            month=now.month,
-                            day=now.day,
-                            tzinfo=JST,
-                        ).timestamp()
-                    ),
-                    latest=str(
-                        datetime(
-                            year=next_day.year,
-                            month=next_day.month,
-                            day=next_day.day,
-                            tzinfo=JST,
-                        ).timestamp()
-                    ),
-                )
-                logger.debug(f"Messages: {messages['messages']}")
-                if any(
-                    message.get("bot_id") == BOT_ID for message in messages["messages"]
+                if (
+                    await check_bot_has_sent_message(
+                        app=app,
+                        channel_id=channel_id,
+                        from_datetime=day_start,
+                        to_datetime=now,
+                    )
+                    and not force_send
                 ):
                     logger.info("Message already sent")
                 else:
@@ -226,6 +249,75 @@ async def send_daily_message(
                 await asyncio.sleep(check_interval)
                 continue
 
+        else:
+            logger.debug("Conditions not met for sending message")
+        logger.debug("Sleeping for check_interval")
+        await asyncio.sleep(check_interval)
+        logger.debug("Woke up from sleep")
+
+
+async def send_weekly_message(  # noqa: PLR0913
+    app: AsyncApp,
+    session: Session,
+    at_hour: int = 6,
+    at_minute: int = 0,
+    check_interval: int = 50,
+    weekday: int = 0,
+    force_send: bool = False,  # noqa: FBT001, FBT002
+) -> None:
+    """Run task every Monday 06:00 JST.
+
+    Parameters
+    ----------
+    app : AsyncApp
+        The Slack application instance used to interact with the Slack API.
+    session : Session
+        The SQLAlchemy session used to interact with the database.
+    at_hour : int, optional
+        The hour of the day to send the message (default is 6).
+    at_minute : int, optional
+        The minute of the hour to send the message (default is 0).
+    check_interval : int, optional
+        The interval in seconds to check the time (default is 60).
+    weekday : int, optional
+        The day of the week to send the message (default is 0, which is Monday).
+    force_send : bool, optional
+        Whether to force send the message even if it has already been sent (default is False).
+
+    """
+    # タイムゾーンの生成
+    JST = ZoneInfo("Asia/Tokyo")  # noqa: N806
+    channel_id = OUTPUT_CHANNEL
+
+    logger.info("Started task")
+    while True:
+        # check if the time is 06:00 JST
+        now = datetime.now(JST)
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        logger.debug(f"Current time: {now}")
+        logger.debug(f"{now.hour} == {at_hour} and {now.minute} == {at_minute} and {now.weekday()} == {weekday}")
+        if now.hour == at_hour and now.minute == at_minute and now.weekday() == weekday:
+            logger.info("Attempting to fetch weekly summary message")
+            message = WeeklyMessage(session=session, report_date=now)
+            if (
+                await check_bot_has_sent_message(
+                    app=app,
+                    channel_id=channel_id,
+                    from_datetime=day_start,
+                    to_datetime=now,
+                )
+                and not force_send
+            ):
+                logger.info("Weekly summary message already sent")
+            else:
+                logger.info("Sending weekly summary message to channel")
+                logger.debug(f"Channel ID: {channel_id}")
+                logger.debug(f"Message: {message.render()}")
+                await app.client.chat_postMessage(
+                    channel=OUTPUT_CHANNEL,
+                    blocks=message.render(),
+                    text="weekly message",  # to_text()関数はなんだか処理が重すぎるみたい
+                )
         else:
             logger.debug("Conditions not met for sending message")
         logger.debug("Sleeping for check_interval")
@@ -255,25 +347,21 @@ async def get_messages(app: AsyncApp) -> list[dict[str, Any]]:
         channel=OUTPUT_CHANNEL,
         oldest="1651363200",  # 2022-05-01 00:00:00
     )
-    messages += _messages["messages"]
+    messages += _messages.get("messages", [])
     while _messages["has_more"]:
-        jst_message_datetime = unix_timestamp_to_jst(
-            float(_messages["messages"][-1]["ts"])
-        )
+        jst_message_datetime = unix_timestamp_to_jst(float(_messages["messages"][-1]["ts"]))
         logger.info(f"loading. latest message: {jst_message_datetime}")
         _messages = await app.client.conversations_history(
             channel=OUTPUT_CHANNEL,
             cursor=_messages["response_metadata"]["next_cursor"],
             oldest="1651363200",  # 2022-05-01 00:00:00
         )
-        messages += _messages["messages"]
+        messages += _messages.get("messages", [])
         await asyncio.sleep(0.1)
     return messages
 
 
-async def retrieve_thread_messages(
-    app: AsyncApp, message: dict[str, Any]
-) -> list[dict[str, Any]]:
+async def retrieve_thread_messages(app: AsyncApp, message: dict[str, Any]) -> list[dict[str, Any]]:
     """Retrieve thread messages from a Slack channel.
 
     Parameters
@@ -294,9 +382,7 @@ async def retrieve_thread_messages(
     if message.get("thread_ts") and (message.get("bot_id") == BOT_ID):
         jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
         logger.info(f"loading thread. latest message: {jst_message_datetime}")
-        _thread_messages = await app.client.conversations_replies(
-            channel=OUTPUT_CHANNEL, ts=message["ts"], limit=100
-        )
-        thread_messages += _thread_messages["messages"]
+        _thread_messages = await app.client.conversations_replies(channel=OUTPUT_CHANNEL, ts=message["ts"], limit=100)
+        thread_messages += _thread_messages.get("messages", [])
         await asyncio.sleep(0.1)
     return thread_messages

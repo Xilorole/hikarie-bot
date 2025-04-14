@@ -7,7 +7,7 @@ Classes:
 Variables:
     BadgeTypes (list): A list of BadgeType instances defining various badge types.
     Badges (list): A list of Badge instances defining various badges and their conditions.
-"""  # noqa: E501
+"""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -62,9 +62,7 @@ class BadgeChecker:
         checker_map = self.get_checker_map()
 
         # define active checker functions
-        self.checkers = [
-            checker_map[badge_type_id] for badge_type_id in self.badge_type_to_check
-        ]
+        self.checkers = [checker_map[badge_type_id] for badge_type_id in self.badge_type_to_check]
 
     @classmethod
     def get_checker_map(cls) -> dict[int, Callable]:
@@ -150,12 +148,8 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
-        return [
-            badge
-            for checker in self.checkers
-            for badge in checker(session, user_id, target_date)
-        ]
+        """
+        return [badge for checker in self.checkers for badge in checker(session, user_id, target_date)]
 
     @classmethod
     def check_welcome(
@@ -176,14 +170,12 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID = 101  # noqa: N806
         if cls._arrived_check(session, user_id, target_date) is None:
             return []
         # check if the user has acquired the welcome badge
-        start_of_the_day = target_date.replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        start_of_the_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
         previous_arrival_count = (
             session.query(GuestArrivalInfo)
             .filter(
@@ -217,7 +209,7 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID = 201  # noqa: N806
 
         user_arrival = cls._arrived_check(session, user_id, target_date)
@@ -257,7 +249,7 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID_lv1 = 301  # noqa: N806
         ID_lv2 = 302  # noqa: N806
         ID_lv3 = 303  # noqa: N806
@@ -309,7 +301,7 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID_lv1 = 401  # noqa: N806
         ID_lv2 = 402  # noqa: N806
         ID_lv3 = 403  # noqa: N806
@@ -352,23 +344,17 @@ class BadgeChecker:
 
         # check if the user has already acquired the straight flash badge recently
         for user_arrival in user_arrivals[1:]:
-            recently_achieved_badges = cls.check_straight_flash(
-                session, user_id, user_arrival.arrival_time
-            )
+            recently_achieved_badges = cls.check_straight_flash(session, user_id, user_arrival.arrival_time)
             logger.debug(f"recently_achieved_badges: {recently_achieved_badges}")
 
-            recently_achieved_badge_ids |= {
-                badge.id for badge in recently_achieved_badges
-            }
+            recently_achieved_badge_ids |= {badge.id for badge in recently_achieved_badges}
         logger.debug(f"recently_achieved_badge_ids: {recently_achieved_badge_ids}")
 
         _achieved_badges = []
         if ID_lv1 not in recently_achieved_badge_ids:
             _achieved_badges.append(cls.get_badge(session, ID_lv1))
 
-        arrival_hours = {
-            user_arrival.arrival_time.hour for user_arrival in user_arrivals
-        }
+        arrival_hours = {user_arrival.arrival_time.hour for user_arrival in user_arrivals}
         if len(set(arrival_hours)) == flash_length:
             if ID_lv2 not in recently_achieved_badge_ids:
                 _achieved_badges.append(cls.get_badge(session, ID_lv2))
@@ -399,7 +385,7 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         # > # BadgeTypeData id=5, name="time_window", description="時間帯による出社登録"
         # > BadgeData(
         # >     id=9,
@@ -476,7 +462,7 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         user_arrival = cls._arrived_check(session, user_id, target_date)
         if user_arrival is None:
             return []
@@ -513,7 +499,7 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID_lv1 = 701  # noqa: N806
         ID_lv2 = 702  # noqa: N806
         ID_lv3 = 703  # noqa: N806
@@ -547,10 +533,7 @@ class BadgeChecker:
             [no_see_days_lv4, no_see_days_lv3, no_see_days_lv2, no_see_days_lv1],
             strict=False,
         ):
-            if (
-                last_arrival.arrival_time.date() + time_span
-                < user_arrival.arrival_time.date()
-            ):
+            if last_arrival.arrival_time.date() + time_span < user_arrival.arrival_time.date():
                 return [session.query(Badge).filter(Badge.id == badge_id).one()]
 
         return []
@@ -574,7 +557,7 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID_lv1 = 801  # noqa: N806
         ID_lv2 = 802  # noqa: N806
         ID_lv3 = 803  # noqa: N806
@@ -583,9 +566,7 @@ class BadgeChecker:
         if user_arrival is None:
             return []
 
-        arrived_minute_start = user_arrival.arrival_time.replace(
-            second=0, microsecond=0
-        )
+        arrived_minute_start = user_arrival.arrival_time.replace(second=0, microsecond=0)
 
         logger.info(f"arrived_minute_start: {arrived_minute_start}")
         logger.info(f"user_arrival.arrival_time: {user_arrival.arrival_time}")
@@ -627,7 +608,7 @@ class BadgeChecker:
         Returns:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
-        """  # noqa: E501
+        """
         BADGE_TYPE_ID = 15  # noqa: N806
         ID = 1501  # noqa: N806
         user_arrival = cls._arrived_check(session, user_id, target_date)
@@ -636,9 +617,7 @@ class BadgeChecker:
 
         # get the apply start date of the BadgeType
 
-        badge_type = (
-            session.query(BadgeType).filter(BadgeType.id == BADGE_TYPE_ID).one()
-        )
+        badge_type = session.query(BadgeType).filter(BadgeType.id == BADGE_TYPE_ID).one()
         initial_arrival = (
             session.query(GuestArrivalInfo)
             .filter(
@@ -650,11 +629,7 @@ class BadgeChecker:
         )
 
         # if there is initial arrival and the current arrival is within 2 weekds
-        if (
-            initial_arrival
-            and user_arrival.arrival_time - initial_arrival.arrival_time
-            <= timedelta(days=14)
-        ):
+        if initial_arrival and user_arrival.arrival_time - initial_arrival.arrival_time <= timedelta(days=14):
             return [session.query(Badge).filter(Badge.id == ID).one()]
         return []
 
@@ -677,28 +652,20 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID_2024_end = 1601  # noqa: N806
         ID_2025_start = 1602  # noqa: N806
 
-        if not cls.apply_start_check(
-            session=session, target_date=target_date, badge_type_id=16
-        ):
+        if not cls.apply_start_check(session=session, target_date=target_date, badge_type_id=16):
             return []
 
         user_arrival = cls._arrived_check(session, user_id, target_date)
         if user_arrival is None:
             return []
 
-        if (
-            user_arrival.arrival_time.date()
-            == datetime(2024, 12, 27, tzinfo=ZoneInfo("Asia/Tokyo")).date()
-        ):
+        if user_arrival.arrival_time.date() == datetime(2024, 12, 27, tzinfo=ZoneInfo("Asia/Tokyo")).date():
             return [session.query(Badge).filter(Badge.id == ID_2024_end).one()]
-        if (
-            user_arrival.arrival_time.date()
-            == datetime(2025, 1, 6, tzinfo=ZoneInfo("Asia/Tokyo")).date()
-        ):
+        if user_arrival.arrival_time.date() == datetime(2025, 1, 6, tzinfo=ZoneInfo("Asia/Tokyo")).date():
             return [session.query(Badge).filter(Badge.id == ID_2025_start).one()]
         return []
 
@@ -721,14 +688,12 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
+        """
         ID_christmas = 1701  # noqa: N806
         ID_workyear_end = 1702  # noqa: N806
         ID_new_workyear_start = 1703  # noqa: N806
 
-        if not cls.apply_start_check(
-            session=session, target_date=target_date, badge_type_id=17
-        ):
+        if not cls.apply_start_check(session=session, target_date=target_date, badge_type_id=17):
             return []
 
         user_arrival = cls._arrived_check(session, user_id, target_date)
@@ -770,9 +735,7 @@ class BadgeChecker:
                 .count()
             )
             if recent_arrival_count == 0:
-                return [
-                    session.query(Badge).filter(Badge.id == ID_new_workyear_start).one()
-                ]
+                return [session.query(Badge).filter(Badge.id == ID_new_workyear_start).one()]
 
         return []
 
@@ -795,8 +758,8 @@ class BadgeChecker:
         -------
             list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
 
-        """  # noqa: E501
-        # > # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"  # noqa: E501
+        """
+        # > # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"
         # > BadgeData(
         # >     id=1801,
         # >     message="隣同士",
@@ -862,9 +825,7 @@ class BadgeChecker:
         ID_lv3_1129 = 1806  # noqa: N806
         ID_lv3_0910 = 1807  # noqa: N806
 
-        if not cls.apply_start_check(
-            session=session, target_date=target_date, badge_type_id=18
-        ):
+        if not cls.apply_start_check(session=session, target_date=target_date, badge_type_id=18):
             return []
 
         user_arrival = cls._arrived_check(session, user_id, target_date)
@@ -898,9 +859,7 @@ class BadgeChecker:
         return []
 
     @classmethod
-    def apply_start_check(
-        cls, session: Session, target_date: datetime, badge_type_id: int
-    ) -> bool:
+    def apply_start_check(cls, session: Session, target_date: datetime, badge_type_id: int) -> bool:
         """Check if the badge can be applied.
 
         Args:
@@ -913,10 +872,8 @@ class BadgeChecker:
         -------
             bool: True if the badge can be applied, False otherwise.
 
-        """  # noqa: E501
-        badge_type = (
-            session.query(BadgeType).filter(BadgeType.id == badge_type_id).one()
-        )
+        """
+        badge_type = session.query(BadgeType).filter(BadgeType.id == badge_type_id).one()
         return target_date >= badge_type.apply_start
 
 
@@ -977,9 +934,7 @@ BadgeTypes = [
         name="used_log_report",
         description="ログ分析レポートを利用した",
     ),
-    BadgeTypeData(
-        id=12, name="seasonal_rank", description="特定のシーズンでランクインした"
-    ),
+    BadgeTypeData(id=12, name="seasonal_rank", description="特定のシーズンでランクインした"),
     BadgeTypeData(
         id=13,
         name="reactioner",
@@ -1365,7 +1320,7 @@ Badges = [
         score=1,
         badge_type_id=10,
     ),
-    # BadgeTypeData id=11, name="used_log_report", description="ログ分析レポートを利用した"  # noqa: E501
+    # BadgeTypeData id=11, name="used_log_report", description="ログ分析レポートを利用した"
     BadgeData(
         id=1101,
         message="ログ分析レポート利用",
@@ -1409,7 +1364,7 @@ Badges = [
         score=1,
         badge_type_id=13,
     ),
-    # BadgeTypeData id=14, name="advance_notice_success", description="予告出社を成功させた"  # noqa: E501
+    # BadgeTypeData id=14, name="advance_notice_success", description="予告出社を成功させた"
     BadgeData(
         id=1401,
         message="予告出社成功",
@@ -1418,7 +1373,7 @@ Badges = [
         score=1,
         badge_type_id=14,
     ),
-    # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"  # noqa: E501
+    # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"
     BadgeData(
         id=1501,
         message="スタートダッシュ",
@@ -1427,7 +1382,7 @@ Badges = [
         score=2,
         badge_type_id=15,
     ),
-    # BadgeTypeData id=16, name="specific_day", description="特定の年月日に出社した"  # noqa: E501
+    # BadgeTypeData id=16, name="specific_day", description="特定の年月日に出社した"
     BadgeData(
         id=1601,
         message="2024年お疲れ様です",
@@ -1444,7 +1399,7 @@ Badges = [
         score=2,
         badge_type_id=16,
     ),
-    # BadgeTypeData id=17, name="yearly_specific_day", description="毎年特定の日に出社した"  # noqa: E501
+    # BadgeTypeData id=17, name="yearly_specific_day", description="毎年特定の日に出社した"
     BadgeData(
         id=1701,
         message="クリスマス出社",
@@ -1469,7 +1424,7 @@ Badges = [
         score=2,
         badge_type_id=17,
     ),
-    # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"  # noqa: E501
+    # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"
     BadgeData(
         id=1801,
         message="隣同士",
