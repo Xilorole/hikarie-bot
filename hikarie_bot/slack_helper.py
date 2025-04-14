@@ -93,7 +93,6 @@ class MessageFilter:
             - The message includes the mentioned user's ID.
 
         """
-        logger.debug(f"message: {message}, user: {V1_BOT_ID}")
         if (
             message.get("bot_id") == V1_BOT_ID
             and message.get("text")
@@ -122,7 +121,6 @@ class MessageFilter:
             - The message includes the mentioned user's ID.
 
         """
-        logger.debug(f"message: {message}")
         if (
             message.get("bot_id") == V2_BOT_ID
             and message.get("text")
@@ -151,7 +149,6 @@ class MessageFilter:
             - The message includes the mentioned user's ID.
 
         """
-        logger.debug(f"message: {message}, user: {BOT_ID}")
         if (
             message.get("bot_id") == BOT_ID
             and message.get("text")
@@ -198,7 +195,11 @@ async def check_bot_has_sent_message(
 
 
 async def send_daily_message(
-    app: AsyncApp, at_hour: int = 6, at_minute: int = 0, check_interval: int = 5
+    app: AsyncApp,
+    at_hour: int = 6,
+    at_minute: int = 0,
+    check_interval: int = 50,
+    force_send: bool = False,  # noqa: FBT001, FBT002
 ) -> None:
     "Run task every weekday 06:00 JST."
     # タイムゾーンの生成
@@ -223,11 +224,14 @@ async def send_daily_message(
             # check if the BOT already sent to channel
             logger.debug(f"Channel ID: {channel_id}")
             try:
-                if await check_bot_has_sent_message(
-                    app=app,
-                    channel_id=channel_id,
-                    from_datetime=now,
-                    to_datetime=day_start,
+                if (
+                    await check_bot_has_sent_message(
+                        app=app,
+                        channel_id=channel_id,
+                        from_datetime=day_start,
+                        to_datetime=now,
+                    )
+                    and not force_send
                 ):
                     logger.info("Message already sent")
                 else:
@@ -254,12 +258,14 @@ async def send_daily_message(
         logger.debug("Woke up from sleep")
 
 
-async def send_weekly_message(
+async def send_weekly_message(  # noqa: PLR0913
     app: AsyncApp,
     session: Session,
     at_hour: int = 6,
     at_minute: int = 0,
     check_interval: int = 50,
+    weekday: int = 0,
+    force_send: bool = False,  # noqa: FBT001, FBT002
 ) -> None:
     """Run task every Monday 06:00 JST.
 
@@ -275,6 +281,10 @@ async def send_weekly_message(
         The minute of the hour to send the message (default is 0).
     check_interval : int, optional
         The interval in seconds to check the time (default is 60).
+    weekday : int, optional
+        The day of the week to send the message (default is 0, which is Monday).
+    force_send : bool, optional
+        Whether to force send the message even if it has already been sent (default is False).
 
     """
     # タイムゾーンの生成
@@ -287,26 +297,30 @@ async def send_weekly_message(
         now = datetime.now(JST)
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         logger.debug(f"Current time: {now}")
-        if (
-            now.hour == at_hour
-            and now.minute == at_minute
-            and now.weekday() == 1  # Monday
-        ):
+        logger.debug(
+            f"{now.hour} == {at_hour} and {now.minute} == {at_minute} and {now.weekday()} == {weekday}"
+        )
+        if now.hour == at_hour and now.minute == at_minute and now.weekday() == weekday:
             logger.info("Attempting to fetch weekly summary message")
             message = WeeklyMessage(session=session, report_date=now)
-            if await check_bot_has_sent_message(
-                app=app,
-                channel_id=channel_id,
-                from_datetime=now,
-                to_datetime=day_start,
+            if (
+                await check_bot_has_sent_message(
+                    app=app,
+                    channel_id=channel_id,
+                    from_datetime=now,
+                    to_datetime=day_start,
+                )
+                and not force_send
             ):
                 logger.info("Weekly summary message already sent")
             else:
                 logger.info("Sending weekly summary message to channel")
+                logger.debug(f"Channel ID: {channel_id}")
+                logger.debug(f"Message: {message.render()}")
                 await app.client.chat_postMessage(
                     channel=OUTPUT_CHANNEL,
                     blocks=message.render(),
-                    text=message.to_text(),
+                    text="weekly message",  # to_text()関数はなんだか処理が重すぎるみたい
                 )
         else:
             logger.debug("Conditions not met for sending message")

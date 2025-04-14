@@ -29,6 +29,7 @@ from hikarie_bot.slack_helper import (
     get_messages,
     retrieve_thread_messages,
     send_daily_message,
+    send_weekly_message,
 )
 from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
 
@@ -90,10 +91,14 @@ async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
     if dev:
         now = get_current_jst_datetime()
         f = send_daily_message(
-            app=app, at_hour=now.hour, at_minute=now.minute, check_interval=50
+            app=app,
+            at_hour=now.hour,
+            at_minute=now.minute,
+            check_interval=50,
+            force_send=True,
         )
     else:
-        f = send_daily_message(app=app, at_hour=6, at_minute=0, check_interval=50)
+        f = send_daily_message(app=app)
 
     a = asyncio.ensure_future(f)
 
@@ -102,6 +107,28 @@ async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
 
     with get_db() as session:
         initially_insert_badge_data(session)
+
+        # get now in JST for now
+        if dev:
+            now = get_current_jst_datetime()
+            f = send_weekly_message(
+                app=app,
+                session=session,
+                at_hour=now.hour,
+                at_minute=now.minute,
+                check_interval=50,
+                weekday=0,
+                force_send=True,
+            )
+        else:
+            f = send_weekly_message(
+                app=app,
+                session=session,
+            )
+
+        b = asyncio.ensure_future(f)
+    background_task.add(b)
+
     if not skip_db_create:
         await initially_create_db(app)
     await app.client.chat_postMessage(

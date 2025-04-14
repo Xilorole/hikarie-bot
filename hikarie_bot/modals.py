@@ -1048,7 +1048,7 @@ class WeeklyMessage(BaseMessage):
         self, early_birds: list[EarlyBird], perfect_attendance: list[str]
     ) -> None:
         """Build the records block of the report."""
-        self.blocks.append(blocks.SectionBlock(text="🌟 *特別記録* 🌟"))
+        self.blocks.append(blocks.SectionBlock(text="🌟 *特別な記録* 🌟"))
 
         # Format perfect attendance text
         attendance_text = "*皆勤賞* 👑\n"
@@ -1083,9 +1083,9 @@ class WeeklyMessage(BaseMessage):
         self.blocks.append(
             blocks.ActionsBlock(
                 elements=[
-                    block_elements.ButtonElement(
-                        text="詳細ランキングを見る", action_id="view_weekly_details"
-                    ),
+                    # block_elements.ButtonElement(
+                    #     text="詳細ランキングを見る", action_id="view_weekly_details"
+                    # ),
                     block_elements.ButtonElement(
                         text="自分の実績をみる",
                         action_id=ActionID.CHECK_ACHIEVEMENT,
