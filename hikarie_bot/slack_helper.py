@@ -303,8 +303,8 @@ async def send_weekly_message(  # noqa: PLR0913
                 await check_bot_has_sent_message(
                     app=app,
                     channel_id=channel_id,
-                    from_datetime=now,
-                    to_datetime=day_start,
+                    from_datetime=day_start,
+                    to_datetime=now,
                 )
                 and not force_send
             ):
