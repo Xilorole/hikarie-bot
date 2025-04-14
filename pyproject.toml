@@ -25,6 +25,7 @@ dependencies = [
     "slack-bolt",
     "sqlalchemy-utils",
     "sqlalchemy",
+    "tzdata>=2025.2",
 ]
 
 [tool.uv]
