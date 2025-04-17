@@ -1,0 +1,12 @@
+<type>: <short summary>
+
+[optional body: explain what and why, not how]
+
+[optional footer: issues closed, breaking changes, etc.]
+
+# Examples:
+# feat: add Slack integration for notifications
+# fix: correct database connection string in settings
+# docs: update README with setup instructions
+# refactor: split curd.py into smaller modules
+# test: add tests for slack_helper.py
