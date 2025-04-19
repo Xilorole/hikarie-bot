@@ -322,3 +322,92 @@ def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
             "type": "divider",
         },
     ]
+
+
+@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
+def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
+    """Test the achievement message with badge_types_to_check patched to [6]."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+        user_id="test_user",
+    )
+
+    message = AchievementMessage(
+        session=session,
+        user_id="test_user",
+    )
+
+    # The expected output will depend on the badge data for type 6.
+    # We expect a section for badge type 6, and context blocks for its badges.
+    # Since badge data is seeded by initially_insert_badge_data, we expect at least the section header and badge type 6 description.
+    # The badge images will be "not achieved" unless test_user has a badge of type 6.
+
+    rendered = message.render()
+    # Check that only badge type 6 is present in the output
+    badge_type_sections = [block for block in rendered if block.get("type") == "section" and "*6*" in block.get("text", {}).get("text", "")]
+    assert badge_type_sections, "Badge type 6 section should be present"
+    # There should be no badge type 1 section
+    badge_type_1_sections = [block for block in rendered if block.get("type") == "section" and "*1*" in block.get("text", {}).get("text", "")]
+    assert not badge_type_1_sections, "Badge type 1 section should not be present"
+
+
+@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
+def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> None:
+    """Test 6XX badge logic: taken icon if any user has it, not achieved if none."""
+    from hikarie_bot.models import Badge, UserBadge
+
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+
+    # Find a badge with id in 600–699 and type 6
+    badge_6xx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 600, Badge.id < 700).first()
+    assert badge_6xx is not None, "Test requires a 6XX badge of type 6"
+
+    # Case 1: No user has the badge
+    message = AchievementMessage(session=session, user_id="test_user")
+    rendered = message.render()
+    # Find the context block for this badge
+    found = False
+    for block in rendered:
+        if block.get("type") == "context":
+            for element in block.get("elements", []):
+                if (
+                    element.get("type") == "image"
+                    and element.get("alt_text", "").startswith(f"【{badge_6xx.message}】")
+                ):
+                    # Should be NOT_ACHIEVED_BADGE_IMAGE_URL
+                    from hikarie_bot.constants import NOT_ACHIEVED_BADGE_IMAGE_URL
+                    assert element["image_url"] == NOT_ACHIEVED_BADGE_IMAGE_URL
+                    found = True
+    assert found, "Should find not achieved icon for 6XX badge when no user has it"
+
+    # Case 2: Another user has the badge
+    session.add(
+        UserBadge(
+            user_id="other_user",
+            user_info_raw_id="other_user",
+            badge_id=badge_6xx.id,
+            initially_acquired_datetime=datetime(2024, 1, 1, 8, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+            count=1,
+        )
+    )
+    session.commit()
+
+    message = AchievementMessage(session=session, user_id="test_user")
+    rendered = message.render()
+    found = False
+    for block in rendered:
+        if block.get("type") == "context":
+            for element in block.get("elements", []):
+                if (
+                    element.get("type") == "image"
+                    and element.get("alt_text", "").startswith(f"【{badge_6xx.message}】")
+                ):
+                    from hikarie_bot.constants import TAKEN_6XX_BADGE_IMAGE_URL
+                    assert element["image_url"] == TAKEN_6XX_BADGE_IMAGE_URL
+                    found = True
+    assert found, "Should find taken icon for 6XX badge when another user has it"

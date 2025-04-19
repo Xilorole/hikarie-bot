@@ -18,6 +18,7 @@ from hikarie_bot.constants import (
     BADGE_TYPES_TO_CHECK,
     CONTEXT_ITEM_MAX,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
+    TAKEN_6XX_BADGE_IMAGE_URL,
 )
 from hikarie_bot.models import (
     Achievement,
@@ -337,6 +338,28 @@ class AchievementMessage(BaseMessage):
                             f"@ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
                         )
                     )
+                # Special logic for 6XX badges: only one user can get it
+                elif 600 <= badge.id < 700:
+                    # If any user has this badge, show the "taken" icon
+                    other_user_badge = (
+                        session.query(UserBadge)
+                        .filter(UserBadge.badge_id == badge.id)
+                        .first()
+                    )
+                    if other_user_badge is not None:
+                        elements.append(
+                            block_elements.ImageElement(
+                                image_url=TAKEN_6XX_BADGE_IMAGE_URL,
+                                alt_text=f"【{badge.message}】他のユーザーが獲得済み",
+                            )
+                        )
+                    else:
+                        elements.append(
+                            block_elements.ImageElement(
+                                image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
+                                alt_text=f"【{badge.message}】???",
+                            )
+                        )
                 else:
                     elements.append(
                         block_elements.ImageElement(
