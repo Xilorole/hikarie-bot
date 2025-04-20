@@ -37,7 +37,6 @@ dev-dependencies = [
     "pytest-mock",
     "pytest-env",
     "matplotlib",
-    "ing-theme-matplotlib",
     "pre-commit-uv>=4.1.4",
 ]
 
@@ -55,6 +54,3 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.pytest_env]
 ENV = "test"
-
-[[tool.uv.index]]
-url = "https://mirrors.sustech.edu.cn/pypi/web/simple"
