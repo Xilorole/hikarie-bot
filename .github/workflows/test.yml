@@ -12,14 +12,14 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.12']
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Python ${{ matrix.python-version }} with uv
-        uses: ./.github/actions/setup-python-with-uv
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
 
