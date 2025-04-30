@@ -877,9 +877,20 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
         # >     badge_type_id=17,
         # > ),
 
+        # 2025/4/30追加
+        # > BadgeData(
+        # >     id=1704,
+        # >     message="世間はGW",
+        # >     condition="4/29~5/5に出社した",
+        # >     level=1,
+        # >     score=2,
+        # >     badge_type_id=17,
+        # > ),
+
         badge_christmas = BadgeChecker.get_badge(session=session, badge_id=1701)
         badge_workyear_end = BadgeChecker.get_badge(session=session, badge_id=1702)
         badge_workyear_start = BadgeChecker.get_badge(session=session, badge_id=1703)
+        badge_gw = BadgeChecker.get_badge(session=session, badge_id=1704)
         checker = BadgeChecker([17])
 
         # test scenario
@@ -909,6 +920,13 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
         #   -  2024-03-31: 年度末出社 ok, 年度初め出社 ng
         #   -  2024-04-08: 年度初め出社 ng
 
+        # [2025/4/30追記]
+        # ゴールデンウィークのバッジの追加
+        # ユーザー3: 正常系: ゴールデンウィーク出社
+        #   -  2024-04-28: ゴールデンウィーク出社 ng (GW前のため)
+        #   -  2024-04-29: ゴールデンウィーク出社 ok (GW中のため)
+        #   -  2024-04-30: ゴールデンウィーク出社 ng (取得は1回まで)
+
         test_data = (
             # ユーザー1
             UserData(jst_datetime="2024-12-25 07:00:00", user_id="user_1"),
@@ -925,6 +943,10 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
             UserData(jst_datetime="2025-03-24 07:00:00", user_id="user_2"),
             UserData(jst_datetime="2025-03-31 07:00:00", user_id="user_2"),
             UserData(jst_datetime="2025-04-08 07:00:00", user_id="user_2"),
+            # ユーザー3
+            UserData(jst_datetime="2025-04-28 07:00:00", user_id="user_3"),
+            UserData(jst_datetime="2025-04-30 07:00:00", user_id="user_3"),
+            UserData(jst_datetime="2025-05-01 07:00:00", user_id="user_3"),
         )
 
         check_data = (
@@ -956,6 +978,10 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
                 UserData(jst_datetime="2025-03-31", user_id="user_2"),
             ),
             ([], UserData(jst_datetime="2025-04-08", user_id="user_2")),
+            # ユーザー3
+            ([], UserData(jst_datetime="2025-04-28", user_id="user_3")),
+            ([badge_gw], UserData(jst_datetime="2025-04-30", user_id="user_3")),
+            ([], UserData(jst_datetime="2025-05-01", user_id="user_3")),
         )
 
         for data in test_data:
@@ -972,7 +998,7 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
                 user_id=data.user_id,
                 target_date=data.jst_datetime,
             )
-            logger.info(f"actual: {actual}")
+            logger.info(f"-> actual: {actual}")
             assert expected == checker.check_yearly_specific_day(
                 session=session,
                 user_id=data.user_id,

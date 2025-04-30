@@ -10,12 +10,14 @@ description = "hikarie is GOD bot"
 authors = [{ name = "Xilorole" }]
 requires-python = ">=3.12"
 readme = "README.md"
-dependencies = [
+
+
+[dependency-groups]
+core = [
     "aiohappyeyeballs",
     "aiohttp",
     "asyncclick",
     "click",
-    "freezegun",
     "jpholiday",
     "loguru",
     "pydantic",
@@ -27,17 +29,19 @@ dependencies = [
     "sqlalchemy",
     "tzdata>=2025.2",
 ]
-
-[tool.uv]
-dev-dependencies = [
+dev = [
+    "freezegun",
     "pytest",
     "ruff",
-    "jupyter",
     "pyright",
     "pytest-mock",
     "pytest-env",
-    "matplotlib",
     "pre-commit-uv>=4.1.4",
+]
+jupyter = [
+    "jupyter",
+    "matplotlib",
+    "ing-theme-matplotlib",
 ]
 
 [tool.setuptools.packages.find]
@@ -54,3 +58,13 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.pytest_env]
 ENV = "test"
+
+[tool.uv]
+default-groups = ["core", "dev", "jupyter"]
+
+
+[[tool.uv.index]]
+url = "https://mirrors.sustech.edu.cn/pypi/web/simple"
+
+[tool.uv.pip]
+index-url = "https://mirrors.sustech.edu.cn/pypi/web/simple"

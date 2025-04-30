@@ -601,12 +601,13 @@ wheels = [
 name = "hikarie-bot"
 version = "0.1.0"
 source = { editable = "." }
-dependencies = [
+
+[package.dev-dependencies]
+core = [
     { name = "aiohappyeyeballs" },
     { name = "aiohttp" },
     { name = "asyncclick" },
     { name = "click" },
-    { name = "freezegun" },
     { name = "jpholiday" },
     { name = "loguru" },
     { name = "pydantic" },
@@ -618,11 +619,8 @@ dependencies = [
     { name = "sqlalchemy-utils" },
     { name = "tzdata" },
 ]
-
-[package.dev-dependencies]
 dev = [
-    { name = "jupyter" },
-    { name = "matplotlib" },
+    { name = "freezegun" },
     { name = "pre-commit-uv" },
     { name = "pyright" },
     { name = "pytest" },
@@ -630,14 +628,20 @@ dev = [
     { name = "pytest-mock" },
     { name = "ruff" },
 ]
+jupyter = [
+    { name = "ing-theme-matplotlib" },
+    { name = "jupyter" },
+    { name = "matplotlib" },
+]
 
 [package.metadata]
-requires-dist = [
+
+[package.metadata.requires-dev]
+core = [
     { name = "aiohappyeyeballs" },
     { name = "aiohttp" },
     { name = "asyncclick" },
     { name = "click" },
-    { name = "freezegun" },
     { name = "jpholiday" },
     { name = "loguru" },
     { name = "pydantic" },
@@ -649,17 +653,19 @@ requires-dist = [
     { name = "sqlalchemy-utils" },
     { name = "tzdata", specifier = ">=2025.2" },
 ]
-
-[package.metadata.requires-dev]
 dev = [
-    { name = "jupyter" },
-    { name = "matplotlib" },
+    { name = "freezegun" },
     { name = "pre-commit-uv", specifier = ">=4.1.4" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-env" },
     { name = "pytest-mock" },
     { name = "ruff" },
+]
+jupyter = [
+    { name = "ing-theme-matplotlib" },
+    { name = "jupyter" },
+    { name = "matplotlib" },
 ]
 
 [[package]]
