@@ -20,4 +20,5 @@
     ],
     "git.requireGitUserConfig": true,
     "github.gitAuthentication": true,
+    "python.analysis.autoImportCompletions": true,
 }
