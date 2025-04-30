@@ -26,5 +26,5 @@ jobs:
       - name: Run Pytest if directory exists
         run: |
           if [ -d "./tests/" ]; then
-            uv run pytest -s
+            uv run --only-dev pytest -s
           fi

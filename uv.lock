@@ -621,15 +621,17 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "freezegun" },
-    { name = "ing-theme-matplotlib" },
-    { name = "jupyter" },
-    { name = "matplotlib" },
     { name = "pre-commit-uv" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-env" },
     { name = "pytest-mock" },
     { name = "ruff" },
+]
+jupyter = [
+    { name = "ing-theme-matplotlib" },
+    { name = "jupyter" },
+    { name = "matplotlib" },
 ]
 
 [package.metadata]
@@ -653,15 +655,17 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "freezegun" },
-    { name = "ing-theme-matplotlib" },
-    { name = "jupyter" },
-    { name = "matplotlib" },
     { name = "pre-commit-uv", specifier = ">=4.1.4" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-env" },
     { name = "pytest-mock" },
     { name = "ruff" },
+]
+jupyter = [
+    { name = "ing-theme-matplotlib" },
+    { name = "jupyter" },
+    { name = "matplotlib" },
 ]
 
 [[package]]
