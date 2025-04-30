@@ -15,7 +15,6 @@ dependencies = [
     "aiohttp",
     "asyncclick",
     "click",
-    "freezegun",
     "jpholiday",
     "loguru",
     "pydantic",
@@ -30,6 +29,7 @@ dependencies = [
 
 [tool.uv]
 dev-dependencies = [
+    "freezegun",
     "pytest",
     "ruff",
     "jupyter",
