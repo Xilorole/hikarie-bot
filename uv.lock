@@ -606,7 +606,6 @@ dependencies = [
     { name = "aiohttp" },
     { name = "asyncclick" },
     { name = "click" },
-    { name = "freezegun" },
     { name = "jpholiday" },
     { name = "loguru" },
     { name = "pydantic" },
@@ -621,6 +620,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "freezegun" },
     { name = "ing-theme-matplotlib" },
     { name = "jupyter" },
     { name = "matplotlib" },
@@ -638,7 +638,6 @@ requires-dist = [
     { name = "aiohttp" },
     { name = "asyncclick" },
     { name = "click" },
-    { name = "freezegun" },
     { name = "jpholiday" },
     { name = "loguru" },
     { name = "pydantic" },
@@ -653,6 +652,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "freezegun" },
     { name = "ing-theme-matplotlib" },
     { name = "jupyter" },
     { name = "matplotlib" },

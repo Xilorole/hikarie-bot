@@ -670,7 +670,7 @@ class BadgeChecker:
         return []
 
     @classmethod
-    def check_yearly_specific_day(
+    def check_yearly_specific_day(  # noqa: PLR0911
         cls,
         session: Session,
         user_id: str,
@@ -692,6 +692,7 @@ class BadgeChecker:
         ID_christmas = 1701  # noqa: N806
         ID_workyear_end = 1702  # noqa: N806
         ID_new_workyear_start = 1703  # noqa: N806
+        ID_golden_week = 1704  # noqa: N806
 
         if not cls.apply_start_check(session=session, target_date=target_date, badge_type_id=17):
             return []
@@ -736,6 +737,22 @@ class BadgeChecker:
             )
             if recent_arrival_count == 0:
                 return [session.query(Badge).filter(Badge.id == ID_new_workyear_start).one()]
+
+        if (month, day) in {(4, 29), (4, 30), (5, 1), (5, 2), (5, 3), (5, 4), (5, 5)}:
+            # check if the user has not achieved this badge within the last 7 days
+            year = user_arrival.arrival_time.date().year
+            date_4_29 = datetime(year, 4, 29, tzinfo=ZoneInfo("Asia/Tokyo"))
+            recent_arrival_count = (
+                session.query(GuestArrivalInfo)
+                .filter(
+                    GuestArrivalInfo.user_id == user_id,
+                    GuestArrivalInfo.arrival_time >= date_4_29,
+                    GuestArrivalInfo.arrival_time < target_date,
+                )
+                .count()
+            )
+            if recent_arrival_count == 0:
+                return [session.query(Badge).filter(Badge.id == ID_golden_week).one()]
 
         return []
 
@@ -1420,6 +1437,14 @@ Badges = [
         id=1703,
         message="今年度もよろしくお願いします",
         condition="年度初めに出社した",
+        level=1,
+        score=2,
+        badge_type_id=17,
+    ),
+    BadgeData(
+        id=1704,
+        message="世間はGW",
+        condition="4/29~5/5に出社した",
         level=1,
         score=2,
         badge_type_id=17,
