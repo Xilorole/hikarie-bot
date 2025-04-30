@@ -10,7 +10,10 @@ description = "hikarie is GOD bot"
 authors = [{ name = "Xilorole" }]
 requires-python = ">=3.12"
 readme = "README.md"
-dependencies = [
+
+
+[dependency-groups]
+core = [
     "aiohappyeyeballs",
     "aiohttp",
     "asyncclick",
@@ -26,8 +29,6 @@ dependencies = [
     "sqlalchemy",
     "tzdata>=2025.2",
 ]
-
-[dependency-groups]
 dev = [
     "freezegun",
     "pytest",
@@ -59,7 +60,7 @@ asyncio_default_fixture_loop_scope = "function"
 ENV = "test"
 
 [tool.uv]
-default-groups = ["dev", "jupyter"]
+default-groups = ["core", "dev", "jupyter"]
 
 
 [[tool.uv.index]]

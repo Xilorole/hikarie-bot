@@ -23,7 +23,7 @@ COPY pyproject.toml uv.lock .python-version ./
 ENV PATH="/root/.local/bin:$PATH"
 RUN mkdir .db && \
     uv python pin "$(cat .python-version)" && \
-    uv sync --no-dev
+    uv sync --group core
 
 # Verify the presence of the .git directory
-CMD [ "uv", "run", "--no-dev", "hikarie_bot"]
+CMD [ "uv", "run", " --group", "core", "hikarie_bot"]

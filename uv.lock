@@ -601,7 +601,9 @@ wheels = [
 name = "hikarie-bot"
 version = "0.1.0"
 source = { editable = "." }
-dependencies = [
+
+[package.dev-dependencies]
+core = [
     { name = "aiohappyeyeballs" },
     { name = "aiohttp" },
     { name = "asyncclick" },
@@ -617,8 +619,6 @@ dependencies = [
     { name = "sqlalchemy-utils" },
     { name = "tzdata" },
 ]
-
-[package.dev-dependencies]
 dev = [
     { name = "freezegun" },
     { name = "pre-commit-uv" },
@@ -635,7 +635,9 @@ jupyter = [
 ]
 
 [package.metadata]
-requires-dist = [
+
+[package.metadata.requires-dev]
+core = [
     { name = "aiohappyeyeballs" },
     { name = "aiohttp" },
     { name = "asyncclick" },
@@ -651,8 +653,6 @@ requires-dist = [
     { name = "sqlalchemy-utils" },
     { name = "tzdata", specifier = ">=2025.2" },
 ]
-
-[package.metadata.requires-dev]
 dev = [
     { name = "freezegun" },
     { name = "pre-commit-uv", specifier = ">=4.1.4" },
