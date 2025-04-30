@@ -26,4 +26,4 @@ RUN mkdir .db && \
     uv sync --no-group jupyter
 
 # Verify the presence of the .git directory
-CMD [ "uv", "run", "hikarie_bot"]
+CMD [ "uv", "run","--no-group", "jupyter", "hikarie_bot"]
