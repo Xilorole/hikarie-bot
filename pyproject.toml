@@ -15,7 +15,6 @@ dependencies = [
     "aiohttp",
     "asyncclick",
     "click",
-    "freezegun",
     "jpholiday",
     "loguru",
     "pydantic",
@@ -30,6 +29,7 @@ dependencies = [
 
 [tool.uv]
 dev-dependencies = [
+    "freezegun",
     "pytest",
     "ruff",
     "jupyter",
@@ -58,3 +58,6 @@ ENV = "test"
 
 [[tool.uv.index]]
 url = "https://mirrors.sustech.edu.cn/pypi/web/simple"
+
+[tool.uv.pip]
+index-url = "https://mirrors.sustech.edu.cn/pypi/web/simple"

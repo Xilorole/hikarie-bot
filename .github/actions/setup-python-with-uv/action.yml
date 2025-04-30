@@ -25,5 +25,5 @@ runs:
         key: ${{ runner.os }}-python-${{ inputs.python-version }}-uv
 
     - name: Install Dependencies
-      run: uv sync
+      run: uv sync --no-dev
       shell: bash
