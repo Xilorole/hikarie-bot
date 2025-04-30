@@ -348,10 +348,14 @@ def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
 
     rendered = message.render()
     # Check that only badge type 6 is present in the output
-    badge_type_sections = [block for block in rendered if block.get("type") == "section" and "*6*" in block.get("text", {}).get("text", "")]
+    badge_type_sections = [
+        block for block in rendered if block.get("type") == "section" and "*6*" in block.get("text", {}).get("text", "")
+    ]
     assert badge_type_sections, "Badge type 6 section should be present"
     # There should be no badge type 1 section
-    badge_type_1_sections = [block for block in rendered if block.get("type") == "section" and "*1*" in block.get("text", {}).get("text", "")]
+    badge_type_1_sections = [
+        block for block in rendered if block.get("type") == "section" and "*1*" in block.get("text", {}).get("text", "")
+    ]
     assert not badge_type_1_sections, "Badge type 1 section should not be present"
 
 
@@ -363,7 +367,7 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    # Find a badge with id in 600–699 and type 6
+    # Find a badge with id in 600-699 and type 6
     badge_6xx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 600, Badge.id < 700).first()
     assert badge_6xx is not None, "Test requires a 6XX badge of type 6"
 
@@ -375,12 +379,12 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
     for block in rendered:
         if block.get("type") == "context":
             for element in block.get("elements", []):
-                if (
-                    element.get("type") == "image"
-                    and element.get("alt_text", "").startswith(f"【{badge_6xx.message}】")
+                if element.get("type") == "image" and element.get("alt_text", "").startswith(
+                    f"【{badge_6xx.message}】"
                 ):
                     # Should be NOT_ACHIEVED_BADGE_IMAGE_URL
                     from hikarie_bot.constants import NOT_ACHIEVED_BADGE_IMAGE_URL
+
                     assert element["image_url"] == NOT_ACHIEVED_BADGE_IMAGE_URL
                     found = True
     assert found, "Should find not achieved icon for 6XX badge when no user has it"
@@ -403,11 +407,11 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
     for block in rendered:
         if block.get("type") == "context":
             for element in block.get("elements", []):
-                if (
-                    element.get("type") == "image"
-                    and element.get("alt_text", "").startswith(f"【{badge_6xx.message}】")
+                if element.get("type") == "image" and element.get("alt_text", "").startswith(
+                    f"【{badge_6xx.message}】"
                 ):
                     from hikarie_bot.constants import TAKEN_6XX_BADGE_IMAGE_URL
+
                     assert element["image_url"] == TAKEN_6XX_BADGE_IMAGE_URL
                     found = True
     assert found, "Should find taken icon for 6XX badge when another user has it"

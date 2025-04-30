@@ -339,13 +339,9 @@ class AchievementMessage(BaseMessage):
                         )
                     )
                 # Special logic for 6XX badges: only one user can get it
-                elif 600 <= badge.id < 700:
+                elif 600 <= badge.id < 700:  # noqa: PLR2004
                     # If any user has this badge, show the "taken" icon
-                    other_user_badge = (
-                        session.query(UserBadge)
-                        .filter(UserBadge.badge_id == badge.id)
-                        .first()
-                    )
+                    other_user_badge = session.query(UserBadge).filter(UserBadge.badge_id == badge.id).first()
                     if other_user_badge is not None:
                         elements.append(
                             block_elements.ImageElement(
