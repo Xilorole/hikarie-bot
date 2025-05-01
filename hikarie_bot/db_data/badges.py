@@ -739,20 +739,7 @@ class BadgeChecker:
                 return [session.query(Badge).filter(Badge.id == ID_new_workyear_start).one()]
 
         if (month, day) in {(4, 29), (4, 30), (5, 1), (5, 2), (5, 3), (5, 4), (5, 5)}:
-            # check if the user has not achieved this badge within the last 7 days
-            year = user_arrival.arrival_time.date().year
-            date_4_29 = datetime(year, 4, 29, tzinfo=ZoneInfo("Asia/Tokyo"))
-            recent_arrival_count = (
-                session.query(GuestArrivalInfo)
-                .filter(
-                    GuestArrivalInfo.user_id == user_id,
-                    GuestArrivalInfo.arrival_time >= date_4_29,
-                    GuestArrivalInfo.arrival_time < target_date,
-                )
-                .count()
-            )
-            if recent_arrival_count == 0:
-                return [session.query(Badge).filter(Badge.id == ID_golden_week).one()]
+            return [session.query(Badge).filter(Badge.id == ID_golden_week).one()]
 
         return []
 

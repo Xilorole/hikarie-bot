@@ -981,7 +981,7 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
             # ユーザー3
             ([], UserData(jst_datetime="2025-04-28", user_id="user_3")),
             ([badge_gw], UserData(jst_datetime="2025-04-30", user_id="user_3")),
-            ([], UserData(jst_datetime="2025-05-01", user_id="user_3")),
+            ([badge_gw], UserData(jst_datetime="2025-05-01", user_id="user_3")),
         )
 
         for data in test_data:
