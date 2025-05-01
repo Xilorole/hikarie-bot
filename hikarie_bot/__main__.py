@@ -18,9 +18,11 @@ from hikarie_bot.modals import (
     ActionID,
     PointGetMessage,
     RegistryMessage,
+    ShortcutID,
 )
 from hikarie_bot.models import get_db
 from hikarie_bot.settings import (
+    ADMIN,
     LOG_CHANNEL,
     SLACK_BOT_TOKEN,
 )
@@ -80,6 +82,11 @@ async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
     # Configure loguru logger
     logger.remove()
     logger.add(sys.stderr, level=log_level)
+
+    await app.client.chat_postMessage(
+        channel=LOG_CHANNEL,
+        text=f"starting application (v{version})",
+    )
 
     background_task = set()
 
@@ -216,6 +223,27 @@ async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: 
 
 
 # Moved to a new file: hikarie_bot/slack_components.py
+
+
+@app.shortcut(ShortcutID.REBOOT)
+async def handle_reboot(ack: AsyncAck, body: dict[str, Any]) -> None:
+    """Handle the reboot shortcut event."""
+    await ack()
+    user_id = body["user"]["id"]
+
+    if user_id == ADMIN:
+        await app.client.chat_postEphemeral(
+            channel=body["channel"]["id"],
+            user=user_id,
+            text="rebooting...",
+        )
+        sys.exit(0)
+    else:
+        await app.client.chat_postEphemeral(
+            channel=body["channel"]["id"],
+            user=user_id,
+            text="not authorized to reboot the application",
+        )
 
 
 if __name__ == "__main__":
