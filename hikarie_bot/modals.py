@@ -61,7 +61,7 @@ class BlockID:
 class ShortcutID:
     """Class for storing the shortcut IDs used in the Slack app."""
 
-    REBOOT = "REBOOT"
+    REBOOT = "reboot"  # only small letters are allowed
 
 
 class BaseMessage:
