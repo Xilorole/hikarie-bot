@@ -58,6 +58,12 @@ class BlockID:
     CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
 
 
+class ShortcutID:
+    """Class for storing the shortcut IDs used in the Slack app."""
+
+    REBOOT = "REBOOT"
+
+
 class BaseMessage:
     """Base class for creating Slack messages with blocks."""
 
