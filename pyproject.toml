@@ -61,10 +61,3 @@ ENV = "test"
 
 [tool.uv]
 default-groups = ["core", "dev", "jupyter"]
-
-
-[[tool.uv.index]]
-url = "https://mirrors.sustech.edu.cn/pypi/web/simple"
-
-[tool.uv.pip]
-index-url = "https://mirrors.sustech.edu.cn/pypi/web/simple"
