@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, event, func
 from sqlalchemy.engine import Connection
-from sqlalchemy.orm import Mapped, Mapper, Session, mapped_column, relationship
+from sqlalchemy.orm import MappedColumn, Mapper, Session, mapped_column, relationship
 
 from .database import BaseSchema, SessionLocal, engine
 
@@ -20,10 +20,10 @@ class GuestArrivalRaw(BaseSchema):
 
     __tablename__ = "guest_arrival_raw"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
-    arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, unique=True)
+    user_id: MappedColumn[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
+    user_info_raw_id: MappedColumn[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
+    arrival_time: MappedColumn[datetime] = mapped_column(DateTime, default=func.now())
 
     def __repr__(self) -> str:
         """Return the string representation of the GuestArrivalRaw class."""
@@ -53,12 +53,12 @@ class GuestArrivalInfo(BaseSchema):
 
     __tablename__ = "guest_arrival_info"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
-    arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    arrival_rank: Mapped[int] = mapped_column(Integer)
-    acquired_score_sum: Mapped[int] = mapped_column(Integer)
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, unique=True)
+    user_id: MappedColumn[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
+    user_info_raw_id: MappedColumn[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
+    arrival_time: MappedColumn[datetime] = mapped_column(DateTime, default=func.now())
+    arrival_rank: MappedColumn[int] = mapped_column(Integer)
+    acquired_score_sum: MappedColumn[int] = mapped_column(Integer)
 
     def __repr__(self) -> str:
         """Return the string representation of the GuestArrivalInfo class."""
@@ -90,12 +90,12 @@ class Achievement(BaseSchema):
 
     __tablename__ = "achievement"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
-    arrival_id: Mapped[int] = mapped_column(Integer, ForeignKey("guest_arrival_info.id"), nullable=False)
-    badge_id: Mapped[int] = mapped_column(Integer, ForeignKey("badges.id"), nullable=False)
-    achieved_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, unique=True)
+    user_id: MappedColumn[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
+    user_info_raw_id: MappedColumn[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
+    arrival_id: MappedColumn[int] = mapped_column(Integer, ForeignKey("guest_arrival_info.id"), nullable=False)
+    badge_id: MappedColumn[int] = mapped_column(Integer, ForeignKey("badges.id"), nullable=False)
+    achieved_time: MappedColumn[datetime] = mapped_column(DateTime, default=func.now())
 
     user = relationship("User", backref="achievement")
     arrival = relationship("GuestArrivalInfo", backref="achievement")
@@ -132,16 +132,16 @@ class User(BaseSchema):
 
     __tablename__ = "user"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, unique=True)
-    current_score: Mapped[int] = mapped_column(Integer)
-    previous_score: Mapped[int] = mapped_column(Integer)
-    update_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    level: Mapped[int] = mapped_column(Integer)
-    level_name: Mapped[str] = mapped_column(String)
-    level_uped: Mapped[bool] = mapped_column(Boolean)
-    point_to_next_level: Mapped[int] = mapped_column(Integer)
-    point_range_to_next_level: Mapped[int] = mapped_column(Integer)
-    current_level_point: Mapped[int] = mapped_column(Integer)
+    id: MappedColumn[str] = mapped_column(String, primary_key=True, unique=True)
+    current_score: MappedColumn[int] = mapped_column(Integer)
+    previous_score: MappedColumn[int] = mapped_column(Integer)
+    update_datetime: MappedColumn[datetime] = mapped_column(DateTime, default=func.now())
+    level: MappedColumn[int] = mapped_column(Integer)
+    level_name: MappedColumn[str] = mapped_column(String)
+    level_uped: MappedColumn[bool] = mapped_column(Boolean)
+    point_to_next_level: MappedColumn[int] = mapped_column(Integer)
+    point_range_to_next_level: MappedColumn[int] = mapped_column(Integer)
+    current_level_point: MappedColumn[int] = mapped_column(Integer)
 
     guest_arrivals_raw = relationship("GuestArrivalRaw", backref="user")
     guest_arrivals_info = relationship("GuestArrivalInfo", backref="user")
@@ -168,19 +168,19 @@ class UserInfoRaw(BaseSchema):
     __tablename__ = "user_raw"
 
     # the UserInfoRaw.id is just the auto incremented id
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True, autoincrement=True)
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, unique=True, autoincrement=True)
 
     # the user_id is the same as the user.id
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    current_score: Mapped[int] = mapped_column(Integer)
-    previous_score: Mapped[int] = mapped_column(Integer)
-    update_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    level: Mapped[int] = mapped_column(Integer)
-    level_name: Mapped[str] = mapped_column(String)
-    level_uped: Mapped[bool] = mapped_column(Boolean)
-    point_to_next_level: Mapped[int] = mapped_column(Integer)
-    point_range_to_next_level: Mapped[int] = mapped_column(Integer)
-    current_level_point: Mapped[int] = mapped_column(Integer)
+    user_id: MappedColumn[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
+    current_score: MappedColumn[int] = mapped_column(Integer)
+    previous_score: MappedColumn[int] = mapped_column(Integer)
+    update_datetime: MappedColumn[datetime] = mapped_column(DateTime, default=func.now())
+    level: MappedColumn[int] = mapped_column(Integer)
+    level_name: MappedColumn[str] = mapped_column(String)
+    level_uped: MappedColumn[bool] = mapped_column(Boolean)
+    point_to_next_level: MappedColumn[int] = mapped_column(Integer)
+    point_range_to_next_level: MappedColumn[int] = mapped_column(Integer)
+    current_level_point: MappedColumn[int] = mapped_column(Integer)
 
     guest_arrivals_raw = relationship("GuestArrivalRaw", backref="user_raw")
     guest_arrivals_info = relationship("GuestArrivalInfo", backref="user_raw")
@@ -202,10 +202,10 @@ class BadgeType(BaseSchema):
 
     __tablename__ = "badge_types"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(String)
-    apply_start: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, unique=True)
+    name: MappedColumn[str] = mapped_column(String, nullable=False)
+    description: MappedColumn[str] = mapped_column(String)
+    apply_start: MappedColumn[datetime] = mapped_column(DateTime, nullable=True)
 
     badges = relationship("Badge", back_populates="badge_type")
 
@@ -219,12 +219,12 @@ class Badge(BaseSchema):
 
     __tablename__ = "badges"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    message: Mapped[str] = mapped_column(String)
-    condition: Mapped[str] = mapped_column(String)
-    level: Mapped[int] = mapped_column(Integer, nullable=False)
-    score: Mapped[int] = mapped_column(Integer, nullable=False)
-    badge_type_id: Mapped[int] = mapped_column(Integer, ForeignKey("badge_types.id"), nullable=False)
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, unique=True)
+    message: MappedColumn[str] = mapped_column(String)
+    condition: MappedColumn[str] = mapped_column(String)
+    level: MappedColumn[int] = mapped_column(Integer, nullable=False)
+    score: MappedColumn[int] = mapped_column(Integer, nullable=False)
+    badge_type_id: MappedColumn[int] = mapped_column(Integer, ForeignKey("badge_types.id"), nullable=False)
 
     badge_type = relationship("BadgeType", back_populates="badges")
     users = relationship("UserBadge", back_populates="badge")
@@ -239,13 +239,13 @@ class UserBadge(BaseSchema):
 
     __tablename__ = "user_badges"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
-    user_info_raw_id: Mapped[int] = mapped_column(Integer, ForeignKey("user_raw.user_id"))
-    badge_id: Mapped[int] = mapped_column(Integer, ForeignKey("badges.id"))
-    initially_acquired_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    last_acquired_datetime: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    count: Mapped[int] = mapped_column(Integer)
+    id: MappedColumn[int] = mapped_column(Integer, primary_key=True, unique=True)
+    user_id: MappedColumn[int] = mapped_column(Integer, ForeignKey("user.id"))
+    user_info_raw_id: MappedColumn[int] = mapped_column(Integer, ForeignKey("user_raw.user_id"))
+    badge_id: MappedColumn[int] = mapped_column(Integer, ForeignKey("badges.id"))
+    initially_acquired_datetime: MappedColumn[datetime] = mapped_column(DateTime, default=func.now())
+    last_acquired_datetime: MappedColumn[datetime] = mapped_column(DateTime, default=func.now())
+    count: MappedColumn[int] = mapped_column(Integer)
 
     user = relationship("User", back_populates="badges")
     user_raw = relationship("UserInfoRaw", back_populates="user_badges")
