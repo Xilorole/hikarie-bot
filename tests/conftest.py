@@ -1,5 +1,12 @@
 from collections.abc import Generator
-from typing import Any, Self
+import sys # Added sys import
+
+# Conditionally import Self and Any
+if sys.version_info >= (3, 11):
+    from typing import Self, Any
+else:
+    from typing_extensions import Self
+    from typing import Any # Any is available in typing for older versions too
 
 import pytest
 from sqlalchemy import create_engine

@@ -735,31 +735,31 @@ class WeeklyMessage(BaseMessage):
     ) -> list[UserAchievement]:
         """Get new achievements during the given date range."""
         # Get unique badge achievements in the date range
-        achievements = (
+        user_badges = (
             session.query(
-                Achievement.user_id,
-                Achievement.badge_id,
+                UserBadge.user_id,
+                UserBadge.badge_id,
                 Badge.message,
-                Achievement.achieved_time,
+                UserBadge.initially_acquired_datetime,
             )
-            .join(Badge, Achievement.badge_id == Badge.id)
+            .join(Badge, UserBadge.badge_id == Badge.id)
             .filter(
-                Achievement.achieved_time >= start_date,
-                Achievement.achieved_time <= end_date,
+                UserBadge.initially_acquired_datetime >= start_date,
+                UserBadge.initially_acquired_datetime <= end_date,
             )
-            .order_by(Achievement.achieved_time.desc())
+            .order_by(UserBadge.initially_acquired_datetime.desc())
             .limit(5)
             .all()
         )
 
         return [
             UserAchievement(
-                user_id=achievement.user_id,
-                badge_id=achievement.badge_id,
-                message=achievement.message,
-                achieved_time=achievement.achieved_time,
+                user_id=user_badge.user_id,
+                badge_id=user_badge.badge_id,
+                message=user_badge.message,
+                achieved_time=user_badge.initially_acquired_datetime,
             )
-            for achievement in achievements
+            for user_badge in user_badges
         ]
 
     def _get_most_acquired_badge(
