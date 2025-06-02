@@ -733,34 +733,73 @@ class WeeklyMessage(BaseMessage):
     def _get_new_achievements(
         self, session: Session, start_date: datetime, end_date: datetime
     ) -> list[UserAchievement]:
-        """Get new achievements during the given date range."""
-        # Get unique badge achievements in the date range
-        achievements = (
+        """Get new achievements during the given date range.
+        A new achievement is defined as a badge acquired by a user for the first time
+        within the specified date range.
+        """
+        # Get all achievements within the date range
+        # Querying Achievement and joining with UserBadge to get initially_acquired_datetime
+        achievements_in_period_query = (
             session.query(
                 Achievement.user_id,
                 Achievement.badge_id,
                 Badge.message,
                 Achievement.achieved_time,
+                UserBadge.initially_acquired_datetime,
             )
             .join(Badge, Achievement.badge_id == Badge.id)
+            .join(UserBadge, (Achievement.user_id == UserBadge.user_id) & (Achievement.badge_id == UserBadge.badge_id))
             .filter(
                 Achievement.achieved_time >= start_date,
-                Achievement.achieved_time <= end_date,
+                Achievement.achieved_time < end_date, # Use < end_date for consistency
             )
-            .order_by(Achievement.achieved_time.desc())
-            .limit(5)
-            .all()
+            # We order by achieved_time from Achievement table as primary sort key
+            # and then by initially_acquired_datetime to ensure consistency if multiple records exist
+            .order_by(Achievement.achieved_time.desc(), UserBadge.initially_acquired_datetime.desc())
         )
 
-        return [
-            UserAchievement(
-                user_id=achievement.user_id,
-                badge_id=achievement.badge_id,
-                message=achievement.message,
-                achieved_time=achievement.achieved_time,
-            )
-            for achievement in achievements
-        ]
+        achievements_in_period = achievements_in_period_query.all()
+
+        newly_unlocked_achievements = []
+        # This set will store tuples of (user_id, badge_id) to ensure each new unlock is added only once.
+        # This is important because a user might achieve the same badge multiple times in the period,
+        # but it's only "newly unlocked" if its UserBadge.initially_acquired_datetime falls in the period.
+        # The query might return multiple Achievement records for the same UserBadge if that badge was achieved multiple times.
+        processed_new_unlocks = set()
+
+        for ach in achievements_in_period:
+            # The key for a new unlock is the combination of user and badge
+            unlock_key = (ach.user_id, ach.badge_id)
+
+            # Check if this specific unlock (user, badge) has already been added to our list
+            if unlock_key in processed_new_unlocks:
+                continue
+
+            # A badge is considered "newly unlocked" if its initial acquisition date is within the report period.
+            # Ensure initially_acquired_datetime is offset-aware before comparison
+            initially_acquired_dt = ach.initially_acquired_datetime
+            if initially_acquired_dt and initially_acquired_dt.tzinfo is None:
+                initially_acquired_dt = initially_acquired_dt.replace(tzinfo=start_date.tzinfo) # Assume same timezone as start_date
+
+            if initially_acquired_dt and start_date <= initially_acquired_dt < end_date:
+                newly_unlocked_achievements.append(
+                    UserAchievement(
+                        user_id=ach.user_id,
+                        badge_id=ach.badge_id,
+                        message=ach.message,
+                        # The achieved_time for the report should be the time of the specific achievement
+                        # record that falls into the period and led to this "new unlock" determination.
+                        achieved_time=ach.achieved_time.replace(tzinfo=start_date.tzinfo) if ach.achieved_time and ach.achieved_time.tzinfo is None else ach.achieved_time,
+                    )
+                )
+                # Mark this (user_id, badge_id) combination as processed for new unlocks
+                processed_new_unlocks.add(unlock_key)
+
+        # The list is already sorted by achieved_time.desc() from the query.
+        # If we need to re-sort due to complex filtering or aggregation not done here, it would be:
+        # newly_unlocked_achievements.sort(key=lambda x: x.achieved_time, reverse=True)
+
+        return newly_unlocked_achievements[:5]
 
     def _get_most_acquired_badge(
         self, session: Session, start_date: datetime, end_date: datetime

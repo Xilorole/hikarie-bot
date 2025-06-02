@@ -13,6 +13,8 @@ from hikarie_bot.modals import (
     InitialMessage,
     PointGetMessage,
     RegistryMessage,
+    WeeklyMessage,
+    UserAchievement,
 )
 
 
@@ -415,3 +417,163 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
                     assert element["image_url"] == TAKEN_6XX_BADGE_IMAGE_URL
                     found = True
     assert found, "Should find taken icon for 6XX badge when another user has it"
+
+
+class TestWeeklyMessage:
+    def test_get_new_achievements_no_achievements(self, temp_db: sessionmaker[Session]) -> None:
+        """Test _get_new_achievements when there are no new achievements."""
+        session = temp_db()
+        initially_insert_badge_data(session=session)
+        report_date = datetime(2024, 1, 8, 0, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        weekly_message = WeeklyMessage(session=session, report_date=report_date)
+
+        new_achievements = weekly_message._get_new_achievements(
+            session,
+            weekly_message.start_of_week,
+            weekly_message.end_of_week
+        )
+        assert new_achievements == []
+
+    def test_get_new_achievements_first_time_achievement_in_week(self, temp_db: sessionmaker[Session]) -> None:
+        """Test _get_new_achievements when a user gets an achievement for the first time within the week."""
+        session = temp_db()
+        initially_insert_badge_data(session=session)
+
+        user_id = "test_user_new_achieve"
+        # This arrival will trigger a "welcome" badge (ID 101) and others.
+        achievement_time = datetime(2024, 1, 2, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")) # Report week: Jan 1 to Jan 7
+
+        insert_arrival_action(
+            session=session,
+            jst_datetime=achievement_time,
+            user_id=user_id,
+        )
+
+        report_date = datetime(2024, 1, 8, 0, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        weekly_message = WeeklyMessage(session=session, report_date=report_date) # Covers Jan 1 to Jan 7
+
+        new_achievements = weekly_message._get_new_achievements(
+            session,
+            weekly_message.start_of_week, # Jan 1, 00:00
+            weekly_message.end_of_week    # Jan 8, 00:00
+        )
+
+        assert len(new_achievements) > 0
+
+        found_welcome_badge = False
+        for ach in new_achievements:
+            if ach.user_id == user_id and ach.badge_id == 101: # welcome badge
+                # The achieved_time in UserAchievement should be the time of the Achievement record
+                assert ach.achieved_time == achievement_time
+                found_welcome_badge = True
+                break
+        assert found_welcome_badge, "Welcome badge should be in new achievements for the user"
+
+    def test_get_new_achievements_already_achieved_badge_in_week(self, temp_db: sessionmaker[Session]) -> None:
+        """Test _get_new_achievements when a user gets an already achieved badge again within the week."""
+        session = temp_db()
+        initially_insert_badge_data(session=session)
+
+        user_id = "test_user_re_achieve"
+        # First achievement (e.g., welcome badge) in the previous week
+        first_achievement_time = datetime(2023, 12, 26, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        insert_arrival_action(
+            session=session,
+            jst_datetime=first_achievement_time,
+            user_id=user_id,
+        )
+
+        # Second achievement (same badge type) within the current report week
+        second_achievement_time = datetime(2024, 1, 2, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        insert_arrival_action(
+            session=session,
+            jst_datetime=second_achievement_time,
+            user_id=user_id,
+        )
+
+        report_date = datetime(2024, 1, 8, 0, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        weekly_message = WeeklyMessage(session=session, report_date=report_date)
+
+        new_achievements = weekly_message._get_new_achievements(
+            session,
+            weekly_message.start_of_week, # Jan 1, 00:00
+            weekly_message.end_of_week    # Jan 8, 00:00
+        )
+
+        # The welcome badge (ID 101) was first achieved on Dec 26, so it's not "new" in Jan 1-7 report
+        is_welcome_badge_present_as_new = any(ach.badge_id == 101 and ach.user_id == user_id for ach in new_achievements)
+        assert not is_welcome_badge_present_as_new, "Previously achieved welcome badge should not be in new achievements list"
+
+    def test_get_new_achievements_multiple_users(self, temp_db: sessionmaker[Session]) -> None:
+        """Test _get_new_achievements with multiple users and mixed new/old achievements."""
+        session = temp_db()
+        initially_insert_badge_data(session=session)
+
+        user1_id = "user1_new_in_week"       # New user, gets welcome badge (101) this week
+        user2_id = "user2_old_re_achieve" # Old user, got welcome badge last week, re-achieves this week
+        user3_id = "user3_new_fastest"    # New user, gets welcome (101) and fastest (201) this week
+
+        # User1: New achievement (welcome badge) in the current week
+        user1_achieve_time = datetime(2024, 1, 2, 9, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        insert_arrival_action(session=session, jst_datetime=user1_achieve_time, user_id=user1_id)
+
+        # User2: Achieved welcome badge last week, and again this week
+        user2_past_achieve_time = datetime(2023, 12, 25, 9, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")) # Last week
+        insert_arrival_action(session=session, jst_datetime=user2_past_achieve_time, user_id=user2_id)
+        user2_current_achieve_time = datetime(2024, 1, 3, 9, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")) # This week
+        insert_arrival_action(session=session, jst_datetime=user2_current_achieve_time, user_id=user2_id)
+
+        # User3: New user, gets welcome (101) and fastest arrival (201) this week.
+        # To ensure fastest, make their arrival earliest on a day.
+        user3_achieve_time = datetime(2024, 1, 1, 8, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")) # Earliest on Jan 1
+        insert_arrival_action(session=session, jst_datetime=user3_achieve_time, user_id=user3_id)
+
+        report_date = datetime(2024, 1, 8, 0, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")) # Report for Jan 1 - Jan 7
+        weekly_message = WeeklyMessage(session=session, report_date=report_date)
+
+        new_achievements = weekly_message._get_new_achievements(
+            session,
+            weekly_message.start_of_week,
+            weekly_message.end_of_week
+        )
+
+        user1_new_unlocks = [ach for ach in new_achievements if ach.user_id == user1_id]
+        user2_new_unlocks = [ach for ach in new_achievements if ach.user_id == user2_id]
+        user3_new_unlocks = [ach for ach in new_achievements if ach.user_id == user3_id]
+
+        assert any(ach.badge_id == 101 for ach in user1_new_unlocks), "User1 should have new welcome badge"
+        assert len(user2_new_unlocks) == 0, "User2 should have no new unlocks as welcome badge was from past"
+
+        assert any(ach.badge_id == 101 for ach in user3_new_unlocks), "User3 should have new welcome badge"
+        assert any(ach.badge_id == 201 for ach in user3_new_unlocks), "User3 should have new fastest arrival badge"
+        # Check total number of new unlocks for user3, could be more depending on other badges triggered
+        assert len(user3_new_unlocks) >= 2
+
+
+    def test_get_new_achievements_limit_five(self, temp_db: sessionmaker[Session]) -> None:
+        """Test that _get_new_achievements returns a maximum of 5 achievements if many new ones exist."""
+        session = temp_db()
+        initially_insert_badge_data(session=session)
+
+        # Create 6 users, each getting a new "welcome" badge on different days within the week
+        for i in range(6):
+            user_id = f"new_user_for_limit_test_{i}"
+            # Stagger achievement times to ensure distinct Achievement records
+            achievement_time = datetime(2024, 1, 1 + i, 10, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+            insert_arrival_action(
+                session=session,
+                jst_datetime=achievement_time,
+                user_id=user_id,
+            )
+
+        # Report date covers the week these achievements happened
+        report_date = datetime(2024, 1, 8, 0, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        weekly_message = WeeklyMessage(session=session, report_date=report_date)
+
+        new_achievements = weekly_message._get_new_achievements(
+            session,
+            weekly_message.start_of_week, # Jan 1
+            weekly_message.end_of_week    # Jan 8
+        )
+        # Even if more than 5 new unlocks occurred, the function should limit the output.
+        assert len(new_achievements) <= 5

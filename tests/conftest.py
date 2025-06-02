@@ -1,5 +1,10 @@
 from collections.abc import Generator
-from typing import Any, Self
+from typing import Any
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 
 import pytest
 from sqlalchemy import create_engine
