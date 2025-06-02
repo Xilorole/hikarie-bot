@@ -1,3 +1,4 @@
+import zoneinfo  # Added for timezone conversion
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from textwrap import dedent
@@ -734,18 +735,29 @@ class WeeklyMessage(BaseMessage):
         self, session: Session, start_date: datetime, end_date: datetime
     ) -> list[UserAchievement]:
         """Get new achievements during the given date range."""
-        # Get unique badge achievements in the date range
+
+        # Convert start_date and end_date to naive UTC if they are timezone-aware
+        # This is because SQLAlchemy stores aware datetimes as naive UTC in SQLite by default
+        utc_zone = zoneinfo.ZoneInfo("UTC")
+
+        # Ensure start_date and end_date are aware before converting, then make naive UTC
+        # If they are already naive, assume they are compatible with DB (less likely for this method's inputs)
+        # For this method, start_date/end_date are expected to be aware (from WeeklyMessage constructor)
+
+        naive_utc_start_date = start_date.astimezone(utc_zone).replace(tzinfo=None)
+        naive_utc_end_date = end_date.astimezone(utc_zone).replace(tzinfo=None)
+
         user_badges = (
             session.query(
                 UserBadge.user_id,
                 UserBadge.badge_id,
                 Badge.message,
-                UserBadge.initially_acquired_datetime,
+                UserBadge.initially_acquired_datetime, # This is stored as naive UTC in DB
             )
             .join(Badge, UserBadge.badge_id == Badge.id)
             .filter(
-                UserBadge.initially_acquired_datetime >= start_date,
-                UserBadge.initially_acquired_datetime <= end_date,
+                UserBadge.initially_acquired_datetime >= naive_utc_start_date,
+                UserBadge.initially_acquired_datetime <= naive_utc_end_date,
             )
             .order_by(UserBadge.initially_acquired_datetime.desc())
             .limit(5)
@@ -757,7 +769,7 @@ class WeeklyMessage(BaseMessage):
                 user_id=user_badge.user_id,
                 badge_id=user_badge.badge_id,
                 message=user_badge.message,
-                achieved_time=user_badge.initially_acquired_datetime,
+                achieved_time=user_badge.initially_acquired_datetime, # This will be naive UTC
             )
             for user_badge in user_badges
         ]
