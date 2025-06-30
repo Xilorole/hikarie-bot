@@ -1040,12 +1040,31 @@ class WeeklyMessage(BaseMessage):
     def _get_almost_level_up_users(self, session: Session) -> list[AlmostLevelUpUser]:
         """Find users who are close to leveling up, using most recent UserInfoRaw data."""
         # Get the most recent UserInfoRaw record for each user
+        # Get user_ids of users who had an arrival in the last week
+        recent_arrival_user_ids = (
+            session.query(GuestArrivalInfo.user_id)
+            .filter(
+                GuestArrivalInfo.arrival_time >= self.start_of_week,
+                GuestArrivalInfo.arrival_time < self.end_of_week,
+            )
+            .distinct()
+            .all()
+        )
+        recent_arrival_user_ids = [user_id for (user_id,) in recent_arrival_user_ids]
+
+        if not recent_arrival_user_ids:
+            return []
+
+        # Get the most recent UserInfoRaw record for these users
         subquery = (
             session.query(
                 UserInfoRaw.user_id,
                 func.max(UserInfoRaw.update_datetime).label("max_datetime"),
             )
-            .filter(UserInfoRaw.update_datetime <= self.end_of_week)
+            .filter(
+                UserInfoRaw.update_datetime <= self.end_of_week,
+                UserInfoRaw.user_id.in_(recent_arrival_user_ids),
+            )
             .group_by(UserInfoRaw.user_id)
             .subquery()
         )
