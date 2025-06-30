@@ -60,4 +60,4 @@ asyncio_default_fixture_loop_scope = "function"
 ENV = "test"
 
 [tool.uv]
-default-groups = ["core", "dev", "jupyter"]
+default-groups = ["core", "dev"]
