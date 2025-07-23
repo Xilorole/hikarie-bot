@@ -357,7 +357,7 @@ async def get_messages(app: AsyncApp) -> list[dict[str, Any]]:
             oldest="1651363200",  # 2022-05-01 00:00:00
         )
         messages += _messages.get("messages", [])
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1)  # Tier 3: 50+ requests per minute
     return messages
 
 
@@ -384,5 +384,5 @@ async def retrieve_thread_messages(app: AsyncApp, message: dict[str, Any]) -> li
         logger.info(f"loading thread. latest message: {jst_message_datetime}")
         _thread_messages = await app.client.conversations_replies(channel=OUTPUT_CHANNEL, ts=message["ts"], limit=100)
         thread_messages += _thread_messages.get("messages", [])
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1)  # Tier 3: 50+ requests per minute
     return thread_messages
