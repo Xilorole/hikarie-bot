@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.modals import (
-    AchievementMessage,
+    AchievementView,
     AlreadyRegisteredMessage,
     FastestArrivalMessage,
     InitialMessage,
@@ -277,8 +277,8 @@ def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
 
 
 @mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1])
-def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
-    """Test the achievement message."""
+def test_achievement_view(temp_db: sessionmaker[Session]) -> None:
+    """Test the achievement view."""
     session = temp_db()
     initially_insert_badge_data(session=session)
 
@@ -288,12 +288,12 @@ def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
         user_id="test_user",
     )
 
-    message = AchievementMessage(
+    view = AchievementView(
         session=session,
         user_id="test_user",
     )
 
-    assert message.render() == [
+    assert [block.to_dict() for block in view.blocks] == [
         {
             "type": "section",
             "text": {
@@ -339,12 +339,12 @@ def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
         user_id="test_user",
     )
 
-    message = AchievementMessage(
+    view = AchievementView(
         session=session,
         user_id="test_user",
     )
 
-    rendered = message.render()
+    rendered = [block.to_dict() for block in view.blocks]
     badge_type_sections = [
         block for block in rendered if block.get("type") == "section" and "*6*" in block.get("text", {}).get("text", "")
     ]
@@ -366,8 +366,8 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
     badge_6xx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 600, Badge.id < 700).first()
     assert badge_6xx is not None, "Test requires a 6XX badge of type 6"
 
-    message = AchievementMessage(session=session, user_id="test_user")
-    rendered = message.render()
+    view = AchievementView(session=session, user_id="test_user")
+    rendered = [block.to_dict() for block in view.blocks]
     found = False
     for block in rendered:
         if block.get("type") == "context":
@@ -392,8 +392,8 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
     )
     session.commit()
 
-    message = AchievementMessage(session=session, user_id="test_user")
-    rendered = message.render()
+    view = AchievementView(session=session, user_id="test_user")
+    rendered = [block.to_dict() for block in view.blocks]
     found = False
     for block in rendered:
         if block.get("type") == "context":

@@ -291,16 +291,15 @@ class AlreadyRegisteredMessage(BaseMessage):
         )
 
 
-class AchievementMessage(BaseMessage):
-    """Class for creating the achievement Slack message."""
+class AchievementView(View):
+    """Class for creating the achievement Slack view."""
 
-    def __init__(
-        self,
-        session: Session,
-        user_id: str,
-    ) -> None:
-        """Initialize the AchievementMessage with the user ID."""
-        super().__init__()
+    def __init__(self, session: Session, user_id: str) -> None:
+        """Initialize the AchievementView with the user ID."""
+        super().__init__(type="modal", title="Achievements", close="閉じる")
+
+        self.session = session
+        self.user_id = user_id
 
         # バッジの全量を表示する
         all_badge_types = (
@@ -363,76 +362,6 @@ class AchievementMessage(BaseMessage):
                                 alt_text=f"【{badge.message}】???",
                             )
                         )
-                else:
-                    elements.append(
-                        block_elements.ImageElement(
-                            image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
-                            alt_text=f"【{badge.message}】???",
-                        )
-                    )
-            self.blocks.extend(
-                [
-                    blocks.ContextBlock(
-                        elements=elements,
-                    ),
-                    blocks.DividerBlock(),
-                ]
-            )
-
-
-class AchievementView(View):
-    """Class for creating the achievement Slack view."""
-
-    def __init__(self, session: Session, user_id: str) -> None:
-        """Initialize the AchievementView with the user ID."""
-        super().__init__(type="modal", title="Achievements", close="閉じる")
-
-        self.session = session
-        self.user_id = user_id
-
-        # バッジの全量を表示する
-        all_badge_types = (
-            session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
-        )
-
-        self.blocks.extend(
-            [
-                blocks.SectionBlock(text=f"<@{user_id}>が獲得したバッジ:\n"),
-                blocks.DividerBlock(),
-            ]
-        )
-        for badge_type in all_badge_types:
-            # for each badge type, first, print the badge id and the badge type description
-            self.blocks.extend(
-                [
-                    blocks.SectionBlock(
-                        text=f"*{badge_type.id}* : {badge_type.description}",
-                    ),
-                ]
-            )
-            elements = []
-            all_badges = session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
-            for i, badge in enumerate(all_badges):
-                if i == CONTEXT_ITEM_MAX:
-                    self.blocks.append(
-                        blocks.ContextBlock(
-                            elements=elements,
-                        )
-                    )
-                    elements = []
-
-                if user_badge := (
-                    session.query(UserBadge)
-                    .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
-                    .one_or_none()
-                ):
-                    elements.append(
-                        block_elements.ImageElement(
-                            image_url=ACHIEVED_BADGE_IMAGE_URL,
-                            alt_text=f"【{badge.message}】{badge.condition} "
-                            f"@ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
-                        )
-                    )
                 else:
                     elements.append(
                         block_elements.ImageElement(
@@ -735,7 +664,6 @@ class WeeklyMessage(BaseMessage):
         self, session: Session, start_date: datetime, end_date: datetime
     ) -> list[UserAchievement]:
         """Get new achievements during the given date range."""
-
         # Convert start_date and end_date to naive UTC if they are timezone-aware
         # This is because SQLAlchemy stores aware datetimes as naive UTC in SQLite by default
         utc_zone = zoneinfo.ZoneInfo("UTC")
@@ -752,7 +680,7 @@ class WeeklyMessage(BaseMessage):
                 UserBadge.user_id,
                 UserBadge.badge_id,
                 Badge.message,
-                UserBadge.initially_acquired_datetime, # This is stored as naive UTC in DB
+                UserBadge.initially_acquired_datetime,  # This is stored as naive UTC in DB
             )
             .join(Badge, UserBadge.badge_id == Badge.id)
             .filter(
@@ -769,7 +697,7 @@ class WeeklyMessage(BaseMessage):
                 user_id=user_badge.user_id,
                 badge_id=user_badge.badge_id,
                 message=user_badge.message,
-                achieved_time=user_badge.initially_acquired_datetime, # This will be naive UTC
+                achieved_time=user_badge.initially_acquired_datetime,  # This will be naive UTC
             )
             for user_badge in user_badges
         ]
