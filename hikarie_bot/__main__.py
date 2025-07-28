@@ -254,7 +254,6 @@ async def handle_reboot(ack: AsyncAck, body: dict[str, Any]) -> None:
         )
 
 
-# Import and add the build_modals command
 cli.add_command(build_modals)
 
 
