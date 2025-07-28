@@ -735,7 +735,6 @@ class WeeklyMessage(BaseMessage):
         self, session: Session, start_date: datetime, end_date: datetime
     ) -> list[UserAchievement]:
         """Get new achievements during the given date range."""
-
         # Convert start_date and end_date to naive UTC if they are timezone-aware
         # This is because SQLAlchemy stores aware datetimes as naive UTC in SQLite by default
         utc_zone = zoneinfo.ZoneInfo("UTC")
@@ -752,7 +751,7 @@ class WeeklyMessage(BaseMessage):
                 UserBadge.user_id,
                 UserBadge.badge_id,
                 Badge.message,
-                UserBadge.initially_acquired_datetime, # This is stored as naive UTC in DB
+                UserBadge.initially_acquired_datetime,  # This is stored as naive UTC in DB
             )
             .join(Badge, UserBadge.badge_id == Badge.id)
             .filter(
@@ -769,7 +768,7 @@ class WeeklyMessage(BaseMessage):
                 user_id=user_badge.user_id,
                 badge_id=user_badge.badge_id,
                 message=user_badge.message,
-                achieved_time=user_badge.initially_acquired_datetime, # This will be naive UTC
+                achieved_time=user_badge.initially_acquired_datetime,  # This will be naive UTC
             )
             for user_badge in user_badges
         ]

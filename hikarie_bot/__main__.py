@@ -13,6 +13,9 @@ from slack_bolt.context.ack.async_ack import AsyncAck
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot._version import version
+
+# Import and add the build_modals command
+from hikarie_bot.build_modals import build_modals
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.modals import (
     ActionID,
@@ -73,10 +76,15 @@ async def initially_create_db(app: AsyncApp) -> None:
                 insert_arrival_action(session, jst_message_datetime, user_id)
 
 
-@click.command()
+@click.group()
+def cli() -> None:
+    """Hikarie Bot CLI."""
+
+
+@cli.command()
 @click.option("--dev", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
 @click.option("--skip-db-create", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
-async def main(*, dev: bool = False, skip_db_create: bool = False) -> None:
+async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
     """Run the app."""
     log_level = "DEBUG" if dev else "INFO"  # Default log level
     # Configure loguru logger
@@ -246,7 +254,11 @@ async def handle_reboot(ack: AsyncAck, body: dict[str, Any]) -> None:
         )
 
 
+# Import and add the build_modals command
+cli.add_command(build_modals)
+
+
 if __name__ == "__main__":
     import asyncio
 
-    main(_anyio_backend="asyncio")
+    cli(_anyio_backend="asyncio")

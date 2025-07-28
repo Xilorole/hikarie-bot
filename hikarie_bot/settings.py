@@ -16,6 +16,9 @@ V1_BOT_ID = os.environ.get("V1_BOT_ID", "")
 V2_BOT_ID = os.environ.get("V2_BOT_ID", "")
 ADMIN = os.environ.get("ADMIN", "")
 
+# slack.workspace
+SLACK_WORKSPACE_ID = os.environ.get("SLACK_WORKSPACE_ID", "")
+
 # auth
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 SLACK_APP_TOKEN = os.environ.get("SLACK_APP_TOKEN", "")
@@ -27,10 +30,11 @@ for env, env_str in [
     (V1_BOT_ID, "V1_BOT_ID"),
     (V2_BOT_ID, "V2_BOT_ID"),
     (ADMIN, "ADMIN"),
+    (SLACK_WORKSPACE_ID, "SLACK_WORKSPACE_ID"),
     (SLACK_BOT_TOKEN, "SLACK_BOT_TOKEN"),
     (SLACK_APP_TOKEN, "SLACK_APP_TOKEN"),
 ]:
-    if env == "" and os.environ.get("ENV") not in ["dev", "test"]:
+    if env == "" and os.environ.get("ENV") not in ["dev", "test"] and env_str != "SLACK_WORKSPACE_ID":
         raise EnvironmentVariableNotFoundError(env_str)
 
 
