@@ -28,3 +28,4 @@ NOT_ACHIEVED_BADGE_IMAGE_URL = "https://gist.github.com/user-attachments/assets/
 TAKEN_6XX_BADGE_IMAGE_URL = "https://gist.github.com/user-attachments/assets/e71a6c8c-b28e-44dd-a4e5-b77395100998"
 
 CONTEXT_ITEM_MAX = 10
+MAX_URL_DISPLAY_LENGTH = 100

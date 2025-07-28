@@ -9,6 +9,7 @@ from typing import Any
 import asyncclick as click
 from sqlalchemy.orm import Session
 
+from hikarie_bot.constants import MAX_URL_DISPLAY_LENGTH
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.modals import AchievementView
 from hikarie_bot.models import User, get_db
@@ -140,8 +141,8 @@ def build_modals(user_id: str | None = None) -> None:
         click.echo(f"   📁 JSON file: {json_file}")
         click.echo(f"   {clickable_url}")
         click.echo(
-            f"   📋 Raw URL: {block_kit_url[:100]}..."
-            if len(block_kit_url) > 100  # noqa: PLR2004
+            f"   📋 Raw URL: {block_kit_url[:MAX_URL_DISPLAY_LENGTH]}..."
+            if len(block_kit_url) > MAX_URL_DISPLAY_LENGTH
             else f"   📋 Raw URL: {block_kit_url}"
         )
         click.echo()
