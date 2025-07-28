@@ -1233,18 +1233,18 @@ Badges = [
     ),
     BadgeData(
         id=620,
-        message="1111番目のお客様",
-        condition="1111回目の出社登録をした",
+        message="1100番目のお客様",
+        condition="1100回目の出社登録をした",
         level=1,
         score=5,
         badge_type_id=6,
     ),
     BadgeData(
         id=621,
-        message="1100番目のお客様",
-        condition="1100回目の出社登録をした",
+        message="1111番目のお客様",
+        condition="1111回目の出社登録をした",
         level=1,
-        score=5,
+        score=10,
         badge_type_id=6,
     ),
     BadgeData(
@@ -1265,6 +1265,14 @@ Badges = [
     ),
     BadgeData(
         id=624,
+        message="1234番目のお客様",
+        condition="1234回目の出社登録をした",
+        level=1,
+        score=5,
+        badge_type_id=6,
+    ),
+    BadgeData(
+        id=625,
         message="1300番目のお客様",
         condition="1300回目の出社登録をした",
         level=1,
@@ -1272,7 +1280,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=625,
+        id=626,
         message="1333番目のお客様",
         condition="1333回目の出社登録をした",
         level=1,
@@ -1280,7 +1288,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=626,
+        id=627,
         message="1400番目のお客様",
         condition="1400回目の出社登録をした",
         level=1,
@@ -1288,7 +1296,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=627,
+        id=628,
         message="1444番目のお客様",
         condition="1444回目の出社登録をした",
         level=1,
@@ -1296,7 +1304,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=628,
+        id=629,
         message="1500番目のお客様",
         condition="1500回目の出社登録をした",
         level=1,
@@ -1304,7 +1312,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=629,
+        id=630,
         message="1555番目のお客様",
         condition="1555回目の出社登録をした",
         level=1,
@@ -1312,7 +1320,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=630,
+        id=631,
         message="1600番目のお客様",
         condition="1600回目の出社登録をした",
         level=1,
@@ -1320,7 +1328,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=631,
+        id=632,
         message="1666番目のお客様",
         condition="1666回目の出社登録をした",
         level=1,
@@ -1328,7 +1336,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=632,
+        id=633,
         message="1700番目のお客様",
         condition="1700回目の出社登録をした",
         level=1,
@@ -1336,7 +1344,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=633,
+        id=634,
         message="1777番目のお客様",
         condition="1777回目の出社登録をした",
         level=1,
@@ -1344,7 +1352,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=634,
+        id=635,
         message="1800番目のお客様",
         condition="1800回目の出社登録をした",
         level=1,
@@ -1352,7 +1360,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=635,
+        id=636,
         message="1888番目のお客様",
         condition="1888回目の出社登録をした",
         level=1,
@@ -1360,7 +1368,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=636,
+        id=637,
         message="1900番目のお客様",
         condition="1900回目の出社登録をした",
         level=1,
@@ -1368,7 +1376,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=637,
+        id=638,
         message="1999番目のお客様",
         condition="1999回目の出社登録をした",
         level=1,
@@ -1376,7 +1384,7 @@ Badges = [
         badge_type_id=6,
     ),
     BadgeData(
-        id=638,
+        id=639,
         message="2000番目のお客様",
         condition="2000回目の出社登録をした",
         level=1,
