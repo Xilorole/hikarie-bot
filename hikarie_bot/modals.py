@@ -18,8 +18,10 @@ from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     BADGE_TYPES_TO_CHECK,
     CONTEXT_ITEM_MAX,
-    NOT_ACHIEVED_BADGE_IMAGE_URL,
     TAKEN_6XX_BADGE_IMAGE_URL,
+)
+from hikarie_bot.constants import (
+    NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL,
 )
 from hikarie_bot.models import (
     Achievement,
@@ -98,7 +100,7 @@ class InitialMessage(BaseMessage):
         super().__init__()
         self.blocks.extend(
             [
-                blocks.SectionBlock(text="ヒカリエに出社してる？"),  # noqa: RUF001
+                blocks.SectionBlock(text="ヒカリエに出社してる？"),
                 blocks.ActionsBlock(
                     elements=[
                         block_elements.ButtonElement(
@@ -143,7 +145,7 @@ class RegistryMessage(BaseMessage):
 
         self.blocks.extend(
             [
-                blocks.SectionBlock(text="ヒカリエに出社してる？"),  # noqa: RUF001
+                blocks.SectionBlock(text="ヒカリエに出社してる？"),
                 blocks.ActionsBlock(
                     elements=[
                         block_elements.ButtonElement(
@@ -257,7 +259,7 @@ class PointGetMessage(BaseMessage):
             [
                 blocks.SectionBlock(
                     text=f"*{arrive_time:%H:%M}* "
-                    f"{initial_arrival_text}出社登録しました！{hikarie_text}"  # noqa: RUF001
+                    f"{initial_arrival_text}出社登録しました！{hikarie_text}"
                     f"\n<@{user_id}>さんのポイント "
                     f"{previous_point} → *{current_point}* "
                     f"(*+{score_addup}*){' *LvUP!* :star2: ' if level_up_flag else ''}"
@@ -301,82 +303,276 @@ class AchievementView(View):
         self.session = session
         self.user_id = user_id
 
+        # 各セクションのブロックを生成して追加
+        self.blocks.extend(self.generate_statistics_blocks())
+        self.blocks.extend(self.generate_attendance_history_blocks())
+        self.blocks.extend(self.generate_badge_blocks())
+
+    def generate_statistics_blocks(self) -> list[Block]:
+        """Generate statistics section blocks."""
+        blocks_list: list[Block] = [blocks.HeaderBlock(text="出社統計情報")]
+
+        # 基本統計を取得
+        stats = self._get_user_statistics()
+
+        # 出社データがない場合
+        if stats["total_arrivals"] == 0:
+            basic_info = "まだ出社登録がありません。最初の出社登録をしてみましょう！"
+            blocks_list.append(blocks.SectionBlock(text=basic_info))
+        else:
+            # 統計情報をリスト形式で表示
+            stats_info = self._format_statistics_text(stats)
+            blocks_list.append(blocks.SectionBlock(text=stats_info))
+
+        blocks_list.append(blocks.DividerBlock())
+        return blocks_list
+
+    def generate_attendance_history_blocks(self) -> list[Block]:
+        """Generate attendance history section blocks."""
+        blocks_list: list[Block] = [blocks.HeaderBlock(text="過去の出社履歴")]
+
+        # 過去10週間の平日の出社データを取得
+        attendance_data = self._get_attendance_data_for_past_10_weeks()
+
+        # GitHub風の縦書き表示を作成
+        blocks_list.extend(self._create_github_style_display(attendance_data))
+        return blocks_list
+
+    def generate_badge_blocks(self) -> list[Block]:
+        """Generate badge section blocks."""
+        blocks_list: list[Block] = [blocks.HeaderBlock(text="獲得したバッジ")]
+
         # バッジの全量を表示する
         all_badge_types = (
-            session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
+            self.session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
         )
 
-        self.blocks.extend(
-            [
-                blocks.SectionBlock(text=f"<@{user_id}>が獲得したバッジ:\n"),
-                blocks.DividerBlock(),
-            ]
-        )
         for badge_type in all_badge_types:
-            # for each badge type, first, print the badge id and the badge type description
-            self.blocks.extend(
-                [
-                    blocks.SectionBlock(
-                        text=f"*{badge_type.id}* : {badge_type.description}",
-                    ),
-                ]
-            )
-            elements = []
-            all_badges = session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
-            for i, badge in enumerate(all_badges):
-                if i == CONTEXT_ITEM_MAX:
-                    self.blocks.append(
-                        blocks.ContextBlock(
-                            elements=elements,
-                        )
-                    )
-                    elements = []
+            # バッジタイプの説明を追加
+            blocks_list.append(blocks.SectionBlock(text=f"*{badge_type.id}* : {badge_type.description}"))
 
-                if user_badge := (
-                    session.query(UserBadge)
-                    .filter(UserBadge.user_id == user_id, UserBadge.badge_id == badge.id)
-                    .one_or_none()
-                ):
-                    elements.append(
-                        block_elements.ImageElement(
-                            image_url=ACHIEVED_BADGE_IMAGE_URL,
-                            alt_text=f"【{badge.message}】{badge.condition} "
-                            f"@ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
-                        )
-                    )
-                # Special logic for 6XX badges: only one user can get it
-                elif 600 <= badge.id < 700:  # noqa: PLR2004
-                    # If any user has this badge, show the "taken" icon
-                    other_user_badge = session.query(UserBadge).filter(UserBadge.badge_id == badge.id).first()
-                    if other_user_badge is not None:
-                        elements.append(
-                            block_elements.ImageElement(
-                                image_url=TAKEN_6XX_BADGE_IMAGE_URL,
-                                alt_text=f"【{badge.message}】他のユーザーが獲得済み",
-                            )
-                        )
-                    else:
-                        elements.append(
-                            block_elements.ImageElement(
-                                image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
-                                alt_text=f"【{badge.message}】???",
-                            )
-                        )
-                else:
-                    elements.append(
-                        block_elements.ImageElement(
-                            image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
-                            alt_text=f"【{badge.message}】???",
-                        )
-                    )
-            self.blocks.extend(
-                [
-                    blocks.ContextBlock(
-                        elements=elements,
-                    ),
-                    blocks.DividerBlock(),
-                ]
+            # バッジ要素を生成
+            badge_elements = self._generate_badge_elements_for_type(badge_type)
+
+            # 要素をコンテキストブロックに分割して追加
+            blocks_list.extend(self._create_context_blocks_from_elements(badge_elements))
+            blocks_list.append(blocks.DividerBlock())
+
+        return blocks_list
+
+    def _format_statistics_text(self, stats: dict) -> str:
+        """Format statistics data into display text."""
+        stats_info = f"• *総出社回数*: {stats['total_arrivals']}回\n"
+        stats_info += f"• *最速出社*: {stats['fastest_arrivals']}回\n"
+        stats_info += f"• *現在レベル*: {stats['current_level']} ({stats['current_score']}pt)\n"
+        stats_info += f"• *初回出社*: {stats['first_arrival_date']}\n"
+
+        if stats["earliest_time"]:
+            stats_info += f"• *最早出社*: `{stats['earliest_time']}`\n"
+        if stats["latest_time"]:
+            stats_info += f"• *最遅出社*: `{stats['latest_time']}`\n"
+
+        return stats_info.rstrip()
+
+    def _generate_badge_elements_for_type(self, badge_type: BadgeType) -> list[block_elements.ImageElement]:
+        """Generate badge elements for a specific badge type."""
+        elements = []
+        badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
+
+        for badge in badges:
+            element = self._create_badge_element(badge)
+            elements.append(element)
+
+        return elements
+
+    def _create_badge_element(self, badge: Badge) -> block_elements.ImageElement:
+        """Create a single badge element based on user's badge status."""
+        user_badge = (
+            self.session.query(UserBadge)
+            .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge.id)
+            .one_or_none()
+        )
+
+        if user_badge:
+            return block_elements.ImageElement(
+                image_url=ACHIEVED_BADGE_IMAGE_URL,
+                alt_text=f"【{badge.message}】{badge.condition} @ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
             )
+        if self._is_6xx_badge(badge.id):
+            return self._create_6xx_badge_element(badge)
+        return block_elements.ImageElement(
+            image_url=NOT_ARRIVED_IMAGE_URL,
+            alt_text=f"【{badge.message}】???",
+        )
+
+    def _is_6xx_badge(self, badge_id: int) -> bool:
+        """Check if badge is a 6XX special badge."""
+        return 600 <= badge_id < 700  # noqa: PLR2004
+
+    def _create_6xx_badge_element(self, badge: Badge) -> block_elements.ImageElement:
+        """Create element for 6XX special badges."""
+        other_user_badge = self.session.query(UserBadge).filter(UserBadge.badge_id == badge.id).first()
+
+        if other_user_badge is not None:
+            return block_elements.ImageElement(
+                image_url=TAKEN_6XX_BADGE_IMAGE_URL,
+                alt_text=f"【{badge.message}】他のユーザーが獲得済み",
+            )
+        return block_elements.ImageElement(
+            image_url=NOT_ARRIVED_IMAGE_URL,
+            alt_text=f"【{badge.message}】???",
+        )
+
+    def _create_context_blocks_from_elements(
+        self, elements: list[block_elements.ImageElement]
+    ) -> list[blocks.ContextBlock]:
+        """Create context blocks from elements, respecting CONTEXT_ITEM_MAX limit."""
+        context_blocks = []
+        current_elements = []
+
+        for element in elements:
+            if len(current_elements) == CONTEXT_ITEM_MAX:
+                context_blocks.append(blocks.ContextBlock(elements=current_elements))
+                current_elements = []
+            current_elements.append(element)
+
+        # 残りの要素があれば最後のブロックに追加
+        if current_elements:
+            context_blocks.append(blocks.ContextBlock(elements=current_elements))
+
+        return context_blocks
+
+    def _get_user_statistics(self) -> dict:
+        """Get comprehensive statistics for the user."""
+        # 全出社データを取得
+        all_arrivals = (
+            self.session.query(GuestArrivalInfo)
+            .filter(GuestArrivalInfo.user_id == self.user_id)
+            .order_by(GuestArrivalInfo.arrival_time)
+            .all()
+        )
+
+        if not all_arrivals:
+            return {
+                "total_arrivals": 0,
+                "fastest_arrivals": 0,
+                "current_level": 1,
+                "current_score": 0,
+                "first_arrival_date": None,
+                "earliest_time": None,
+                "latest_time": None,
+            }
+
+        # ユーザー情報を取得
+        user = self.session.query(User).filter(User.id == self.user_id).first()
+
+        stats = {
+            "total_arrivals": len(all_arrivals),
+            "fastest_arrivals": sum(1 for arrival in all_arrivals if arrival.arrival_rank == 1),
+            "current_level": user.level if user else 1,
+            "current_score": user.current_score if user else 0,
+            "first_arrival_date": all_arrivals[0].arrival_time.strftime("%Y-%m-%d"),
+        }
+
+        # 最早・最遅の出社時刻
+        earliest = min(all_arrivals, key=lambda x: x.arrival_time.hour * 60 + x.arrival_time.minute)
+        latest = max(all_arrivals, key=lambda x: x.arrival_time.hour * 60 + x.arrival_time.minute)
+
+        stats["earliest_time"] = earliest.arrival_time.strftime("%H:%M")
+        stats["latest_time"] = latest.arrival_time.strftime("%H:%M")
+
+        return stats
+
+    def _get_attendance_data_for_past_10_weeks(self) -> dict[str, bool]:
+        """Get attendance data for the past 10 weeks (weekdays only).
+
+        Returns:
+            Dict mapping date strings (YYYY-MM-DD) to attendance status (bool)
+        """
+        from hikarie_bot.utils import get_current_jst_datetime
+
+        current_date = get_current_jst_datetime()
+        # 時刻を除いて日付のみにする
+        current_date = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        # 今週の月曜日を計算
+        days_since_monday = current_date.weekday()  # 今週の月曜日からの日数
+        this_week_monday = current_date - timedelta(days=days_since_monday)
+
+        # 10週間前の月曜日を計算（今週を含む）
+        start_monday = this_week_monday - timedelta(weeks=9)  # 9週前 + 今週 = 10週間
+
+        # その期間の出社データを取得
+        arrivals = (
+            self.session.query(GuestArrivalInfo)
+            .filter(
+                GuestArrivalInfo.user_id == self.user_id,
+                GuestArrivalInfo.arrival_time >= start_monday,
+                GuestArrivalInfo.arrival_time <= current_date,
+            )
+            .all()
+        )
+
+        # 出社した日付のセットを作成
+        arrival_dates = set()
+        for arrival in arrivals:
+            date_str = arrival.arrival_time.strftime("%Y-%m-%d")
+            arrival_dates.add(date_str)
+
+        # 10週間前の月曜日から今日までの平日について出社状況を記録
+        attendance_data = {}
+        current_check_date = start_monday
+
+        while current_check_date <= current_date:
+            # 平日のみ（月曜日=0 から 金曜日=4）
+            if current_check_date.weekday() < 5:  # noqa: PLR2004
+                date_str = current_check_date.strftime("%Y-%m-%d")
+                attendance_data[date_str] = date_str in arrival_dates
+
+            current_check_date += timedelta(days=1)
+
+        return attendance_data
+
+    def _create_github_style_display(self, attendance_data: dict[str, bool]) -> list[Block]:
+        """Create GitHub-style vertical activity display.
+
+        Args:
+            attendance_data: Dict mapping date strings to attendance status
+        """
+        # 日付をパースして曜日ごとにグループ化
+        weekday_data = {i: [] for i in range(5)}  # 0=月曜日, 4=金曜日
+
+        sorted_dates = sorted(attendance_data.keys())
+        for date_str in sorted_dates:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+            weekday = date_obj.weekday()
+            if weekday < 5:  # 平日のみ  # noqa: PLR2004
+                attended = attendance_data[date_str]
+                display_date = date_obj.strftime("%m/%d")
+
+                if attended:
+                    element = block_elements.ImageElement(
+                        image_url=ACHIEVED_BADGE_IMAGE_URL,
+                        alt_text=f"{display_date} 出社",
+                    )
+                else:
+                    element = block_elements.ImageElement(
+                        image_url=NOT_ARRIVED_IMAGE_URL,
+                        alt_text=f"{display_date} 未出社",
+                    )
+
+                weekday_data[weekday].append(element)
+
+        # 各曜日の行を作成（最大10要素制限に対応）
+        blocks_list = []
+        for weekday in range(5):
+            if weekday_data[weekday]:  # データがある場合のみ
+                # 10要素制限のため、最大10週分のみ表示
+                elements_to_show = weekday_data[weekday][:10]
+
+                blocks_list.append(blocks.ContextBlock(elements=elements_to_show))
+
+        return blocks_list
 
 
 # Define dataclasses for each type of data structure returned by methods

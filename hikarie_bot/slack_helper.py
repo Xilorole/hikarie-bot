@@ -23,7 +23,7 @@ class Pattern:
         r"(?!.*\bクリック|\b)"
         r"(?!.*\b参加しました\b)"
     )
-    v2_message = r"ヒカリエに出社してる？"  # noqa: RUF001
+    v2_message = r"ヒカリエに出社してる？"
 
     v3_message = r"^(?!.*ヒカリエに出社してる).*" r"<@([A-Z0-9]+)>"
 
