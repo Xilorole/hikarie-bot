@@ -23,7 +23,7 @@ class Pattern:
         r"(?!.*\bクリック|\b)"
         r"(?!.*\b参加しました\b)"
     )
-    v2_message = r"ヒカリエに出社してる？"  # noqa: RUF001
+    v2_message = r"ヒカリエに出社してる？"
 
     v3_message = r"^(?!.*ヒカリエに出社してる).*" r"<@([A-Z0-9]+)>"
 
@@ -347,17 +347,30 @@ async def get_messages(app: AsyncApp) -> list[dict[str, Any]]:
         channel=OUTPUT_CHANNEL,
         oldest="1651363200",  # 2022-05-01 00:00:00
     )
+    if _messages is None:
+        return messages
+
     messages += _messages.get("messages", [])
-    while _messages["has_more"]:
-        jst_message_datetime = unix_timestamp_to_jst(float(_messages["messages"][-1]["ts"]))
+    while _messages and _messages.get("has_more", False):
+        message_list = _messages.get("messages", [])
+        if not message_list:
+            break
+        jst_message_datetime = unix_timestamp_to_jst(float(message_list[-1]["ts"]))
         logger.info(f"loading. latest message: {jst_message_datetime}")
+
+        next_cursor = _messages.get("response_metadata", {}).get("next_cursor")
+        if not next_cursor:
+            break
+
         _messages = await app.client.conversations_history(
             channel=OUTPUT_CHANNEL,
-            cursor=_messages["response_metadata"]["next_cursor"],
+            cursor=next_cursor,
             oldest="1651363200",  # 2022-05-01 00:00:00
         )
+        if _messages is None:
+            break
         messages += _messages.get("messages", [])
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1)  # Tier 3: 50+ requests per minute
     return messages
 
 
@@ -384,5 +397,5 @@ async def retrieve_thread_messages(app: AsyncApp, message: dict[str, Any]) -> li
         logger.info(f"loading thread. latest message: {jst_message_datetime}")
         _thread_messages = await app.client.conversations_replies(channel=OUTPUT_CHANNEL, ts=message["ts"], limit=100)
         thread_messages += _thread_messages.get("messages", [])
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1)  # Tier 3: 50+ requests per minute
     return thread_messages
