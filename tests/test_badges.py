@@ -495,7 +495,7 @@ def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
         # > #           description="長期間出社登録がない状態で復帰した"
         # > BadgeData(
         # >     id=13,
-        # >     message="2週間ぶりですね、元気にしていましたか？",  # noqa: RUF003
+        # >     message="2週間ぶりですね、元気にしていましたか？",
         # >     condition="14日以上出社登録がなかったが復帰した",
         # >     level=1,
         # >     score=1,

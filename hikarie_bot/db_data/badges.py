@@ -1243,7 +1243,7 @@ Badges = [
     #           description="長期間出社登録がない状態で復帰した"  # noqa: ERA001
     BadgeData(
         id=701,
-        message="2週間ぶりですね、元気にしていましたか？",  # noqa: RUF001
+        message="2週間ぶりですね、元気にしていましたか？",
         condition="14日以上出社登録がなかったが復帰した",
         level=1,
         score=2,

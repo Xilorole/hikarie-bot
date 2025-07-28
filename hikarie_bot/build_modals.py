@@ -82,9 +82,12 @@ def setup_test_data(session: Session) -> str:
 
     jst = zoneinfo.ZoneInfo("Asia/Tokyo")
     arrival_times = [
-        datetime(2024, 1, 1, 7, 0, 0, tzinfo=jst),  # Morning arrival
-        datetime(2024, 1, 2, 8, 30, 0, tzinfo=jst),  # Regular arrival
-        datetime(2024, 1, 3, 6, 15, 0, tzinfo=jst),  # Early arrival
+        datetime(2025, 1, 1, 7, 0, 0, tzinfo=jst),  # Morning arrival
+        datetime(2025, 1, 2, 8, 30, 0, tzinfo=jst),  # Regular arrival
+        datetime(2025, 1, 3, 6, 15, 0, tzinfo=jst),  # Early arrival
+        datetime(2025, 7, 25, 6, 15, 0, tzinfo=jst),  # Early arrival
+        datetime(2025, 7, 26, 6, 15, 0, tzinfo=jst),  # Early arrival
+        datetime(2025, 7, 27, 6, 15, 0, tzinfo=jst),  # Early arrival
     ]
 
     for arrival_time in arrival_times:
