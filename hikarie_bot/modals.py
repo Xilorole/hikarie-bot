@@ -1,6 +1,6 @@
 import zoneinfo  # Added for timezone conversion
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from textwrap import dedent
 
 from loguru import logger
@@ -487,11 +487,11 @@ class AchievementView(View):
 
         return stats
 
-    def _get_attendance_data_for_past_10_weeks(self) -> dict[str, bool]:
+    def _get_attendance_data_for_past_10_weeks(self) -> dict[date, bool]:
         """Get attendance data for the past 10 weeks (weekdays only).
 
         Returns:
-            Dict mapping date strings (YYYY-MM-DD) to attendance status (bool)
+            Dict mapping date objects to attendance status (bool)
         """
         from hikarie_bot.utils import get_current_jst_datetime
 
@@ -520,8 +520,8 @@ class AchievementView(View):
         # 出社した日付のセットを作成
         arrival_dates = set()
         for arrival in arrivals:
-            date_str = arrival.arrival_time.strftime("%Y-%m-%d")
-            arrival_dates.add(date_str)
+            arrival_date = arrival.arrival_time.date()
+            arrival_dates.add(arrival_date)
 
         # 10週間前の月曜日から今日までの平日について出社状況を記録
         attendance_data = {}
@@ -530,28 +530,27 @@ class AchievementView(View):
         while current_check_date <= current_date:
             # 平日のみ（月曜日=0 から 金曜日=4）
             if current_check_date.weekday() < 5:  # noqa: PLR2004
-                date_str = current_check_date.strftime("%Y-%m-%d")
-                attendance_data[date_str] = date_str in arrival_dates
+                check_date = current_check_date.date()
+                attendance_data[check_date] = check_date in arrival_dates
 
             current_check_date += timedelta(days=1)
 
         return attendance_data
 
-    def _create_github_style_display(self, attendance_data: dict[str, bool]) -> list[Block]:
+    def _create_github_style_display(self, attendance_data: dict[date, bool]) -> list[Block]:
         """Create GitHub-style vertical activity display.
 
         Args:
-            attendance_data: Dict mapping date strings to attendance status
+            attendance_data: Dict mapping date objects to attendance status
         """
-        # 日付をパースして曜日ごとにグループ化
+        # 日付を曜日ごとにグループ化
         weekday_data = {i: [] for i in range(5)}  # 0=月曜日, 4=金曜日
 
         sorted_dates = sorted(attendance_data.keys())
-        for date_str in sorted_dates:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo"))
+        for date_obj in sorted_dates:
             weekday = date_obj.weekday()
             if weekday < 5:  # 平日のみ  # noqa: PLR2004
-                attended = attendance_data[date_str]
+                attended = attendance_data[date_obj]
                 display_date = date_obj.strftime("%m/%d")
 
                 if attended:

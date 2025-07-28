@@ -1,5 +1,5 @@
 import zoneinfo
-from datetime import datetime, timedelta  # Added timedelta
+from datetime import date, datetime, timedelta  # Added date back
 from textwrap import dedent
 from unittest import mock
 
@@ -677,8 +677,8 @@ def test_achievement_view_attendance_history(temp_db: sessionmaker[Session]) -> 
             attendance_dates.extend([monday, wednesday])
 
     # Insert arrival actions for the attendance dates
-    for date in attendance_dates:
-        insert_arrival_action(session=session, jst_datetime=date, user_id=test_user_id)
+    for date_time in attendance_dates:
+        insert_arrival_action(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     # Test with current date being a Wednesday in week 10
     test_current_date = base_date + timedelta(weeks=9, days=2)  # Wednesday of week 10
@@ -754,8 +754,8 @@ def test_get_attendance_data_for_past_10_weeks(temp_db: sessionmaker[Session]) -
         datetime(2024, 3, 20, 9, 0, 0, tzinfo=tokyo_tz),  # Wednesday, today
     ]
 
-    for date in attendance_dates:
-        insert_arrival_action(session=session, jst_datetime=date, user_id=test_user_id)
+    for date_time in attendance_dates:
+        insert_arrival_action(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     with (
         mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
@@ -764,24 +764,23 @@ def test_get_attendance_data_for_past_10_weeks(temp_db: sessionmaker[Session]) -
         view = AchievementView(session=session, user_id=test_user_id)
 
         # Call the protected method directly for testing
-        attendance_data = view._get_attendance_data_for_past_10_weeks()
+        attendance_data = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
 
         # Check that we have data for the correct date range
         assert len(attendance_data) > 0, "Should have attendance data"
 
         # Verify that only weekdays are included
-        for date_str in attendance_data:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=tokyo_tz)
+        for date_obj in attendance_data:
             assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
 
         # Check specific attendance records
-        assert attendance_data.get("2024-01-22") is True, "Should show attendance on 2024-01-22"
-        assert attendance_data.get("2024-02-14") is True, "Should show attendance on 2024-02-14"
-        assert attendance_data.get("2024-03-18") is True, "Should show attendance on 2024-03-18 (this week Monday)"
-        assert attendance_data.get("2024-03-20") is True, "Should show attendance on 2024-03-20 (today)"
+        assert attendance_data.get(date(2024, 1, 22)) is True, "Should show attendance on 2024-01-22"
+        assert attendance_data.get(date(2024, 2, 14)) is True, "Should show attendance on 2024-02-14"
+        assert attendance_data.get(date(2024, 3, 18)) is True, "Should show attendance on 2024-03-18 (this week Monday)"
+        assert attendance_data.get(date(2024, 3, 20)) is True, "Should show attendance on 2024-03-20 (today)"
 
         # Check that some non-attendance days exist
-        assert attendance_data.get("2024-01-23") is False, "Should show no attendance on 2024-01-23"
+        assert attendance_data.get(date(2024, 1, 23)) is False, "Should show no attendance on 2024-01-23"
 
 
 def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
@@ -794,11 +793,13 @@ def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
     current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)
 
     # Create a small set of test data
-    test_attendance_data = {
-        "2024-03-18": True,  # Monday - attended
-        "2024-03-19": False,  # Tuesday - not attended
-        "2024-03-20": True,  # Wednesday - attended
-    }
+    test_attendance_data = [
+        datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz),  # monday
+        datetime(2024, 3, 20, 9, 0, 0, tzinfo=tokyo_tz),  # wednesday
+    ]
+
+    for date_time in test_attendance_data:
+        insert_arrival_action(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     with (
         mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
@@ -806,31 +807,46 @@ def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
     ):
         view = AchievementView(session=session, user_id=test_user_id)
 
-        # Clear existing blocks and test the display method directly
-        view.blocks = []
-
-        # Call the method directly
-        view._create_github_style_display(test_attendance_data)  # noqa: SLF001
-
         # Check that blocks were created
         rendered_blocks = [block.to_dict() for block in view.blocks]
-        context_blocks = [block for block in rendered_blocks if block.get("type") == "context"]
+        import re
 
-        assert len(context_blocks) == 3, f"Should have 3 context blocks for 3 weekdays, got {len(context_blocks)}"
+        context_blocks = [
+            block
+            for block in rendered_blocks
+            if block.get("type") == "context"
+            and all(
+                re.match(r"\d{2}\/\d{2} (出社|未出社)", element.get("alt_text", ""))
+                for element in block.get("elements", [])
+            )
+        ]
+
+        assert len(context_blocks) == 5, f"Should have 5 context blocks for 5 weekdays, got {len(context_blocks)}"
 
         # Check that image elements have correct URLs
-        from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL
+        from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL as ARRIVED_IMAGE_URL
         from hikarie_bot.constants import NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL
 
         all_elements = []
         for block in context_blocks:
             all_elements.extend(block.get("elements", []))
 
-        attended_elements = [elem for elem in all_elements if elem.get("image_url") == ACHIEVED_BADGE_IMAGE_URL]
+        attended_elements = [elem for elem in all_elements if elem.get("image_url") == ARRIVED_IMAGE_URL]
         not_attended_elements = [elem for elem in all_elements if elem.get("image_url") == NOT_ARRIVED_IMAGE_URL]
 
+        # M xxxxxxxxxo <- last monday
+        # T xxxxxxxxxx
+        # W xxxxxxxxxo <- last wednesday (today)
+        # T xxxxxxxxx-
+        # F xxxxxxxxx-
+        #            ^ the week of 2024-03-18
+        # -> attended_elements: 2
+        # -> not_attended_elements: 46 (5x9 + 1)
+
         assert len(attended_elements) == 2, f"Should have 2 attended elements, got {len(attended_elements)}"
-        assert len(not_attended_elements) == 1, f"Should have 1 not attended element, got {len(not_attended_elements)}"
+        assert len(not_attended_elements) == 46, (
+            f"Should have 46 not attended elements, got {len(not_attended_elements)}"
+        )
 
 
 def test_achievement_view_attendance_history_simple(temp_db: sessionmaker[Session]) -> None:
@@ -912,9 +928,8 @@ def test_attendance_data_generation(temp_db: sessionmaker[Session]) -> None:
         assert len(attendance_data) > 0, "Should have some attendance data"
 
         # Check that the attendance date is recorded
-        assert attendance_data.get("2024-03-18") is True, "Should show attendance on 2024-03-18"
+        assert attendance_data.get(date(2024, 3, 18)) is True, "Should show attendance on 2024-03-18"
 
         # Check that weekdays only are included
-        for date_str in attendance_data:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=tokyo_tz)
+        for date_obj in attendance_data:
             assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
