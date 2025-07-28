@@ -763,8 +763,8 @@ def test_get_attendance_data_for_past_10_weeks(temp_db: sessionmaker[Session]) -
     ):
         view = AchievementView(session=session, user_id=test_user_id)
 
-        # Call the private method directly for testing
-        attendance_data = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
+        # Call the protected method directly for testing
+        attendance_data = view._get_attendance_data_for_past_10_weeks()
 
         # Check that we have data for the correct date range
         assert len(attendance_data) > 0, "Should have attendance data"
