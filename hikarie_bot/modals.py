@@ -18,7 +18,11 @@ from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     BADGE_TYPES_TO_CHECK,
     CONTEXT_ITEM_MAX,
+    NOT_ACHIEVED_BADGE_IMAGE_URL,
     TAKEN_6XX_BADGE_IMAGE_URL,
+)
+from hikarie_bot.constants import (
+    ACHIEVED_BADGE_IMAGE_URL as ARRIVED_IMAGE_URL,
 )
 from hikarie_bot.constants import (
     NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL,
@@ -401,7 +405,7 @@ class AchievementView(View):
         if self._is_6xx_badge(badge.id):
             return self._create_6xx_badge_element(badge)
         return block_elements.ImageElement(
-            image_url=NOT_ARRIVED_IMAGE_URL,
+            image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
             alt_text=f"【{badge.message}】???",
         )
 
@@ -419,7 +423,7 @@ class AchievementView(View):
                 alt_text=f"【{badge.message}】他のユーザーが獲得済み",
             )
         return block_elements.ImageElement(
-            image_url=NOT_ARRIVED_IMAGE_URL,
+            image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
             alt_text=f"【{badge.message}】???",
         )
 
@@ -552,7 +556,7 @@ class AchievementView(View):
 
                 if attended:
                     element = block_elements.ImageElement(
-                        image_url=ACHIEVED_BADGE_IMAGE_URL,
+                        image_url=ARRIVED_IMAGE_URL,
                         alt_text=f"{display_date} 出社",
                     )
                 else:
