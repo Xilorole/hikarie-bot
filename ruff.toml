@@ -58,6 +58,8 @@ lint.ignore = [
     "Q002",
     "Q003",
     "W191",
+    "RUF003", # full width parenthesis
+    "RUF001",
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

@@ -25,4 +25,4 @@ RUN mkdir .db && \
     uv python pin "$(cat .python-version)"
 
 # Verify the presence of the .git directory
-CMD [ "uv", "run","--no-group", "jupyter", "hikarie_bot"]
+CMD [ "uv", "run","--no-group", "jupyter", "hikarie_bot", "start"]
