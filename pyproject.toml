@@ -23,7 +23,6 @@ core = [
     "pydantic",
     "pytest-asyncio",
     "python-dotenv",
-    "ruff",
     "slack-bolt",
     "sqlalchemy-utils",
     "sqlalchemy",
