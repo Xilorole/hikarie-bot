@@ -18,8 +18,9 @@ from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     BADGE_TYPES_TO_CHECK,
     CONTEXT_ITEM_MAX,
+    KIRIBAN_GENERATION_LIMIT,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
-    TAKEN_6XX_BADGE_IMAGE_URL,
+    TAKEN_6XXX_BADGE_IMAGE_URL,
 )
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL as ARRIVED_IMAGE_URL,
@@ -458,7 +459,7 @@ class AchievementView(View):
 
         if other_user_badge is not None:
             return block_elements.ImageElement(
-                image_url=TAKEN_6XX_BADGE_IMAGE_URL,
+                image_url=TAKEN_6XXX_BADGE_IMAGE_URL,
                 alt_text=f"【{badge.message}】他のユーザーが獲得済み",
             )
         return block_elements.ImageElement(
@@ -477,7 +478,7 @@ class AchievementView(View):
             from hikarie_bot.db_data.badges import KiribanGenerator
 
             generator = KiribanGenerator()
-            self._kiriban_cache = list(generator.generate_kiriban(under=10000))
+            self._kiriban_cache = list(generator.generate_kiriban(under=KIRIBAN_GENERATION_LIMIT))
         return self._kiriban_cache
 
     def _get_next_kiriban_badge_id(self) -> int | None:

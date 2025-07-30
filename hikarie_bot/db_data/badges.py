@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from loguru import logger
 from sqlalchemy.orm import Session
 
+from hikarie_bot.constants import KIRIBAN_GENERATION_LIMIT
 from hikarie_bot.exceptions import CheckerFunctionNotSpecifiedError
 from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo
 from hikarie_bot.utils import list_bizdays
@@ -124,7 +125,7 @@ class KiribanGenerator:
             return "power_of_ten"
         return None
 
-    def generate_kiriban(self, under: int = 10000) -> Generator[Kiriban, None, None]:
+    def generate_kiriban(self, under: int) -> Generator[Kiriban, None, None]:
         """Generate kiriban instances up to a specified limit.
 
         Args:
@@ -165,7 +166,7 @@ class BadgeData:
     badge_type_id: int
 
 
-def generate_kiriban_badges(under: int = 10000) -> list[BadgeData]:
+def generate_kiriban_badges(under: int) -> list[BadgeData]:
     """Generate kiriban BadgeData dynamically using KiribanGenerator.
 
     Args:
@@ -618,7 +619,9 @@ class BadgeChecker:
         )
         # Generate kiriban ID counts dynamically using KiribanGenerator
         generator = KiribanGenerator()
-        kiriban_id_counts = [(kiriban.id, kiriban.number) for kiriban in generator.generate_kiriban(under=10000)]
+        kiriban_id_counts = [
+            (kiriban.id, kiriban.number) for kiriban in generator.generate_kiriban(under=KIRIBAN_GENERATION_LIMIT)
+        ]
 
         for ID, kiriban_count in kiriban_id_counts:  # noqa: N806
             if previous_arrival_count == kiriban_count - 1:
@@ -1226,7 +1229,7 @@ Badges = [
     ),
     # BadgeTypeData id=6, name="kiriban", description="特定の出社登録の回数で付与される"
     # Dynamically generated kiriban badges are inserted here
-    *generate_kiriban_badges(under=10000),
+    *generate_kiriban_badges(under=KIRIBAN_GENERATION_LIMIT),
     # BadgeTypeData id=7, name="long_time_no_see",
     #           description="長期間出社登録がない状態で復帰した"  # noqa: ERA001
     BadgeData(
