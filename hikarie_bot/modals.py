@@ -365,14 +365,14 @@ class AchievementView(View):
         # 獲得済みバッジの詳細をまとめて表示
         achieved_badges_details = self._create_all_achieved_badges_summary()
         if achieved_badges_details:
-            blocks_list.append(blocks.HeaderBlock(text="*獲得済みバッジ詳細*"))
+            blocks_list.append(blocks.HeaderBlock(text="獲得済みバッジ詳細"))
             blocks_list.extend(achieved_badges_details)
 
         # 未獲得バッジの一覧を表示
         unachieved_badges_list = self._create_unachieved_badges_list()
         if unachieved_badges_list:
             blocks_list.append(blocks.DividerBlock())
-            blocks_list.append(blocks.HeaderBlock(text="*未獲得バッジ一覧*"))
+            blocks_list.append(blocks.HeaderBlock(text="未獲得バッジ一覧"))
             blocks_list.extend(unachieved_badges_list)
 
         return blocks_list
