@@ -408,27 +408,9 @@ class AchievementView(View):
         elements = []
         badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
 
-        # 6xx番台（キリ番バッジ）の場合は取得済みのみ表示
-        if badge_type.id == KIRIBAN_BADGE_TYPE_ID:
-            for badge in badges:
-                user_badge = (
-                    self.session.query(UserBadge)
-                    .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge.id)
-                    .one_or_none()
-                )
-                if user_badge:
-                    element = block_elements.ImageElement(
-                        image_url=ACHIEVED_BADGE_IMAGE_URL,
-                        alt_text=(
-                            f"【{badge.message}】{badge.condition} @ {user_badge.initially_acquired_datetime:%Y-%m-%d}"
-                        ),
-                    )
-                    elements.append(element)
-        else:
-            # 他のバッジタイプは従来通り全て表示
-            for badge in badges:
-                element = self._create_badge_element(badge)
-                elements.append(element)
+        for badge in badges:
+            element = self._create_badge_element(badge)
+            elements.append(element)
 
         return elements
 
@@ -459,11 +441,11 @@ class AchievementView(View):
         if other_user_badge is not None:
             return block_elements.ImageElement(
                 image_url=TAKEN_6XX_BADGE_IMAGE_URL,
-                alt_text=f"【{badge.message}】他のユーザーが獲得済み",
+                alt_text=f"【{badge.message}】{badge.condition} (他のユーザーが獲得済み)",
             )
         return block_elements.ImageElement(
             image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
-            alt_text=f"【{badge.message}】???",
+            alt_text=f"【{badge.message}】{badge.condition}",
         )
 
     def _is_kiriban_badge(self, badge_id: int) -> bool:

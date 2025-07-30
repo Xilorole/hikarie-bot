@@ -349,7 +349,7 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    badge_6xx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 600, Badge.id < 700).first()
+    badge_6xx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 6000, Badge.id < 7000).first()
     assert badge_6xx is not None, "Test requires a 6XX badge of type 6"
 
     view = AchievementView(session=session, user_id="test_user")

@@ -121,7 +121,6 @@ def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
 
 
 @mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [3])
-@mock.patch("hikarie_bot.db_data.badges.KIRIBAN_ID_COUNTS", [(601, 10)])
 def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -439,7 +438,6 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
             ), f"failed: {idx}"
 
 
-@mock.patch("hikarie_bot.db_data.badges.KIRIBAN_ID_COUNTS", [(601, 10)])
 @mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [6])
 def test_badge_checker_id6_kiriban(
     temp_db: sessionmaker,
@@ -447,7 +445,7 @@ def test_badge_checker_id6_kiriban(
     """Test the badge checker."""
     with temp_db() as session:
         initially_insert_badge_data(session)
-        badge_n100 = BadgeChecker.get_badge(session=session, badge_id=601)
+        badge_n100 = BadgeChecker.get_badge(session=session, badge_id=6001)
         checker = BadgeChecker([6])
 
         test_data = (
