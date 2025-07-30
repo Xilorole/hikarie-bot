@@ -292,13 +292,7 @@ def test_achievement_view(temp_db: sessionmaker[Session]) -> None:
         user_id="test_user",
     )
     expected_blocks = [
-        {
-            "text": {
-                "text": "*1* : 出社登録BOTを初めて利用した",
-                "type": "mrkdwn",
-            },
-            "type": "section",
-        },
+        {"text": {"text": "*1系 : 出社登録BOTを初めて利用した*", "type": "mrkdwn"}, "type": "section"},
         {
             "elements": [
                 {
@@ -334,11 +328,15 @@ def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
 
     rendered = [block.to_dict() for block in view.blocks]
     badge_type_sections = [
-        block for block in rendered if block.get("type") == "section" and "*6*" in block.get("text", {}).get("text", "")
+        block
+        for block in rendered
+        if block.get("type") == "section" and "*6系" in block.get("text", {}).get("text", "")
     ]
     assert badge_type_sections, "Badge type 6 section should be present"
     badge_type_1_sections = [
-        block for block in rendered if block.get("type") == "section" and "*1*" in block.get("text", {}).get("text", "")
+        block
+        for block in rendered
+        if block.get("type") == "section" and "*1系" in block.get("text", {}).get("text", "")
     ]
     assert not badge_type_1_sections, "Badge type 1 section should not be present"
 
