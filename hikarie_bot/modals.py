@@ -529,9 +529,7 @@ class AchievementView(View):
 
     def _get_current_arrival_count(self) -> int:
         """Get the current total arrival count for all users."""
-        if self._current_arrival_count_cache is None:
-            self._current_arrival_count_cache = self.session.query(GuestArrivalInfo).count()
-        return self._current_arrival_count_cache
+        return self.session.query(GuestArrivalInfo).count()
 
     def _get_next_kiriban_info(self, current_count: int) -> tuple[int, int] | None:
         """Get the next kiriban badge info (badge_id, kiriban_count).
