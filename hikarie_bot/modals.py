@@ -529,9 +529,7 @@ class AchievementView(View):
 
     def _get_current_arrival_count(self) -> int:
         """Get the current total arrival count for all users."""
-        if self._current_arrival_count_cache is None:
-            self._current_arrival_count_cache = self.session.query(GuestArrivalInfo).count()
-        return self._current_arrival_count_cache
+        return self.session.query(GuestArrivalInfo).count()
 
     def _get_next_kiriban_info(self, current_count: int) -> tuple[int, int] | None:
         """Get the next kiriban badge info (badge_id, kiriban_count).
@@ -715,8 +713,6 @@ class AchievementView(View):
 
     def _create_all_achieved_badges_summary(self) -> list[Block]:
         """Create a summary block for all achieved badges."""
-        blocks_list: list[Block] = []
-
         # 獲得済みバッジを全て取得し、獲得日時の早い順でソート
         achieved_user_badges = (
             self.session.query(UserBadge, Badge)
@@ -728,21 +724,58 @@ class AchievementView(View):
             .all()
         )
 
+        if not achieved_user_badges:
+            return []
+
+        # RichTextBlockの要素を構築 - 各バッジとその詳細をペアで作成
+        rich_text_elements = []
+
         for user_badge, badge in achieved_user_badges:
             # 獲得回数を取得
             achievement_count = self._get_badge_achievement_count(badge.id)
 
-            # SectionBlock - バッジ名の前にIDを追加
+            # トップレベル: ID、タイトル、獲得日
             initial_date = user_badge.initially_acquired_datetime.strftime("%Y-%m-%d")
-            markdown_text = f"[{badge.id}] *{badge.message}* @ {initial_date}"
-            blocks_list.append(blocks.SectionBlock(text=markdown_text))
+            top_level_text_elements = [
+                {"type": "text", "text": f"{badge.message} ", "style": {"bold": True}},
+                {"type": "text", "text": f"@ {initial_date} "},
+            ]
 
-            # Contextブロックを作成
+            # 2ndレベル: 条件と獲得ポイント詳細
             total_points = badge.score * achievement_count
-            context_text = f"- {badge.condition} | {total_points}pt ({badge.score}pt x {achievement_count})"
-            blocks_list.append(blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=context_text)]))
+            second_level_text_elements = [
+                [{"type": "text", "text": f"{badge.condition}", "style": {"code": True}}],
+                [
+                    {"type": "text", "text": "計 "},
+                    {"type": "text", "text": f"{total_points}", "style": {"bold": True}},
+                    {"type": "text", "text": f"pt ({badge.score}pt x {achievement_count})"},
+                ],
+            ]
 
-        return blocks_list
+            # このバッジのトップレベル項目を追加
+            rich_text_elements.append(
+                {
+                    "type": "rich_text_list",
+                    "style": "bullet",
+                    "elements": [{"type": "rich_text_section", "elements": top_level_text_elements}],
+                }
+            )
+
+            # このバッジの詳細をインデントされた項目として追加
+            rich_text_elements.extend(
+                [
+                    {
+                        "type": "rich_text_list",
+                        "style": "bullet",
+                        "indent": 1,
+                        "elements": [{"type": "rich_text_section", "elements": second_level_text_element}],
+                    }
+                    for second_level_text_element in second_level_text_elements
+                ]
+            )
+
+        # RichTextBlockを返す
+        return [blocks.RichTextBlock(elements=rich_text_elements)]
 
     def _create_unachieved_badges_list(self) -> list[Block]:
         """Create a simple list of unachieved badges for the user."""
