@@ -442,11 +442,13 @@ class AchievementView(View):
 
     def _get_badge_achievement_count(self, badge_id: int) -> int:
         """Get the number of times a user has achieved a specific badge."""
-        return (
+        count_query = (
             self.session.query(UserBadge)
             .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge_id)
-            .count()
+            .order_by(UserBadge.last_acquired_datetime.desc())
+            .one_or_none()
         )
+        return count_query.count if count_query else 0
 
     def _create_context_blocks_from_elements(
         self, elements: list[block_elements.ImageElement]
