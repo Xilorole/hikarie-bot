@@ -21,4 +21,7 @@
     "git.requireGitUserConfig": true,
     "github.gitAuthentication": true,
     "python.analysis.autoImportCompletions": true,
+    "[json]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
 }
