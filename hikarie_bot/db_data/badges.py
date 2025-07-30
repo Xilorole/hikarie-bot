@@ -9,7 +9,7 @@ Variables:
     Badges (list): A list of Badge instances defining various badges and their conditions.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
@@ -18,10 +18,130 @@ from zoneinfo import ZoneInfo
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from hikarie_bot.constants import KIRIBAN_ID_COUNTS
+from hikarie_bot.constants import KIRIBAN_GENERATION_LIMIT
 from hikarie_bot.exceptions import CheckerFunctionNotSpecifiedError
 from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo
 from hikarie_bot.utils import list_bizdays
+
+
+@dataclass
+class Kiriban:
+    """Represents a kiriban with its properties."""
+
+    id: int
+    number: int
+    score: int
+    kiriban_type: str
+
+
+class KiribanGenerator:
+    """Generator for kiriban numbers with appropriate scoring."""
+
+    def _is_power_of_ten_multiple(self, n: int) -> bool:
+        """Check if a number is a multiple of power of 10 with first digit non-zero.
+
+        Examples: 10, 20, 100, 300, 1000, 5000, etc.
+        """
+        if n < 10:  # noqa: PLR2004
+            return False
+
+        str_n = str(n)
+        # Check if all digits except the first are zeros
+        return str_n[0] != "0" and all(digit == "0" for digit in str_n[1:])
+
+    def _is_repetitive(self, n: int) -> bool:
+        """Check if a number consists of the same digit repeated.
+
+        Examples: 11, 222, 1111, 7777, etc.
+        """
+        str_n = str(n)
+        return len(str_n) >= 2 and len(set(str_n)) == 1  # noqa: PLR2004
+
+    def _is_sequential(self, n: int) -> bool:
+        """Check if a number has digits in sequential order (ascending or descending).
+
+        Examples: 123, 1234, 4321, 987, etc.
+        """
+        str_n = str(n)
+        if len(str_n) < 3:  # Need at least 3 digits for a meaningful sequence  # noqa: PLR2004
+            return False
+
+        digits = [int(d) for d in str_n]
+
+        # Check ascending sequence
+        is_ascending = all(digits[i] + 1 == digits[i + 1] for i in range(len(digits) - 1))
+
+        # Check descending sequence
+        is_descending = all(digits[i] - 1 == digits[i + 1] for i in range(len(digits) - 1))
+
+        return is_ascending or is_descending
+
+    def _is_palindrome(self, n: int) -> bool:
+        """Check if a number is a palindrome (reads the same forwards and backwards).
+
+        Examples: 121, 1221, 5445, 12321, etc.
+        """
+        str_n = str(n)
+        return len(str_n) >= 2 and str_n == str_n[::-1]  # noqa: PLR2004
+
+    def _calculate_score(self, number: int, kiriban_type: str) -> int:
+        """Calculate the score for a kiriban based on its type and characteristics.
+
+        Args:
+            number: The kiriban number
+            kiriban_type: Type of kiriban
+
+        Returns:
+            Calculated score
+        """
+        digit_count = len(str(number))
+
+        if kiriban_type == "repetitive":  # ゾロ目
+            return digit_count * 2
+        if kiriban_type == "palindrome":  # 回文
+            return 5
+        if kiriban_type == "sequential":  # 階段状
+            return 7
+        if kiriban_type == "power_of_ten":  # 累乗
+            return digit_count * 2
+        return 1  # Default score
+
+    def _get_kiriban_type(self, n: int) -> str | None:
+        """Get the type of kiriban for a given number.
+
+        Priority order (highest to lowest):
+        1. Repetitive (ゾロ目)
+        2. Palindrome (回文数)
+        3. Sequential (階段状)
+        4. Power of ten multiple (整数x10の累乗)
+        """
+        if self._is_repetitive(n):
+            return "repetitive"
+        if self._is_palindrome(n):
+            return "palindrome"
+        if self._is_sequential(n):
+            return "sequential"
+        if self._is_power_of_ten_multiple(n):
+            return "power_of_ten"
+        return None
+
+    def generate_kiriban(self, under: int) -> Generator[Kiriban, None, None]:
+        """Generate kiriban instances up to a specified limit.
+
+        Args:
+            under: Maximum number to generate (exclusive)
+
+        Yields:
+            Kiriban instances with appropriate scores
+        """
+        kiriban_id = 6001  # Starting ID for kiriban badges (6000 series to avoid conflicts)
+
+        for n in range(1, under):
+            kiriban_type = self._get_kiriban_type(n)
+            if kiriban_type:
+                score = self._calculate_score(n, kiriban_type)
+                yield Kiriban(id=kiriban_id, number=n, score=score, kiriban_type=kiriban_type)
+                kiriban_id += 1
 
 
 @dataclass
@@ -44,6 +164,29 @@ class BadgeData:
     level: int
     score: int
     badge_type_id: int
+
+
+def generate_kiriban_badges(under: int) -> list[BadgeData]:
+    """Generate kiriban BadgeData dynamically using KiribanGenerator.
+
+    Args:
+        under: Maximum kiriban number to generate (exclusive)
+
+    Returns:
+        List of BadgeData for kiriban badges starting from id=6001
+    """
+    generator = KiribanGenerator()
+    return [
+        BadgeData(
+            id=kiriban.id,
+            message=f"{kiriban.number}番目のお客様",
+            condition=f"{kiriban.number}回目の出社登録をした",
+            level=1,
+            score=kiriban.score,  # Use calculated score based on kiriban type
+            badge_type_id=6,
+        )
+        for kiriban in generator.generate_kiriban(under=under)
+    ]
 
 
 class BadgeChecker:
@@ -474,7 +617,13 @@ class BadgeChecker:
             )
             .count()
         )
-        for ID, kiriban_count in KIRIBAN_ID_COUNTS:  # noqa: N806
+        # Generate kiriban ID counts dynamically using KiribanGenerator
+        generator = KiribanGenerator()
+        kiriban_id_counts = [
+            (kiriban.id, kiriban.number) for kiriban in generator.generate_kiriban(under=KIRIBAN_GENERATION_LIMIT)
+        ]
+
+        for ID, kiriban_count in kiriban_id_counts:  # noqa: N806
             if previous_arrival_count == kiriban_count - 1:
                 return [session.query(Badge).filter(Badge.id == ID).one()]
         return []
@@ -1079,166 +1228,8 @@ Badges = [
         badge_type_id=5,
     ),
     # BadgeTypeData id=6, name="kiriban", description="特定の出社登録の回数で付与される"
-    BadgeData(
-        id=601,
-        message="100番目のお客様",
-        condition="100回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=602,
-        message="111番目のお客様",
-        condition="111回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=603,
-        message="200番目のお客様",
-        condition="200回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=604,
-        message="222番目のお客様",
-        condition="222回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=605,
-        message="300番目のお客様",
-        condition="300回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=606,
-        message="333番目のお客様",
-        condition="333回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=607,
-        message="400番目のお客様",
-        condition="400回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=608,
-        message="444番目のお客様",
-        condition="444回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=609,
-        message="500番目のお客様",
-        condition="500回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=610,
-        message="555番目のお客様",
-        condition="555回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=611,
-        message="600番目のお客様",
-        condition="600回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=612,
-        message="666番目のお客様",
-        condition="666回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=613,
-        message="700番目のお客様",
-        condition="700回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=614,
-        message="777番目のお客様",
-        condition="777回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=615,
-        message="800番目のお客様",
-        condition="800回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=616,
-        message="888番目のお客様",
-        condition="888回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=617,
-        message="900番目のお客様",
-        condition="900回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=618,
-        message="999番目のお客様",
-        condition="999回目の出社登録をした",
-        level=1,
-        score=10,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=619,
-        message="1000番目のお客様",
-        condition="1000回目の出社登録をした",
-        level=1,
-        score=10,
-        badge_type_id=6,
-    ),
-    BadgeData(
-        id=620,
-        message="1111番目のお客様",
-        condition="1111回目の出社登録をした",
-        level=1,
-        score=5,
-        badge_type_id=6,
-    ),
+    # Dynamically generated kiriban badges are inserted here
+    *generate_kiriban_badges(under=KIRIBAN_GENERATION_LIMIT),
     # BadgeTypeData id=7, name="long_time_no_see",
     #           description="長期間出社登録がない状態で復帰した"  # noqa: ERA001
     BadgeData(

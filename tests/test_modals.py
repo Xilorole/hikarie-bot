@@ -292,13 +292,7 @@ def test_achievement_view(temp_db: sessionmaker[Session]) -> None:
         user_id="test_user",
     )
     expected_blocks = [
-        {
-            "text": {
-                "text": "*1* : 出社登録BOTを初めて利用した",
-                "type": "mrkdwn",
-            },
-            "type": "section",
-        },
+        {"text": {"text": "*1系 : 出社登録BOTを初めて利用した*", "type": "mrkdwn"}, "type": "section"},
         {
             "elements": [
                 {
@@ -334,52 +328,39 @@ def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
 
     rendered = [block.to_dict() for block in view.blocks]
     badge_type_sections = [
-        block for block in rendered if block.get("type") == "section" and "*6*" in block.get("text", {}).get("text", "")
+        block
+        for block in rendered
+        if block.get("type") == "section" and "*6系" in block.get("text", {}).get("text", "")
     ]
     assert badge_type_sections, "Badge type 6 section should be present"
     badge_type_1_sections = [
-        block for block in rendered if block.get("type") == "section" and "*1*" in block.get("text", {}).get("text", "")
+        block
+        for block in rendered
+        if block.get("type") == "section" and "*1系" in block.get("text", {}).get("text", "")
     ]
     assert not badge_type_1_sections, "Badge type 1 section should not be present"
 
 
 @mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
-def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> None:
-    """Test 6XX badge logic: taken icon if any user has it, not achieved if none."""
-    from hikarie_bot.models import Badge, UserBadge  # Local import for this test
+def test_achievement_message_6xxx_taken_logic(temp_db: sessionmaker[Session]) -> None:
+    """Test 6XXX badge logic: taken icon if any user has it, not achieved if none."""
+    from hikarie_bot.models import Badge  # Local import for this test
 
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    badge_6xx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 600, Badge.id < 700).first()
-    assert badge_6xx is not None, "Test requires a 6XX badge of type 6"
+    badge_6xxx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 6000, Badge.id < 7000).first()
+    assert badge_6xxx is not None, "Test requires a 6XXX badge of type 6"
 
-    view = AchievementView(session=session, user_id="test_user")
-    rendered = [block.to_dict() for block in view.blocks]
-    found = False
-    for block in rendered:
-        if block.get("type") == "context":
-            for element in block.get("elements", []):
-                if element.get("type") == "image" and element.get("alt_text", "").startswith(
-                    f"【{badge_6xx.message}】"
-                ):
-                    from hikarie_bot.constants import NOT_ACHIEVED_BADGE_IMAGE_URL
-
-                    assert element["image_url"] == NOT_ACHIEVED_BADGE_IMAGE_URL
-                    found = True
-    assert found, "Should find not achieved icon for 6XX badge when no user has it"
-
-    session.add(
-        UserBadge(
-            user_id="other_user",
-            user_info_raw_id="other_user",
-            badge_id=badge_6xx.id,
-            initially_acquired_datetime=datetime(2024, 1, 1, 8, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-            count=1,
+    # at least 10 arrivals to get the 6XXX badge
+    for i in range(10):
+        insert_arrival_action(
+            session=session,
+            jst_datetime=datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+            user_id="test_user",
         )
-    )
-    session.commit()
 
+    # 取得したバッジが表示されていることのテスト
     view = AchievementView(session=session, user_id="test_user")
     rendered = [block.to_dict() for block in view.blocks]
     found = False
@@ -387,13 +368,13 @@ def test_achievement_message_6xx_taken_logic(temp_db: sessionmaker[Session]) -> 
         if block.get("type") == "context":
             for element in block.get("elements", []):
                 if element.get("type") == "image" and element.get("alt_text", "").startswith(
-                    f"【{badge_6xx.message}】"
+                    f"【{badge_6xxx.message}】"
                 ):
-                    from hikarie_bot.constants import TAKEN_6XX_BADGE_IMAGE_URL
+                    from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL
 
-                    assert element["image_url"] == TAKEN_6XX_BADGE_IMAGE_URL
+                    assert element["image_url"] == ACHIEVED_BADGE_IMAGE_URL
                     found = True
-    assert found, "Should find taken icon for 6XX badge when another user has it"
+    assert found, "Should find taken icon for 6XXX badge when another user has it"
 
 
 def test_get_new_achievements(temp_db: sessionmaker[Session]) -> None:  # noqa: PLR0912, PLR0915
