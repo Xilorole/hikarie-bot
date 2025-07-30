@@ -353,14 +353,27 @@ class AchievementView(View):
 
         for badge_type in all_badge_types:
             # バッジタイプの説明を追加
-            blocks_list.append(blocks.SectionBlock(text=f"*{badge_type.id}* : {badge_type.description}"))
+            blocks_list.append(blocks.SectionBlock(text=f"*{badge_type.id}系 : {badge_type.description}*"))
 
-            # バッジ要素を生成
-            badge_elements = self._generate_badge_elements_for_type(badge_type)
+            # 全バッジの視覚的表示（獲得済み・未獲得）
+            all_badge_elements = self._generate_badge_elements_for_type(badge_type)
+            if all_badge_elements:
+                blocks_list.extend(self._create_context_blocks_from_elements(all_badge_elements))
 
-            # 要素をコンテキストブロックに分割して追加
-            blocks_list.extend(self._create_context_blocks_from_elements(badge_elements))
             blocks_list.append(blocks.DividerBlock())
+
+        # 獲得済みバッジの詳細をまとめて表示
+        achieved_badges_details = self._create_all_achieved_badges_summary()
+        if achieved_badges_details:
+            blocks_list.append(blocks.SectionBlock(text="*獲得済みバッジ詳細*"))
+            blocks_list.extend(achieved_badges_details)
+
+        # 未獲得バッジの一覧を表示
+        unachieved_badges_list = self._create_unachieved_badges_list()
+        if unachieved_badges_list:
+            blocks_list.append(blocks.DividerBlock())
+            blocks_list.append(blocks.SectionBlock(text="*未獲得バッジ一覧*"))
+            blocks_list.extend(unachieved_badges_list)
 
         return blocks_list
 
@@ -409,10 +422,6 @@ class AchievementView(View):
             alt_text=f"【{badge.message}】???",
         )
 
-    def _is_6xx_badge(self, badge_id: int) -> bool:
-        """Check if badge is a 6XX special badge."""
-        return 600 <= badge_id < 700  # noqa: PLR2004
-
     def _create_6xx_badge_element(self, badge: Badge) -> block_elements.ImageElement:
         """Create element for 6XX special badges."""
         other_user_badge = self.session.query(UserBadge).filter(UserBadge.badge_id == badge.id).first()
@@ -425,6 +434,18 @@ class AchievementView(View):
         return block_elements.ImageElement(
             image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
             alt_text=f"【{badge.message}】???",
+        )
+
+    def _is_6xx_badge(self, badge_id: int) -> bool:
+        """Check if badge is a 6XX special badge."""
+        return 600 <= badge_id < 700  # noqa: PLR2004
+
+    def _get_badge_achievement_count(self, badge_id: int) -> int:
+        """Get the number of times a user has achieved a specific badge."""
+        return (
+            self.session.query(UserBadge)
+            .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge_id)
+            .count()
         )
 
     def _create_context_blocks_from_elements(
@@ -574,6 +595,97 @@ class AchievementView(View):
                 elements_to_show = weekday_data[weekday][:10]
 
                 blocks_list.append(blocks.ContextBlock(elements=elements_to_show))
+
+        return blocks_list
+
+    def _create_all_achieved_badges_summary(self) -> list[Block]:
+        """Create a summary block for all achieved badges."""
+        blocks_list: list[Block] = []
+
+        # バッジの全タイプを取得して獲得済みバッジの詳細を表示
+        all_badge_types = (
+            self.session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
+        )
+
+        for badge_type in all_badge_types:
+            # 各バッジタイプの獲得済みバッジ詳細を取得
+            type_achieved_blocks = self._create_achieved_badge_blocks_for_type_with_id(badge_type)
+            blocks_list.extend(type_achieved_blocks)
+
+        return blocks_list
+
+    def _create_achieved_badge_blocks_for_type_with_id(self, badge_type: BadgeType) -> list[Block]:
+        """Create blocks for achieved badges of a specific type with badge IDs."""
+        blocks_list: list[Block] = []
+        badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
+
+        for badge in badges:
+            user_badge = (
+                self.session.query(UserBadge)
+                .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge.id)
+                .first()
+            )
+
+            if user_badge:
+                # 獲得回数を取得
+                achievement_count = self._get_badge_achievement_count(badge.id)
+
+                # SectionBlock - バッジ名の前にIDを追加
+                initial_date = user_badge.initially_acquired_datetime.strftime("%Y-%m-%d")
+                markdown_text = f"[{badge.id}] *{badge.message}* @ {initial_date}"
+                blocks_list.append(blocks.SectionBlock(text=markdown_text))
+
+                # Contextブロックを作成
+                total_points = badge.score * achievement_count
+                context_text = (
+                    f"- 総獲得ポイント: {total_points}pt ({badge.score}pt x {achievement_count}) |"
+                    f" 条件: {badge.condition}"
+                )
+                blocks_list.append(
+                    blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=context_text)])
+                )
+
+        return blocks_list
+
+    def _create_unachieved_badges_list(self) -> list[Block]:
+        """Create a simple list of unachieved badges for the user."""
+        blocks_list: list[Block] = []
+        unachieved_badges_text = ""
+
+        # バッジの全タイプを取得
+        all_badge_types = (
+            self.session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
+        )
+
+        for badge_type in all_badge_types:
+            badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
+            type_unachieved = []
+
+            for badge in badges:
+                user_badge = (
+                    self.session.query(UserBadge)
+                    .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge.id)
+                    .first()
+                )
+
+                if not user_badge:
+                    # 6xxバッジの特別処理 - 他のユーザーが獲得済みの場合は表示しない
+                    if self._is_6xx_badge(badge.id):
+                        other_user_badge = self.session.query(UserBadge).filter(UserBadge.badge_id == badge.id).first()
+                        if other_user_badge is not None:
+                            continue
+
+                    type_unachieved.append(f"[{badge.id}] {badge.message}")
+
+            if type_unachieved:
+                unachieved_badges_text += f"*{badge_type.id}系*\n"
+                unachieved_badges_text += "\n".join([f"• {badge}" for badge in type_unachieved])
+                unachieved_badges_text += "\n\n"
+
+        if unachieved_badges_text:
+            blocks_list.append(blocks.SectionBlock(text=unachieved_badges_text.strip()))
+        else:
+            blocks_list.append(blocks.SectionBlock(text="すべてのバッジを獲得済みです！"))
 
         return blocks_list
 
