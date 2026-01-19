@@ -2,10 +2,14 @@ from collections.abc import Generator
 from typing import Any, Self
 
 import pytest
+from loguru import logger
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from hikarie_bot.database import BaseSchema
+
+# Disable loguru logging during tests for better performance
+logger.disable("hikarie_bot")
 
 
 class DatabaseExistsError(Exception):
