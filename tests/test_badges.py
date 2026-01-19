@@ -5,7 +5,7 @@ from unittest import mock
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
 
-from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
+from hikarie_bot.curd import insert_arrival_action
 from hikarie_bot.db_data.badges import BadgeChecker
 
 
@@ -29,7 +29,6 @@ class UserData:
 def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge = BadgeChecker.get_badge(session=session, badge_id=101)
         checker = BadgeChecker(badge_type_to_check=[1])
 
@@ -79,7 +78,6 @@ def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
 def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge = BadgeChecker.get_badge(session=session, badge_id=201)
         checker = BadgeChecker([2])
 
@@ -124,7 +122,6 @@ def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
 def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge_5 = BadgeChecker.get_badge(session=session, badge_id=301)
         checker = BadgeChecker([3])
 
@@ -205,7 +202,6 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
 def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=401)
         badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=402)
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=403)
@@ -364,7 +360,6 @@ def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
 def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=503)
         badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=502)
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=501)
@@ -444,7 +439,6 @@ def test_badge_checker_id6_kiriban(
 ) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge_n100 = BadgeChecker.get_badge(session=session, badge_id=6001)
         checker = BadgeChecker([6])
 
@@ -488,7 +482,6 @@ def test_badge_checker_id6_kiriban(
 def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         # > # BadgeTypeData id=7, name="long_time_no_see",
         # > #           description="長期間出社登録がない状態で復帰した"
         # > BadgeData(
@@ -579,7 +572,6 @@ def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
 def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=801)
         badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=802)
         badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=803)
@@ -655,7 +647,6 @@ def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
 def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
     """Test the badge checker with complex condition."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge_id1 = BadgeChecker.get_badge(session=session, badge_id=101)
         badge_id2 = BadgeChecker.get_badge(session=session, badge_id=201)
         badge_id3 = BadgeChecker.get_badge(session=session, badge_id=301)
@@ -715,7 +706,6 @@ def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
 def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
     """Test the start dash badge."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=1501)
         checker = BadgeChecker([15])
 
@@ -783,8 +773,6 @@ def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
 def test_badge_checker_id16_specific_day(temp_db: sessionmaker) -> None:
     """Test the specific day badge."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
-
         # > # BadgeTypeData id=16, name="specific_day", description="特定の年月日に出社した"
         # > BadgeData(
         # >     id=1601,
@@ -847,8 +835,6 @@ def test_badge_checker_id16_specific_day(temp_db: sessionmaker) -> None:
 def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
     """Test the yearly specific day badge."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
-
         # > # BadgeTypeData id=17, name="yearly_specific_day", description="毎年特定の日に出社した"
         # > BadgeData(
         # >     id=1701,
@@ -1007,8 +993,6 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
 def test_badge_checker_id18_specific_time(temp_db: sessionmaker) -> None:
     """Test the specific time badge."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
-
         # > # BadgeTypeData id=18, name="specific_time", description="特定の時間に出社した"
         # > BadgeData(
         # >     id=1801,
@@ -1103,8 +1087,6 @@ def test_badge_checker_id18_specific_time(temp_db: sessionmaker) -> None:
 def test_badge_checker_id18_specific_time_added_badge(temp_db: sessionmaker) -> None:
     """Test the specific time badge."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
-
         # > BadgeData(
         # >     id=1805,
         # >     message="もしやあなたはモフ好きですね",
@@ -1183,7 +1165,6 @@ def test_badge_checker_id18_specific_time_added_badge(temp_db: sessionmaker) -> 
 def test_badge_checker_id19_takanawa_welcome(temp_db: sessionmaker) -> None:
     """Test the takanawa welcome badge."""
     with temp_db() as session:
-        initially_insert_badge_data(session)
         badge = BadgeChecker.get_badge(session=session, badge_id=1901)
         checker = BadgeChecker(badge_type_to_check=[19])
 

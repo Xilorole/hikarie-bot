@@ -204,7 +204,7 @@ def test_insert_badge_data(temp_db: sessionmaker[Session]) -> None:
     initially_insert_badge_data(session=session)
 
     assert session.query(Badge).count() != 0
-    assert session.query(BadgeType).count() == 18
+    assert session.query(BadgeType).count() == 19
 
     assert session.query(Badge).filter(Badge.badge_type_id == 1, Badge.level == 1).one().message == "はじめての出社登録"
 

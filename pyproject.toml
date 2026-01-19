@@ -31,6 +31,7 @@ core = [
 dev = [
     "freezegun",
     "pytest",
+    "pytest-xdist",
     "ruff",
     "pyright",
     "pytest-mock",
