@@ -1178,3 +1178,54 @@ def test_badge_checker_id18_specific_time_added_badge(temp_db: sessionmaker) -> 
             logger.info(f"expected: {expected}, data: {data}, actual: {actual}")
 
             assert expected == actual
+
+
+def test_badge_checker_id19_takanawa_welcome(temp_db: sessionmaker) -> None:
+    """Test the takanawa welcome badge."""
+    with temp_db() as session:
+        initially_insert_badge_data(session)
+        badge = BadgeChecker.get_badge(session=session, badge_id=1901)
+        checker = BadgeChecker(badge_type_to_check=[19])
+
+        # test scenario
+        # 1. user_first_takanawa:
+        #   2026-01-19 10:00:00 (o:takanawa_welcome) <- [check]
+        # 2. user_second_takanawa:
+        #   2026-01-19 10:00:00 (first)
+        #   2026-01-20 10:00:00 (x:takanawa_welcome, second time) <- [check]
+        # 3. user_before_move:
+        #   2026-01-18 10:00:00 (x:takanawa_welcome, before move) <- [check]
+        # 4. user_on_move_day:
+        #   2026-01-19 09:00:00 (o:takanawa_welcome, on move day) <- [check]
+
+        test_data = (
+            UserData(jst_datetime="2026-01-19 10:00:00", user_id="user_first_takanawa"),
+            UserData(jst_datetime="2026-01-19 10:00:00", user_id="user_second_takanawa"),
+            UserData(jst_datetime="2026-01-20 10:00:00", user_id="user_second_takanawa"),
+            UserData(jst_datetime="2026-01-18 10:00:00", user_id="user_before_move"),
+            UserData(jst_datetime="2026-01-19 09:00:00", user_id="user_on_move_day"),
+        )
+
+        check_data = (
+            ([badge], UserData(jst_datetime="2026-01-19", user_id="user_first_takanawa")),
+            ([], UserData(jst_datetime="2026-01-20", user_id="user_second_takanawa")),
+            ([], UserData(jst_datetime="2026-01-18", user_id="user_before_move")),
+            ([badge], UserData(jst_datetime="2026-01-19", user_id="user_on_move_day")),
+        )
+
+        for data in test_data:
+            insert_arrival_action(
+                session=session,
+                jst_datetime=data.jst_datetime,
+                user_id=data.user_id,
+            )
+
+        for expected, data in check_data:
+            actual = checker.check(
+                session=session,
+                user_id=data.user_id,
+                target_date=data.jst_datetime,
+            )
+            logger.info(f"expected: {expected}, data: {data}, actual: {actual}")
+
+            assert expected == actual
