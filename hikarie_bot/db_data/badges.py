@@ -923,11 +923,6 @@ class BadgeChecker:
         if user_arrival is None:
             return []
 
-        # Check if the user has arrived on or after 2026/1/19
-        # Compare dates to avoid timezone issues
-        if user_arrival.arrival_time.date() < TAKANAWA_OFFICE_START.date():
-            return []
-
         # Check if the user has any previous arrivals on or after 2026/1/19
         previous_takanawa_arrival_count = (
             session.query(GuestArrivalInfo)
