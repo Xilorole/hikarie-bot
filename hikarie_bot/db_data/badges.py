@@ -900,7 +900,7 @@ class BadgeChecker:
         user_id: str,
         target_date: datetime,
     ) -> list[Badge]:
-        """Check if the user has acquired the takanawa welcome badge.
+        """Check if the user has acquired the Takanawa welcome badge.
 
         Args:
         ----
