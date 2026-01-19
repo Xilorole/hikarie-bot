@@ -26,5 +26,5 @@ jobs:
       - name: Run Pytest if directory exists
         run: |
           if [ -d "./tests/" ]; then
-            uv run --no-group jupyter pytest -s
+            uv run --no-group jupyter pytest -s -n auto
           fi

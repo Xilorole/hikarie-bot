@@ -229,6 +229,7 @@ class BadgeChecker:
             16: cls.check_specific_day,
             17: cls.check_yearly_specific_day,
             18: cls.check_specific_time,
+            19: cls.check_takanawa_welcome,
         }
 
     @classmethod
@@ -893,6 +894,53 @@ class BadgeChecker:
         return []
 
     @classmethod
+    def check_takanawa_welcome(
+        cls,
+        session: Session,
+        user_id: str,
+        target_date: datetime,
+    ) -> list[Badge]:
+        """Check if the user has acquired the Takanawa welcome badge.
+
+        Args:
+        ----
+            session (Session): The session factory to interact with the database.
+            user_id (str): The ID of the user to check for badge acquisition.
+            target_date (datetime): The date and time in JST to check for badge acquisition.
+
+        Returns:
+        -------
+            list[Badge]: A tuple of badges acquired by the user, or [] if no badge is acquired.
+
+        """
+        ID = 1901  # noqa: N806
+        TAKANAWA_OFFICE_START = datetime(2026, 1, 19, tzinfo=ZoneInfo("Asia/Tokyo"))  # noqa: N806
+
+        if not cls.apply_start_check(session=session, target_date=target_date, badge_type_id=19):
+            return []
+
+        user_arrival = cls._arrived_check(session, user_id, target_date)
+        if user_arrival is None:
+            return []
+
+        # Check if the user has any previous arrivals on or after 2026/1/19
+        previous_takanawa_arrival_count = (
+            session.query(GuestArrivalInfo)
+            .filter(
+                GuestArrivalInfo.user_id == user_id,
+                GuestArrivalInfo.arrival_time
+                >= TAKANAWA_OFFICE_START.replace(hour=0, minute=0, second=0, microsecond=0),
+                GuestArrivalInfo.arrival_time < user_arrival.arrival_time,
+            )
+            .count()
+        )
+
+        # If this is the first arrival on or after 2026/1/19, award the badge
+        if previous_takanawa_arrival_count == 0:
+            return [session.query(Badge).filter(Badge.id == ID).one()]
+        return []
+
+    @classmethod
     def check_specific_time(  # noqa: PLR0911
         cls,
         session: Session,
@@ -1121,6 +1169,12 @@ BadgeTypes = [
         name="specific_time",
         description="特定の時間に出社した",
         apply_start=datetime(2025, 1, 1, tzinfo=ZoneInfo("Asia/Tokyo")),
+    ),
+    BadgeTypeData(
+        id=19,
+        name="takanawa_welcome",
+        description="高輪オフィスに移転後、初めて出社した",
+        apply_start=datetime(2026, 1, 19, tzinfo=ZoneInfo("Asia/Tokyo")),
     ),
 ]
 
@@ -1483,5 +1537,14 @@ Badges = [
         level=3,
         score=4,
         badge_type_id=18,
+    ),
+    # BadgeTypeData id=19, name="takanawa_welcome", description="高輪オフィスに移転後、初めて出社した"
+    BadgeData(
+        id=1901,
+        message="Welcome to Takanawa",
+        condition="高輪オフィス移転後、初めて出社した",
+        level=1,
+        score=3,
+        badge_type_id=19,
     ),
 ]
