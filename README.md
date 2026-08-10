@@ -40,6 +40,31 @@ Other targets (`make help` lists them all):
 | `make fmt` | Auto-format and auto-fix |
 | `make typecheck` | Run pyright |
 
+### Working in a worktree
+
+Branches are developed in git worktrees under `.worktrees/`, so the main clone
+stays on its own branch and nothing needs stashing when switching tasks.
+
+```bash
+make wt BRANCH=feature/my-change            # branched off origin/main
+make wt BRANCH=fix/bug BASE=origin/develop  # branched off something else
+cd .worktrees/feature-my-change
+make check
+```
+
+The helper creates the worktree (reusing the local or remote branch if it
+already exists), symlinks `.env` from the main clone, and runs `uv sync` so the
+worktree has its own virtualenv.
+
+`.worktrees/` is gitignored, so pytest (`testpaths = tests`) and ruff (which
+honours `.gitignore`) never descend into it.
+
+| Command | What it does |
+| --- | --- |
+| `make wt BRANCH=...` | Create or reuse a worktree and set it up |
+| `make wt-list` | List every worktree |
+| `make wt-rm BRANCH=...` | Remove a worktree and prune the metadata |
+
 ### Writing tests
 
 Fixtures live in `tests/conftest.py`:
