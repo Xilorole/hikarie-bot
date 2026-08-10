@@ -48,6 +48,11 @@ write_to = "hikarie_bot/_version.py"
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+filterwarnings = [
+    "ignore::DeprecationWarning:jupyter_client.*",
+]
 
 [tool.pytest_env]
 ENV = "test"

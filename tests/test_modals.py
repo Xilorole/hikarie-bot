@@ -2,9 +2,8 @@ import zoneinfo
 from datetime import datetime
 from textwrap import dedent
 
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
-from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.modals import (
     AchievementMessage,
     AlreadyRegisteredMessage,
@@ -13,6 +12,7 @@ from hikarie_bot.modals import (
     PointGetMessage,
     RegistryMessage,
 )
+from tests.helpers import arrive
 
 
 def test_initial_message() -> None:
@@ -52,18 +52,9 @@ def test_initial_message() -> None:
     ]
 
 
-def test_registry_message(temp_db: sessionmaker[Session]) -> None:
+def test_registry_message(session: Session) -> None:
     """Test the second arrived user has lower point."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_1st",
-    )
+    arrive(session, "2024-01-01 06:00:00", "test_user_1st")
     message = RegistryMessage(
         session=session,
         jst_datetime=datetime(
@@ -116,25 +107,10 @@ def test_registry_message(temp_db: sessionmaker[Session]) -> None:
     )
 
 
-def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
+def test_registry_message_2(session: Session) -> None:
     """Test the second arrived user has lower point."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_1st",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 1, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_2nd",
-    )
+    arrive(session, "2024-01-01 06:00:00", "test_user_1st")
+    arrive(session, "2024-01-01 06:01:00", "test_user_2nd")
     message = RegistryMessage(
         session=session,
         jst_datetime=datetime(
@@ -186,18 +162,9 @@ def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
-def test_fastest_arrival_message(temp_db: sessionmaker[Session]) -> None:
+def test_fastest_arrival_message(session: Session) -> None:
     """Test the fastest arrival message."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
+    arrive(session, "2024-01-01 06:00:00", "test_user")
     message = FastestArrivalMessage(
         user_id="test_user",
         jst_datetime=datetime(
@@ -218,18 +185,9 @@ def test_fastest_arrival_message(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
-def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
+def test_point_get_message(session: Session) -> None:
     """Test the point get message."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
+    arrive(session, "2024-01-01 06:00:00", "test_user")
 
     message = PointGetMessage(
         session,
@@ -276,11 +234,8 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
     )
 
 
-def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
+def test_already_registered_message(session: Session) -> None:
     """Test the already registered message."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
     message = AlreadyRegisteredMessage(
         user_id="test_user",
         jst_datetime=datetime(
@@ -301,18 +256,9 @@ def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
-def test_achievement_message(temp_db: sessionmaker[Session]) -> None:
+def test_achievement_message(session: Session) -> None:
     """Test the achievement message."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
+    arrive(session, "2024-01-01 06:00:00", "test_user")
 
     message = AchievementMessage(
         session=session,

@@ -1,29 +1,17 @@
-import zoneinfo
-from datetime import datetime
 from unittest.mock import patch
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from hikarie_bot.curd import (
-    initially_insert_badge_data,
-    insert_arrival_action,
-)
+from hikarie_bot.curd import initially_insert_badge_data
 from hikarie_bot.models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
+from tests.helpers import arrive
 
 
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
-def test_temp_db(temp_db: sessionmaker[Session]) -> None:
+def test_temp_db(session: Session) -> None:
     """Test temporary database."""
-    session: Session = temp_db()
-    initially_insert_badge_data(session=session)
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
+    arrive(session, "2024-01-01 06:00:00", "test_user")
 
     assert session.query(GuestArrivalInfo).all() is not None
     assert (
@@ -38,13 +26,7 @@ def test_temp_db(temp_db: sessionmaker[Session]) -> None:
         .count()
         == 0
     )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user",
-    )
+    arrive(session, "2024-01-01 07:00:00", "test_user")
     assert (
         session.query(GuestArrivalInfo)
         .filter(GuestArrivalInfo.user_id == "test_user")
@@ -73,18 +55,10 @@ def test_temp_db(temp_db: sessionmaker[Session]) -> None:
 
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
-def test_level_up(temp_db: sessionmaker[Session]) -> None:
+def test_level_up(session: Session) -> None:
     """Test level up."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
     for i in range(4):
-        insert_arrival_action(
-            session=session,
-            jst_datetime=datetime(
-                2024, 2, i + 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-            ),
-            user_id="test_user",
-        )
+        arrive(session, f"2024-02-{i + 1:02d} 06:00:00", "test_user")
 
     user_info = session.query(User).filter(User.id == "test_user").one()
 
@@ -100,25 +74,10 @@ def test_level_up(temp_db: sessionmaker[Session]) -> None:
 
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
-def test_second_arrived_user_has_lower_point(temp_db: sessionmaker[Session]) -> None:
+def test_second_arrived_user_has_lower_point(session: Session) -> None:
     """Test the second arrived user has lower point."""
-    session = temp_db()
-
-    initially_insert_badge_data(session=session)
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_1st",
-    )
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(
-            2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")
-        ),
-        user_id="test_user_2nd",
-    )
+    arrive(session, "2024-01-01 06:00:00", "test_user_1st")
+    arrive(session, "2024-01-01 07:00:00", "test_user_2nd")
 
     user_1st_info = session.query(User).filter(User.id == "test_user_1st").one()
     user_2nd_info = session.query(User).filter(User.id == "test_user_2nd").one()
