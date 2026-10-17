@@ -82,3 +82,9 @@ jobs:
           tags: ${{ env.DEVCONTAINER_TEST_TAG }}
           cache-from: type=gha,scope=devcontainer
           cache-to: type=gha,scope=devcontainer,mode=max
+
+      - name: Verify development tools as vscode
+        run: |
+          docker run --rm --network none --user vscode \
+            "${{ env.DEVCONTAINER_TEST_TAG }}" sh -c \
+            'uv --version && uv python find 3.12 && uv python list --only-installed && hadolint --version && starship --version'
