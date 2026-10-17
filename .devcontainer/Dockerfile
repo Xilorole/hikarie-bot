@@ -9,7 +9,7 @@ FROM ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa005066cd11e1053fc
 # build step
 ################################
 
-FROM alpine:3.22 AS builder
+FROM alpine:3.24 AS builder
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache bash curl ca-certificates
