@@ -170,7 +170,7 @@ To run the Hikarie Bot using Docker, follow these steps:
 2. Run the Docker container:
 
    ```bash
-   docker run -d --name hikarie-bot-container hikarie-bot
+   docker run -d --name hikarie-bot-container --env-file .env hikarie-bot
    ```
 
 3. Verify that the bot is running:
@@ -180,6 +180,37 @@ To run the Hikarie Bot using Docker, follow these steps:
    ```
 
 Replace `hikarie-bot` and `hikarie-bot-container` with your preferred image and container names if needed.
+
+The production image installs the locked `core` dependencies at build time and
+runs the installed package directly as a non-root user (UID/GID 10001). It does
+not install or update dependencies when starting. Python and uv images are
+pinned by digest; Dependabot checks Docker image updates weekly.
+
+Create `.env` from `.env.template` and fill in the Slack configuration before
+starting the bot. If using `URL=sqlite:///.db/data.db`, persist `/opt/.db` with a
+Docker volume when recreating containers:
+
+```bash
+docker run -d --name hikarie-bot-container --env-file .env \
+  --mount type=volume,source=hikarie-bot-db,target=/opt/.db hikarie-bot
+```
+
+Existing bind-mounted database directories must be writable by UID/GID 10001.
+Back up an existing database before changing its mount configuration. The
+Compose configuration does not automatically add persistent database storage.
+
+Docker CI checks both Dockerfiles and verifies that the production image can
+import its dependencies, display CLI help, and write to SQLite without network
+access. Development/test dependencies are deliberately excluded from that image;
+run the test suite in the development environment with `uv run pytest`.
+
+The dependency layer is separate from the application layer. BuildKit cache
+mounts reuse uv downloads on the same builder, while GitHub Actions uses separate
+layer cache scopes for production and development images. Cache mount contents
+are not automatically exported to the GitHub Actions cache.
+
+These choices follow the [Docker build best practices](https://docs.docker.com/build/building/best-practices/)
+and [uv Docker integration guide](https://docs.astral.sh/uv/guides/integration/docker/).
 ## Running the Bot with Docker Compose
 
 To run the Hikarie Bot using Docker Compose, follow these steps:

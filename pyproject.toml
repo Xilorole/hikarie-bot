@@ -21,7 +21,7 @@ core = [
     "jpholiday",
     "loguru",
     "pydantic",
-    "pytest-asyncio",
+    "python-dateutil",
     "python-dotenv",
     "slack-bolt",
     "sqlalchemy-utils",
@@ -29,6 +29,7 @@ core = [
     "tzdata>=2025.2",
 ]
 dev = [
+    "pytest-asyncio",
     "freezegun",
     "pytest",
     "pytest-xdist",
