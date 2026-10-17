@@ -1,28 +1,44 @@
-FROM alpine:3.21 AS builder
+# syntax=docker/dockerfile:1
+
+FROM ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa005066cd11e1053fc4743b9808ca8025283e65efa5 AS uv
+FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258 AS base
+
+FROM base AS builder
+
+COPY --from=uv /uv /usr/local/bin/uv
+
+ENV UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0
 
 WORKDIR /opt
 
-# hadolint ignore=DL3018
-RUN apk update && \
-    apk add --no-cache bash curl ca-certificates git
+# hadolint ignore=DL3008
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
 
-SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
-
-ADD https://astral.sh/uv/install.sh uv-installer.sh
-RUN sh uv-installer.sh
-
-WORKDIR /opt
-
-# Copy only the necessary files and directories
-COPY .git .git
-RUN if [ ! -d ".git" ]; then echo ".git directory not found"; exit 1; fi
-COPY hikarie_bot hikarie_bot
 COPY pyproject.toml uv.lock .python-version ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --group core --no-install-project
 
-# Install the dependencies
-ENV PATH="/root/.local/bin:$PATH"
-RUN mkdir .db && \
-    uv python pin "$(cat .python-version)"
+COPY README.md LICENSE ./
+COPY hikarie_bot hikarie_bot
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=.git,target=.git \
+    uv sync --locked --no-default-groups --group core --no-editable
 
-# Verify the presence of the .git directory
-CMD [ "uv", "run","--group", "core", "hikarie_bot", "start"]
+FROM base AS runtime
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /opt
+
+RUN groupadd --gid 10001 bot && \
+    useradd --uid 10001 --gid bot --no-log-init --create-home bot && \
+    mkdir .db && chown bot:bot .db
+
+COPY --from=builder /opt/.venv /opt/.venv
+
+USER bot
+
+CMD ["/opt/.venv/bin/python", "-m", "hikarie_bot", "start"]

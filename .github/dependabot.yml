@@ -1,5 +1,13 @@
 version: 2
 updates:
+  - package-ecosystem: docker
+    directories:
+      - "/"
+      - "/.devcontainer"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(docker)"
 
   - package-ecosystem: pip
     directory: "/"

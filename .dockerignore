@@ -1,1 +1,17 @@
 .venv/
+.env
+.env.*
+!.env.template
+.db/
+.artifacts/
+.worktrees/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage*
+htmlcov/
+build/
+dist/
+*.egg-info/
+notebook/
