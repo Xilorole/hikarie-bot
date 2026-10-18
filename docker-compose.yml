@@ -1,8 +1,31 @@
 services:
-  hikarie-bot:
+  initial-data:
+    image: ${INITIAL_DATA_IMAGE:-ghcr.io/xilorole/hikarie-bot-initial-data:latest}
     build:
       context: .
+      target: initial-data
+    network_mode: none
+    restart: "no"
+    volumes:
+      - bot-db:/opt/.db
+
+  hikarie-bot:
+    image: ${BOT_IMAGE:-ghcr.io/xilorole/hikarie-bot:latest}
+    build:
+      context: .
+      target: bot
     container_name: hikarie-bot-container
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      URL: sqlite:////opt/.db/data.db
+    command: ["/opt/.venv/bin/python", "-m", "hikarie_bot", "start", "--skip-db-create"]
+    depends_on:
+      initial-data:
+        condition: service_completed_successfully
+    volumes:
+      - bot-db:/opt/.db
+
+volumes:
+  bot-db:

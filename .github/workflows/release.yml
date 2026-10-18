@@ -62,3 +62,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=release
           cache-to: type=gha,scope=release,mode=max
+
+      - name: Extract initial-data metadata
+        id: initial-data-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-initial-data
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Build and push empty initial-data image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: initial-data
+          push: true
+          tags: ${{ steps.initial-data-meta.outputs.tags }}
+          labels: ${{ steps.initial-data-meta.outputs.labels }}
+          cache-from: type=gha,scope=release
+          cache-to: type=gha,scope=release,mode=max
