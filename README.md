@@ -197,7 +197,7 @@ docker run -d --name hikarie-bot-container --env-file .env \
 
 Existing bind-mounted database directories must be writable by UID/GID 10001.
 Back up an existing database before changing its mount configuration. The
-Compose configuration does not automatically add persistent database storage.
+Compose configuration uses a named volume for persistent database storage.
 
 Docker CI checks both Dockerfiles and verifies that the production image can
 import its dependencies, display CLI help, and write to SQLite without network
@@ -230,3 +230,74 @@ To run the Hikarie Bot using Docker Compose, follow these steps:
    ```
 
 This will build and run the bot in a container named `hikarie-bot-container`.
+
+### Initial data image
+
+Compose runs the one-shot `initial-data` service before the bot. Both services
+share the `bot-db` volume at `/opt/.db`. The initial-data service has no network
+access and runs as UID/GID 10001. With the current manifest it creates the schema
+and badge definitions, but no users or arrival history. The bot starts with
+`--skip-db-create`, so it does not replay Slack history on startup.
+
+The release workflow publishes both `ghcr.io/xilorole/hikarie-bot` and
+`ghcr.io/xilorole/hikarie-bot-initial-data`. To deploy without a local build:
+
+```bash
+docker compose pull
+docker compose up -d --no-build
+```
+
+`BOT_IMAGE` and `INITIAL_DATA_IMAGE` can select versioned tags or digests. The
+default tags are `latest`; pin matching versions for repeatable deployments.
+For a local build use `docker compose up -d --build`.
+
+**Migration:** this Compose configuration selects `/opt/.db/data.db` explicitly,
+overriding `URL` in `.env`. Before upgrading an existing deployment, back up its
+SQLite database and copy a consistent snapshot into the `bot-db` volume with
+ownership 10001:10001. Otherwise the new volume starts empty. Do not delete the
+volume (`docker compose down -v`) unless intentionally discarding all history.
+An existing compatible database is validated and preserved, never replaced by
+the seed. Invalid existing databases stop initialization rather than being erased.
+Stopping the bot during migration avoids inconsistent copies.
+
+For a future encrypted seed, set `initial-data/manifest.json` to:
+
+```json
+{"format_version": 1, "mode": "fernet-sqlite"}
+```
+
+Supply a consistent SQLite snapshot authenticated/encrypted with
+`cryptography.fernet.Fernet` as `initial-data/snapshot.sqlite.fernet`, and build
+the `initial-data` target. The snapshot must contain this application's schema;
+the encrypted file is limited to 64 MiB. Only the manifest and this ciphertext
+are allowed from `initial-data/` into the Docker build context.
+Never put plaintext databases or keys in the repository, build arguments, or
+image. Keep the data package private and distribute the key separately.
+
+Mount the key using a Compose secret and add
+`command: ["--key-file", "/run/secrets/initial_data_key"]` to the initial-data
+service. For example, a deployment override can contain:
+
+```yaml
+services:
+  initial-data:
+    command: ["--key-file", "/run/secrets/initial_data_key"]
+    secrets:
+      - initial_data_key
+secrets:
+  initial_data_key:
+    file: ./secrets/initial-data.key
+```
+
+The secret file must be readable by UID 10001. Missing/wrong keys, tampered data,
+and incompatible snapshots fail initialization; the bot remains stopped. An
+existing valid database does not need the old seed or its key. Import is locked,
+validated, and published without replacing an existing file; temporary plaintext
+is removed on handled failure. A host crash may leave a restricted temporary
+file, so protect the DB volume and host storage.
+
+This initial-data change does not implement Slack catch-up synchronization:
+messages sent while the bot is stopped are not automatically replayed. Live
+button interactions continue to record arrivals. Running the bot directly
+without the Compose `--skip-db-create` command retains the existing history
+import behavior.

@@ -165,3 +165,7 @@ cython_debug/
 !.env.template
 test_modals/*
 !test_modals/.gitkeep
+
+secrets/
+initial-data/*
+!initial-data/manifest.json
