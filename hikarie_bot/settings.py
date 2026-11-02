@@ -4,9 +4,8 @@ from typing import Self
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.engine import make_url
 
-from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
+from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
 
 REQUIRED = [
     "output_channel",
@@ -54,23 +53,21 @@ class Settings(BaseSettings):
     # the commit the running image was built from (set by the Docker build)
     app_revision: str = ""
 
+    @property
+    def local(self) -> bool:
+        """Tell whether this is a dev or test run, where nothing is required."""
+        return self.env in {"dev", "test"}
+
     @model_validator(mode="after")
     def _in_memory_database_for_dev_and_test(self) -> Self:
-        if self.env in {"dev", "test"}:
+        if self.local:
             self.database_url = self.database_url or "sqlite:///:memory:"
         return self
 
     def require(self, *names: str) -> None:
-        """Raise for the first named value that is unset, outside dev/test.
-
-        A required database must also be a file: an in-memory one loses everything on restart.
-        """
-        if self.env in {"dev", "test"}:
-            return
-        if missing := [name for name in names if not getattr(self, name)]:
+        """Raise for the first named value that is unset, unless this is a dev or test run."""
+        if not self.local and (missing := [name for name in names if not getattr(self, name)]):
             raise EnvironmentVariableNotFoundError(missing[0].upper())
-        if "database_url" in names and make_url(self.database_url).database in {None, "", ":memory:"}:
-            raise InMemoryDatabaseError(self.database_url)
 
 
 def env_file() -> str | None:

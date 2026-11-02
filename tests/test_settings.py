@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
+from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
 from hikarie_bot.settings import REQUIRED, Settings, env_file
 
 REQUIRED_SLACK = ["OUTPUT_CHANNEL", "LOG_CHANNEL", "BOT_ID", "ADMIN"]
 
 
 def test_settings_require_database_url_outside_dev_and_test(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Production never falls back to an in-memory database; dev/test do."""
+    """Production has no default database; dev/test fall back to an in-memory one."""
     for name in REQUIRED_SLACK:
         monkeypatch.setenv(name, "X")
     monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test")
@@ -22,11 +22,6 @@ def test_settings_require_database_url_outside_dev_and_test(monkeypatch: pytest.
 
     monkeypatch.setenv("DATABASE_URL", "sqlite:////data/hikarie.db")
     Settings(_env_file=None).require(*REQUIRED)
-
-    for in_memory in ("sqlite:///:memory:", "sqlite://"):
-        monkeypatch.setenv("DATABASE_URL", in_memory)
-        with pytest.raises(InMemoryDatabaseError, match="persistent volume"):
-            Settings(_env_file=None).require("database_url")
 
     monkeypatch.setenv("ENV", "test")
     monkeypatch.delenv("DATABASE_URL")

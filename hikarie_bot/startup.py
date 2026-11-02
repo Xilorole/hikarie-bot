@@ -21,13 +21,13 @@ from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import func, select
 
 from hikarie_bot.engine import JST
-from hikarie_bot.exceptions import DatabaseLocationError
+from hikarie_bot.exceptions import DatabaseLocationError, InMemoryDatabaseError
 from hikarie_bot.migrations import InitResult, UnversionedDatabaseError
 from hikarie_bot.models import Achievement, ArrivalEvent, SyncState, User, ensure_database, get_db
 from hikarie_bot.settings import get_settings
 from hikarie_bot.sync import SlackSource, SyncResult, rebuild_derived_tables, sync_channel
 
-PUBLIC_ERRORS = (DatabaseLocationError, UnversionedDatabaseError)
+PUBLIC_ERRORS = (DatabaseLocationError, InMemoryDatabaseError, UnversionedDatabaseError)
 
 
 def current_revision() -> str:

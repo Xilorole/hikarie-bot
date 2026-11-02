@@ -7,15 +7,12 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import StaticPool
 
-from hikarie_bot.exceptions import DatabaseLocationError
+from hikarie_bot.exceptions import DatabaseLocationError, InMemoryDatabaseError
 from hikarie_bot.settings import get_settings
 
 
 def configure_sqlite(engine: Engine) -> None:
-    """Use WAL and a busy timeout for file-backed SQLite databases."""
-    url = make_url(str(engine.url))
-    if url.get_backend_name() != "sqlite" or url.database in {None, "", ":memory:"} or "mode=ro" in str(url):
-        return
+    """Use WAL and a busy timeout on a SQLite file."""
 
     @event.listens_for(engine, "connect")
     def _set_pragmas(dbapi_connection, _connection_record) -> None:  # noqa: ANN001
@@ -25,15 +22,11 @@ def configure_sqlite(engine: Engine) -> None:
         cursor.close()
 
 
-def check_sqlite_location(url: str) -> None:
+def check_sqlite_location(path: Path) -> None:
     """Explain why a SQLite file could not be opened, before SQLite says only "unable to open".
 
     Raises DatabaseLocationError naming the directory and the likely fix.
     """
-    parsed = make_url(url)
-    if parsed.get_backend_name() != "sqlite" or parsed.database in {None, "", ":memory:"} or "mode=ro" in url:
-        return
-    path = Path(parsed.database)
     relative = (
         ""
         if path.is_absolute()
@@ -59,17 +52,20 @@ def check_sqlite_location(url: str) -> None:
 
 @cache
 def get_engine() -> Engine:
-    """Create the application's engine from DATABASE_URL on first use."""
+    """Create the application's SQLite engine from DATABASE_URL on first use.
+
+    dev/test may use an in-memory database; elsewhere it must be a file, which loses nothing on restart.
+    """
     settings = get_settings()
     settings.require("database_url")
-    url = settings.database_url
-    check_sqlite_location(url)
-    engine = create_engine(
-        url,
-        connect_args={"check_same_thread": False},
-        # an in-memory database (dev/test) lives in one connection, which worker threads must share
-        **({"poolclass": StaticPool} if make_url(url).database in {None, "", ":memory:"} else {}),
-    )
+    url = make_url(settings.database_url)
+    if url.database in {None, "", ":memory:"}:
+        if not settings.local:
+            raise InMemoryDatabaseError(settings.database_url)
+        # an in-memory database lives in one connection, which worker threads must share
+        return create_engine(url, connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    check_sqlite_location(Path(url.database))
+    engine = create_engine(url, connect_args={"check_same_thread": False})
     configure_sqlite(engine)
     return engine
 
