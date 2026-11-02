@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
+from dateutil.relativedelta import relativedelta
 from loguru import logger
 from sqlalchemy.orm import Session
 
@@ -654,8 +655,6 @@ class BadgeChecker:
         ID_lv2 = 702  # noqa: N806
         ID_lv3 = 703  # noqa: N806
         ID_lv4 = 704  # noqa: N806
-
-        from dateutil.relativedelta import relativedelta
 
         no_see_days_lv1 = timedelta(days=14)
         no_see_days_lv2 = timedelta(days=30)

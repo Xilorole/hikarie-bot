@@ -15,9 +15,13 @@ jobs:
         python-version: ['3.12']
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Lint
         uses: astral-sh/ruff-action@v3
         with:
+          version: "0.17.3"
           args: "check --output-format=github ."
 
   format:
@@ -28,8 +32,12 @@ jobs:
         python-version: ['3.12']
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Format
         uses: astral-sh/ruff-action@v3
         with:
+          version: "0.17.3"
           args: "format . --check --diff"
 

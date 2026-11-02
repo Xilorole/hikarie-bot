@@ -1,3 +1,5 @@
+from datetime import date
+
 from hikarie_bot.utils import (
     get_current_level_point,
     get_level,
@@ -195,16 +197,14 @@ def test_unix_timestamp_to_jst() -> None:
 
 def test_is_jp_bizday() -> None:
     "Test the function is_jp_bizday."
-    import datetime
+    assert not is_jp_bizday(date(2020, 12, 31))  # friday but the end of the year
 
-    assert not is_jp_bizday(datetime.date(2020, 12, 31))  # friday but the end of the year
-
-    assert not is_jp_bizday(datetime.date(2024, 1, 1))
-    assert not is_jp_bizday(datetime.date(2024, 1, 2))
-    assert not is_jp_bizday(datetime.date(2024, 1, 3))
-    assert is_jp_bizday(datetime.date(2024, 1, 4))
-    assert is_jp_bizday(datetime.date(2024, 1, 5))
-    assert not is_jp_bizday(datetime.date(2024, 1, 6))
-    assert not is_jp_bizday(datetime.date(2024, 1, 7))
-    assert not is_jp_bizday(datetime.date(2024, 1, 8))
-    assert is_jp_bizday(datetime.date(2024, 1, 9))
+    assert not is_jp_bizday(date(2024, 1, 1))
+    assert not is_jp_bizday(date(2024, 1, 2))
+    assert not is_jp_bizday(date(2024, 1, 3))
+    assert is_jp_bizday(date(2024, 1, 4))
+    assert is_jp_bizday(date(2024, 1, 5))
+    assert not is_jp_bizday(date(2024, 1, 6))
+    assert not is_jp_bizday(date(2024, 1, 7))
+    assert not is_jp_bizday(date(2024, 1, 8))
+    assert is_jp_bizday(date(2024, 1, 9))

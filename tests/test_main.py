@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+from hikarie_bot.curd import initially_insert_badge_data
 from hikarie_bot.models import User
 from hikarie_bot.slack_components import open_achievement_view
 
@@ -21,9 +22,6 @@ async def test_open_achievement_view(temp_db: sessionmaker[Session]) -> None:
     session = temp_db()
     trigger_id = "test_trigger_id"
     user_id = "test_user_id"
-
-    # Mock database session behavior
-    from hikarie_bot.curd import initially_insert_badge_data
 
     # Insert badge data into the database
     initially_insert_badge_data(session)

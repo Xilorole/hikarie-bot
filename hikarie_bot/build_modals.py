@@ -2,6 +2,7 @@
 
 import json
 import urllib.parse
+import zoneinfo
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -78,8 +79,6 @@ def setup_test_data(session: Session) -> str:
     session.add(test_user)
 
     # Add some arrival data to trigger badge acquisition
-    import zoneinfo
-
     jst = zoneinfo.ZoneInfo("Asia/Tokyo")
     arrival_times = [
         datetime(2025, 1, 1, 7, 0, 0, tzinfo=jst),  # Morning arrival

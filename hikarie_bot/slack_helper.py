@@ -259,11 +259,12 @@ async def send_daily_message(
 async def send_weekly_message(  # noqa: PLR0913
     app: AsyncApp,
     session: Session,
+    *,
     at_hour: int = 6,
     at_minute: int = 0,
     check_interval: int = 50,
     weekday: int = 0,
-    force_send: bool = False,  # noqa: FBT001, FBT002
+    force_send: bool = False,
 ) -> None:
     """Run task every Monday 06:00 JST.
 
