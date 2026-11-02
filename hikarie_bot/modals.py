@@ -2,7 +2,6 @@ from datetime import date, datetime, timedelta
 from functools import cached_property
 from textwrap import dedent
 
-from loguru import logger
 from slack_sdk.models.blocks import (
     Block,
     basic_components,
@@ -141,14 +140,6 @@ class RegistryMessage(BaseMessage):
             .filter(GuestArrivalInfo.arrival_time <= jst_datetime)
             .all()
         )
-        arrived_user_text = "本日の出社ユーザー :hikarie: :\n"
-        arrived_user_text += "\n".join(
-            [
-                f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>{':crown:' if idx == 0 else ''}"
-                for idx, user in enumerate(arrived_users)
-            ]
-        )
-        logger.info(arrived_users)
 
         self.blocks.extend(
             [
