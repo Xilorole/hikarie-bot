@@ -12,25 +12,6 @@ Naming items after the output directory writes only those icons, e.g. one item f
 
     uv run --with pillow --with numpy python scripts/cut_item_icons.py \
         assets/items/sources/sheet-3.png assets/items dice
-
-A single regenerated item (one item on a white background) replaces one icon instead; it is scaled so
-that the longer side of the item matches the others (about ITEM_LONG_SIDE of the 128 pixels):
-
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py \
-        --single dice <image of one item> assets/items
-
-A sheet drawn as pixel art (each item on an ART_SIZE x ART_SIZE grid, scaled up by an integer factor)
-is read back pixel for pixel instead, so the icons stay crisp:
-
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py \
-        --pixel-art assets/items/sources/sheet-3.png assets/items
-
-1. The sheet's pixel grid is found: the block size from the sheet size, the offset (0 to block-1 in each
-   direction) as the one that makes the blocks most uniform.
-2. Each block becomes one art pixel: its most frequent colour, so the soft edges of a generated image
-   do not mix into it. The colours are then reduced to one shared palette of PALETTE_SIZE.
-3. Each item is centred in its cell by whole art pixels, and the ART_SIZE x ART_SIZE cell is scaled up
-   with nearest neighbour to 128x128 (2x for 64) and cut to a rounded square.
 """
 
 import sys
@@ -46,9 +27,6 @@ ICON_SIZE = 128
 CORNER_RADIUS = 20
 BLOCK = 4  # pieces are found on a grid of BLOCK x BLOCK pixels, which is fast and ignores single stray pixels
 WHITE_THRESHOLD = 235  # a pixel whose channels are all above this is background
-ITEM_LONG_SIDE = 104  # the longer side of an item in a 128 icon: about the median of the sheet's items
-ART_SIZE = 64  # pixel-art mode: the art pixels of one cell (ICON_SIZE must be a multiple)
-PALETTE_SIZE = 32  # pixel-art mode: the colours shared by all items
 
 # the items of the sheet, left to right and top to bottom; those not in db_data/items.py are spares
 CELLS = [
@@ -135,96 +113,6 @@ def cut(sheet_path: Path, output_dir: Path, only: set[str] | None = None) -> lis
     return placements
 
 
-def cut_single(image_path: Path, output_dir: Path, name: str) -> None:
-    """Write <name>.png from an image of one item, scaled to the size of the others and centred."""
-    pixels = np.asarray(Image.open(image_path).convert("RGB")).copy()
-    foreground = pixels.min(axis=2) <= WHITE_THRESHOLD
-    pixels[~foreground] = 255  # an off-white background would show as a faint box on the white icon
-    ys, xs = np.nonzero(foreground)
-    item = Image.fromarray(pixels[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1])
-    scale = ITEM_LONG_SIDE / max(item.size)
-    item = item.resize((round(item.width * scale), round(item.height * scale)), Image.Resampling.LANCZOS)
-    icon = Image.new("RGB", (ICON_SIZE, ICON_SIZE), (255, 255, 255))
-    icon.paste(item, ((ICON_SIZE - item.width) // 2, (ICON_SIZE - item.height) // 2))
-    icon = icon.convert("RGBA")
-    icon.putalpha(rounded_mask())
-    output_dir.mkdir(parents=True, exist_ok=True)
-    icon.save(output_dir / f"{name}.png", optimize=True)
-
-
-def find_grid(pixels: np.ndarray, block: int) -> tuple[int, int]:
-    """Return the (x, y) offset of the pixel grid: the one whose blocks vary least inside."""
-    offsets = [(offset_x, offset_y) for offset_y in range(block) for offset_x in range(block)]
-    return min(offsets, key=lambda offset: _blocks(pixels, block, *offset).astype(float).std(axis=(1, 3)).mean())
-
-
-def _blocks(pixels: np.ndarray, block: int, offset_x: int, offset_y: int) -> np.ndarray:
-    """Return the whole blocks from the offset, shaped (rows, block, columns, block, 3)."""
-    rows = (pixels.shape[0] - offset_y) // block
-    columns = (pixels.shape[1] - offset_x) // block
-    area = pixels[offset_y : offset_y + rows * block, offset_x : offset_x + columns * block]
-    return area.reshape(rows, block, columns, block, 3)
-
-
-def read_art(pixels: np.ndarray, block: int, offset_x: int, offset_y: int) -> np.ndarray:
-    """Return one art pixel per block: the block's most frequent colour."""
-    blocks = _blocks(pixels, block, offset_x, offset_y)
-    rows, _, columns, _, _ = blocks.shape
-    packed = (blocks[..., 0].astype(np.int64) << 16) | (blocks[..., 1].astype(np.int64) << 8) | blocks[..., 2]
-    packed = packed.transpose(0, 2, 1, 3).reshape(rows * columns, block * block)
-    ordered = np.sort(packed, axis=1)
-    starts = np.ones_like(ordered, dtype=bool)
-    starts[:, 1:] = ordered[:, 1:] != ordered[:, :-1]
-    art = np.empty(rows * columns, dtype=np.int64)
-    for index in range(rows * columns):  # the longest run of one colour in each sorted block
-        bounds = np.flatnonzero(np.append(starts[index], True))
-        art[index] = ordered[index, bounds[np.argmax(np.diff(bounds))]]
-    rgb = np.stack([(art >> 16) & 255, (art >> 8) & 255, art & 255], axis=1).astype(np.uint8)
-    return rgb.reshape(rows, columns, 3)
-
-
-def cut_pixel_art(sheet_path: Path, output_dir: Path) -> tuple[int, int, int]:
-    """Write one crisp icon per cell from a pixel-art sheet; return the block size and grid offset."""
-    pixels = np.asarray(Image.open(sheet_path).convert("RGB"))
-    block = pixels.shape[0] // (GRID * ART_SIZE)
-    offset_x, offset_y = find_grid(pixels, block)
-    art = read_art(pixels, block, offset_x, offset_y)
-    art[art.min(axis=2) > WHITE_THRESHOLD] = 255
-    quantized = Image.fromarray(art).quantize(PALETTE_SIZE, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-    art = np.asarray(quantized.convert("RGB")).copy()
-    art[art.min(axis=2) > WHITE_THRESHOLD] = 255
-
-    foreground = art.min(axis=2) <= WHITE_THRESHOLD
-    labels = label_pieces(foreground)
-    owners: dict[int, int] = {}
-    for label in range(1, labels.max() + 1):
-        ys, xs = np.nonzero(labels == label)
-        owners[label] = int(
-            np.bincount((ys // ART_SIZE).clip(0, GRID - 1) * GRID + (xs // ART_SIZE).clip(0, GRID - 1)).argmax()
-        )
-    output_dir.mkdir(parents=True, exist_ok=True)
-    mask = rounded_mask()
-    for index, name in enumerate(CELLS):
-        row, column = divmod(index, GRID)
-        ys, xs = np.nonzero(np.isin(labels, [label for label, owner in owners.items() if owner == index]))
-        shift_y = round(row * ART_SIZE + (ART_SIZE - 1) / 2 - (ys.min() + ys.max()) / 2)
-        shift_x = round(column * ART_SIZE + (ART_SIZE - 1) / 2 - (xs.min() + xs.max()) / 2)
-        cell = np.full((ART_SIZE, ART_SIZE, 3), 255, dtype=np.uint8)
-        target_y, target_x = ys + shift_y - row * ART_SIZE, xs + shift_x - column * ART_SIZE
-        inside = (target_y >= 0) & (target_y < ART_SIZE) & (target_x >= 0) & (target_x < ART_SIZE)
-        cell[target_y[inside], target_x[inside]] = art[ys[inside], xs[inside]]
-        icon = Image.fromarray(cell).resize((ICON_SIZE, ICON_SIZE), Image.Resampling.NEAREST).convert("RGBA")
-        icon.putalpha(mask)
-        icon.save(output_dir / f"{name}.png", optimize=True)
-    return block, offset_x, offset_y
-
-
 if __name__ == "__main__":
-    if sys.argv[1] == "--pixel-art":
-        block, offset_x, offset_y = cut_pixel_art(Path(sys.argv[2]), Path(sys.argv[3]))
-        print(f"block {block}px, grid offset ({offset_x}, {offset_y})")
-    elif sys.argv[1] == "--single":
-        cut_single(Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[2])
-    else:
-        for placement in cut(Path(sys.argv[1]), Path(sys.argv[2]), set(sys.argv[3:]) or None):
-            print(placement)
+    for placement in cut(Path(sys.argv[1]), Path(sys.argv[2]), set(sys.argv[3:]) or None):
+        print(placement)
