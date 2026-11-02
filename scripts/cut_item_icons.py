@@ -7,6 +7,11 @@ centre of its bounding box is the centre of its square, scaled to 128x128 and cu
 square (the corners are transparent).
 
     uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-2.png assets/items
+
+A single regenerated item (one item on a white background) replaces one icon instead; it is scaled so
+that the longer side of the item matches the others (about ITEM_LONG_SIDE of the 128 pixels):
+
+    uv run --with pillow --with numpy python scripts/cut_item_icons.py --single dice assets/items/sources/dice-2.png assets/items
 """
 
 import sys
@@ -22,6 +27,7 @@ ICON_SIZE = 128
 CORNER_RADIUS = 20
 BLOCK = 4  # pieces are found on a grid of BLOCK x BLOCK pixels, which is fast and ignores single stray pixels
 WHITE_THRESHOLD = 235  # a pixel whose channels are all above this is background
+ITEM_LONG_SIDE = 104  # the longer side of an item in a 128 icon: about the median of the sheet's items
 
 # the items of the sheet, left to right and top to bottom; those not in db_data/items.py are spares
 CELLS = [
@@ -106,6 +112,26 @@ def cut(sheet_path: Path, output_dir: Path) -> list[Placement]:
     return placements
 
 
+def cut_single(image_path: Path, output_dir: Path, name: str) -> None:
+    """Write <name>.png from an image of one item, scaled to the size of the others and centred."""
+    pixels = np.asarray(Image.open(image_path).convert("RGB")).copy()
+    foreground = pixels.min(axis=2) <= WHITE_THRESHOLD
+    pixels[~foreground] = 255  # an off-white background would show as a faint box on the white icon
+    ys, xs = np.nonzero(foreground)
+    item = Image.fromarray(pixels[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1])
+    scale = ITEM_LONG_SIDE / max(item.size)
+    item = item.resize((round(item.width * scale), round(item.height * scale)), Image.Resampling.LANCZOS)
+    icon = Image.new("RGB", (ICON_SIZE, ICON_SIZE), (255, 255, 255))
+    icon.paste(item, ((ICON_SIZE - item.width) // 2, (ICON_SIZE - item.height) // 2))
+    icon = icon.convert("RGBA")
+    icon.putalpha(rounded_mask())
+    output_dir.mkdir(parents=True, exist_ok=True)
+    icon.save(output_dir / f"{name}.png", optimize=True)
+
+
 if __name__ == "__main__":
-    for placement in cut(Path(sys.argv[1]), Path(sys.argv[2])):
-        print(placement)
+    if sys.argv[1] == "--single":
+        cut_single(Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[2])
+    else:
+        for placement in cut(Path(sys.argv[1]), Path(sys.argv[2])):
+            print(placement)
