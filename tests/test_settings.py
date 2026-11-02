@@ -1,7 +1,9 @@
+import importlib
 from pathlib import Path
 
 import pytest
 
+from hikarie_bot import settings
 from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
 from hikarie_bot.settings import Settings
 
@@ -60,10 +62,6 @@ def test_environment_wins_over_env_file(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_env_file_is_dotenv_path_or_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Outside tests the env file is DOTENV_PATH, else ./.env; never a parent directory's."""
-    import importlib
-
-    from hikarie_bot import settings
-
     monkeypatch.setenv("ENV", "dev")
     monkeypatch.setenv("DOTENV_PATH", ".env.dev")
     assert importlib.reload(settings).Settings.model_config["env_file"] == ".env.dev"

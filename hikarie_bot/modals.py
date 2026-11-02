@@ -25,6 +25,7 @@ from hikarie_bot.constants import (
 from hikarie_bot.constants import (
     NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL,
 )
+from hikarie_bot.db_data.badges import KiribanGenerator
 from hikarie_bot.models import (
     Achievement,
     Badge,
@@ -34,6 +35,7 @@ from hikarie_bot.models import (
     UserBadge,
 )
 from hikarie_bot.utils import (
+    get_current_jst_datetime,
     get_current_level_point,
     get_level,
     get_level_name,
@@ -491,9 +493,6 @@ class AchievementView(View):
     def _get_kiriban_list(self) -> list:
         """Get cached kiriban list to avoid regeneration."""
         if self._kiriban_cache is None:
-            # Import here to avoid circular dependency
-            from hikarie_bot.db_data.badges import KiribanGenerator
-
             generator = KiribanGenerator()
             self._kiriban_cache = list(generator.generate_kiriban(under=KIRIBAN_GENERATION_LIMIT))
         return self._kiriban_cache
@@ -573,7 +572,7 @@ class AchievementView(View):
         if next_kiriban is None:
             return "現在実装されているキリ番は全て達成可能範囲を超えています。今後の実装をお待ちください。"
 
-        badge_id, kiriban_count = next_kiriban
+        _badge_id, kiriban_count = next_kiriban
         remaining = kiriban_count - current_count
 
         return f"次のキリ番まで: あと *{remaining}回* ({kiriban_count}回目)"
@@ -644,8 +643,6 @@ class AchievementView(View):
         Returns:
             Dict mapping date objects to attendance status (bool)
         """
-        from hikarie_bot.utils import get_current_jst_datetime
-
         current_date = self.jst_datetime or get_current_jst_datetime()
         # 時刻を除いて日付のみにする
         current_date = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)

@@ -313,7 +313,7 @@ _initialized_engines: dict[int, "InitResult"] = {}
 def ensure_database() -> "InitResult":
     """Migrate the schema and sync master data once per process; return what that first run did."""
     if id(engine) not in _initialized_engines:
-        from hikarie_bot.migrations import init_database  # migrations imports this module
+        from hikarie_bot.migrations import init_database  # noqa: PLC0415 - migrations imports this module
 
         check_sqlite_location(str(engine.url))
         _initialized_engines[id(engine)] = init_database(engine)

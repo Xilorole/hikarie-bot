@@ -267,7 +267,7 @@ def resolve_workspace_id(workspace_id: str | None) -> str:
     help="With --database-url: the day to render (default: the latest arrival day).",
 )
 @click.option("--output-dir", type=click.Path(path_type=Path), default=Path("test_modals"), show_default=True)
-def preview(  # noqa: PLR0913
+def preview(  # noqa: PLR0913, PLR0917
     names: tuple[str, ...],
     workspace_id: str | None,
     database_url: str | None,

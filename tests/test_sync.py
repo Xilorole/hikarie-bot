@@ -284,7 +284,7 @@ async def test_sync_requires_bot_ids(session: Session, monkeypatch: pytest.Monke
 @pytest.mark.asyncio
 async def test_sync_command_rejects_conflicting_sources(tmp_path: Path) -> None:
     """--from-cache and --record are mutually exclusive."""
-    from hikarie_bot.__main__ import sync as sync_command  # imports the Slack app
+    from hikarie_bot.__main__ import sync as sync_command  # noqa: PLC0415 - imports the Slack app
 
     result = await CliRunner().invoke(sync_command, ["--from-cache", str(tmp_path), "--record", str(tmp_path)])
 

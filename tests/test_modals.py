@@ -1,3 +1,4 @@
+import re
 import zoneinfo
 from datetime import date, datetime, timedelta  # Added date back
 from textwrap import dedent
@@ -5,6 +6,7 @@ from unittest import mock
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, NOT_ACHIEVED_BADGE_IMAGE_URL
 from hikarie_bot.curd import initially_insert_badge_data
 from hikarie_bot.engine import UserLevel
 from hikarie_bot.modals import (
@@ -422,8 +424,6 @@ def test_achievement_message_6xxx_taken_logic(temp_db: sessionmaker[Session]) ->
                 if element.get("type") == "image" and element.get("alt_text", "").startswith(
                     f"【{badge_6xxx.message}】"
                 ):
-                    from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL
-
                     assert element["image_url"] == ACHIEVED_BADGE_IMAGE_URL
                     found = True
     assert found, "Should find taken icon for 6XXX badge when another user has it"
@@ -462,7 +462,7 @@ def test_achievement_view_attendance_history(temp_db: sessionmaker[Session]) -> 
     test_current_date = base_date + timedelta(weeks=9, days=2)  # Wednesday of week 10
 
     with (
-        mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=test_current_date),
+        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=test_current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),  # Minimize badge data
     ):
         view = AchievementView(session=session, user_id=test_user_id)
@@ -536,7 +536,7 @@ def test_get_attendance_data_for_past_10_weeks(temp_db: sessionmaker[Session]) -
         record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     with (
-        mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
+        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
         view = AchievementView(session=session, user_id=test_user_id)
@@ -580,14 +580,13 @@ def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
         record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     with (
-        mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
+        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
         view = AchievementView(session=session, user_id=test_user_id)
 
         # Check that blocks were created
         rendered_blocks = [block.to_dict() for block in view.blocks]
-        import re
 
         context_blocks = [
             block
@@ -602,15 +601,12 @@ def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
         assert len(context_blocks) == 5, f"Should have 5 context blocks for 5 weekdays, got {len(context_blocks)}"
 
         # Check that image elements have correct URLs
-        from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL as ARRIVED_IMAGE_URL
-        from hikarie_bot.constants import NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL
-
         all_elements = []
         for block in context_blocks:
             all_elements.extend(block.get("elements", []))
 
-        attended_elements = [elem for elem in all_elements if elem.get("image_url") == ARRIVED_IMAGE_URL]
-        not_attended_elements = [elem for elem in all_elements if elem.get("image_url") == NOT_ARRIVED_IMAGE_URL]
+        attended_elements = [elem for elem in all_elements if elem.get("image_url") == ACHIEVED_BADGE_IMAGE_URL]
+        not_attended_elements = [elem for elem in all_elements if elem.get("image_url") == NOT_ACHIEVED_BADGE_IMAGE_URL]
 
         # M xxxxxxxxxo <- last monday
         # T xxxxxxxxxx
@@ -643,7 +639,7 @@ def test_achievement_view_attendance_history_simple(temp_db: sessionmaker[Sessio
     current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)  # Wednesday
 
     with (
-        mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
+        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
         view = AchievementView(session=session, user_id=test_user_id)
@@ -693,7 +689,7 @@ def test_attendance_data_generation(temp_db: sessionmaker[Session]) -> None:
     current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)  # Wednesday
 
     with (
-        mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
+        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
         view = AchievementView(session=session, user_id=test_user_id)

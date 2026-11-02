@@ -28,6 +28,7 @@ from hikarie_bot.settings import (
     SLACK_APP_TOKEN,
     SLACK_BOT_TOKEN,
 )
+from hikarie_bot.slack_components import open_achievement_view
 from hikarie_bot.slack_helper import (
     send_daily_message,
 )
@@ -201,7 +202,6 @@ async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: 
     """Handle the check achievement button click event."""
     await ack()
     user_id = body["user"]["id"]
-    from hikarie_bot.slack_components import open_achievement_view
 
     with get_db() as session:
         await open_achievement_view(client, session, body["trigger_id"], user_id)

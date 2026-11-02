@@ -6,6 +6,7 @@ from loguru import logger
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from hikarie_bot.curd import initially_insert_badge_data
 from hikarie_bot.database import BaseSchema
 
 # Disable loguru logging during tests for better performance
@@ -52,8 +53,6 @@ def session_factory(test_engine: Engine) -> sessionmaker[Session]:
 @pytest.fixture(scope="session")
 def seed_badge_data(session_factory: sessionmaker[Session]) -> None:
     """Seed the badge data once for all tests."""
-    from hikarie_bot.curd import initially_insert_badge_data
-
     with session_factory() as session:
         initially_insert_badge_data(session)
 
