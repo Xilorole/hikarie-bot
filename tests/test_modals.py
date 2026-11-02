@@ -293,6 +293,30 @@ def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
     assert "つぎのレベルまで: *上限に到達*" in message[2]["elements"][0]["text"]
 
 
+def test_point_get_message_zero_progress(temp_db: sessionmaker[Session]) -> None:
+    """Test the progress bar shows at least one cell when the progress is 0%."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+    jst = zoneinfo.ZoneInfo("Asia/Tokyo")
+
+    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=jst), user_id="test_user")
+    user = session.query(User).filter(User.id == "test_user").one()
+    user.current_score = 15
+    session.commit()
+
+    # 15 -> 20: exactly at the start of lv2
+    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst), user_id="test_user")
+    message = PointGetMessage(
+        session,
+        user_id="test_user",
+        jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst),
+        initial_arrival=True,
+    ).render()
+
+    assert message[0]["text"]["text"].endswith("15 → *20* (*+5*) *LvUP!* :star2: ")
+    assert "しんこうど: `█         ` | *  0%* (*+22%*)\n" in message[2]["elements"][0]["text"]
+
+
 def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
     """Test the already registered message."""
     session = temp_db()
