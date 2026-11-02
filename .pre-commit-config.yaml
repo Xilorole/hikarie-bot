@@ -8,13 +8,13 @@ repos:
       description: "Run 'ruff check' for extremely fast Python linting"
       args: [--fix]
       language: python
-      types_or: [python, pyi, jupyter]
+      types_or: [python, pyi]
 
     - id: ruff-format
       name: Ruff format
       description: "Run 'ruff format' for extremely fast Python formatting"
       language: python
-      types_or: [python, pyi, jupyter]
+      types_or: [python, pyi]
 
   - repo: local
     hooks:
