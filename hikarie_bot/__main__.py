@@ -168,12 +168,7 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
     # recompute scores and badges from the events (well under a second), then announce them
     with get_db() as session:
         rebuild_derived_tables(session)
-        point_get_message = PointGetMessage(
-            session=session,
-            user_id=user_id,
-            jst_datetime=now,
-            initial_arrival=action_id == ActionID.FASTEST_ARRIVAL,
-        )
+        point_get_message = PointGetMessage(session=session, user_id=user_id, jst_datetime=now)
         registry_message = RegistryMessage(
             session=session,
             jst_datetime=now,
@@ -183,7 +178,7 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         thread_ts=message_ts,
         text=point_get_message.to_text(),
         blocks=point_get_message.render(),
-        reply_broadcast=action_id == ActionID.FASTEST_ARRIVAL,
+        reply_broadcast=point_get_message.initial_arrival,
         metadata=arrival_metadata(user_id, now),
     )
     with get_db() as session:
