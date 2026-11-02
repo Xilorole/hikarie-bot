@@ -1,9 +1,9 @@
 """Compute ranks, badges, scores and levels from arrival events in memory.
 
 Arrivals are processed in time order; each badge rule reads only the state built from
-earlier arrivals, so the whole history is one pass with no SQL. The rules reproduce
-hikarie_bot.db_data.badges.BadgeChecker (including its quirks) so that a rebuild gives
-the same results as replaying through insert_arrival_action did.
+earlier arrivals, so the whole history is one pass with no SQL. The rules reproduce the
+previous SQL-based checks (including their quirks); tests/data holds that implementation's
+results on synthetic arrivals for comparison.
 
 Times are naive JST wall-clock datetimes, as the derived tables store them.
 """
@@ -149,7 +149,7 @@ class BadgeEngine:
         self.results.append(result)
         return result
 
-    # --- badge rules (see BadgeChecker for the original queries) ---
+    # --- badge rules ---
 
     @staticmethod
     def _start_of_day(time: datetime) -> datetime:
