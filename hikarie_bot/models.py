@@ -1,4 +1,4 @@
-"""The stored data: arrival events and the Slack sync position."""
+"""The stored data: arrival events."""
 
 from datetime import UTC, datetime
 
