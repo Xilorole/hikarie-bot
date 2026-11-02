@@ -1,6 +1,6 @@
 # Rancher（2.9.3）へのデプロイ
 
-`rebuild` の構成（PVC 上の SQLite に出社イベントを保存し、起動時は差分だけ Slack から読む）を
+`rebuild` の構成（PVC 上の SQLite に出社イベントを保存し、起動時に Slack を読むのは DB が空のときだけ）を
 Rancher で動かす手順。マニフェストは [`deploy/rancher/`](../../deploy/rancher/) にある。
 
 ## 全体像
@@ -76,12 +76,12 @@ PVC が空の初回だけ、チャンネル全体（メッセージ約 7,500 件
 1. `starting application (rev 6709a7d)` — `rev` はイメージのビルド元コミット。Rancher で指定したタグ `sha-6709a7d` と一致すれば最新が動いている
 2. `*database*: schema 0000 …` — スキーマとバッジ定義の同期結果
 3. `first start: reading the whole channel …` — 初回だけ。この後 10 分前後かかる
-4. `*slack sync*: whole channel · … messages · … threads · … new events` — 2 回目以降は `since <日時> JST`
+4. `*slack sync*: whole channel · … messages · … threads · … new events` — DB が空でなければ読まず `skipped (N events stored)`
 5. `*scores*: … events → … arrivals · … users · … badges earned`
 6. `:white_check_mark: application started (rev …) in …s`
 
 途中で失敗した場合は `:warning: startup failed at <手順>` が届き、詳細は Pod のログに残る。
-2 回目以降の起動は差分だけ読むので数秒で終わる。
+2 回目以降は Slack を読まないので数秒で終わる。
 
 ### 5. 動作確認
 
@@ -95,7 +95,7 @@ kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -c "import sqlite3; c =
 ### 再起動
 
 管理者（環境変数 `ADMIN` のユーザー）は、Slack の **メッセージショートカット「reboot」**（bot がいるチャンネルのメッセージの「…」→ ショートカット）で再起動できる。
-bot は `rebooting...` と返してプロセスを終了し、Kubernetes がコンテナを起動し直す（PVC のデータを使い、差分だけ読むので数秒）。
+bot は `rebooting...` と返してプロセスを終了し、Kubernetes がコンテナを起動し直す（PVC のデータを使い、Slack は読まないので数秒）。
 同じイメージで起動し直すだけなので、新しいバージョンにするにはイメージのタグを変える。
 
 ## ロールバック
@@ -103,23 +103,29 @@ bot は `rebooting...` と返してプロセスを終了し、Kubernetes がコ�
 戻し先のイメージによって手順が違う。
 
 - **PVC を使う前のイメージ**（`DATABASE_URL` を読まない）: Image のタグを戻すだけでよい。メモリ上の DB で動き、起動時に全履歴を読み直す。PVC のデータには触れない。
-- **PVC を使うが、スキーマが新しいイメージより古いイメージ**（例: リビジョン 0001 を含まないイメージ）: タグを戻すだけだと、起動時のマイグレーションが
-  `Can't locate revision identified by '0001'` で止まる（データは変わらないので、タグを元に戻せば復旧する）。
-  先に、**動いている新しいイメージで** DB を戻し先のリビジョン（0001 より前なら `0000`）まで downgrade してから、タグを変える。
+- **PVC を使うが、スキーマが新しいイメージより古いイメージ**（例: リビジョン 0002 を含まないイメージ）: タグを戻すだけだと、起動時のマイグレーションが
+  `Can't locate revision identified by '0002'` で止まる（データは変わらないので、タグを元に戻せば復旧する）。
+  先に、**動いている新しいイメージで** DB を戻し先のリビジョン（0002 を含まない最後のイメージなら `0001`、0001 より前なら `0000`）まで downgrade してから、タグを変える。
   イメージには `alembic.ini` が無いので、Python から実行する:
 
   ```bash
-  kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -c "from alembic import command; from alembic.config import Config; from hikarie_bot.migrations import SCRIPT_LOCATION; config = Config(); config.set_main_option('script_location', str(SCRIPT_LOCATION)); command.downgrade(config, '0000')"
+  kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -c "from alembic import command; from alembic.config import Config; from hikarie_bot.migrations import SCRIPT_LOCATION; config = Config(); config.set_main_option('script_location', str(SCRIPT_LOCATION)); command.downgrade(config, '0001')"
   ```
 
-  0001 の downgrade は、削除した派生テーブルとバッジ定義のテーブルを空で作り直す（`arrival_event` と `sync_state` はそのまま）。
+  0002 の downgrade は `sync_state` を空で作り直す（位置が無いので、戻し先のイメージは起動時にチャンネル全体を一度読む。約 13 分）。
+  0001 の downgrade は、削除した派生テーブルとバッジ定義のテーブルを空で作り直す（`arrival_event` はそのまま）。
   戻し先のイメージは起動時にバッジ定義を入れ直し、スコアを計算し直して埋める。
-  downgrade の後は再起動（reboot ショートカットを含む）をせずに、すぐタグを変える。新しいイメージのまま再起動すると、また 0001 に上がる。
+  downgrade の後は再起動（reboot ショートカットを含む）をせずに、すぐタグを変える。新しいイメージのまま再起動すると、また最新に上がる。
 - 新しいイメージへ戻すときは、タグを変えるだけでよい（起動時に最新のリビジョンまで上がる）。
 
 ## バックアップと復旧
 
 - データは Slack から作り直せる。PVC を失ったら、空の PVC で起動すれば初回と同じく全件を読み直す。
+- **古いバックアップを戻したとき**は、バックアップ以降の出社が DB に無く、起動時の同期は DB が空でないので走らない。復元後に手動で全件を読む（約 13 分、冪等。重複は入らない）:
+
+  ```bash
+  kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -m hikarie_bot sync
+  ```
 - 手元にコピーを取る場合（実データなので扱いに注意）。ルートファイルシステムは読み取り専用なので、PVC 上に書いてから取り出し、最後に消す:
 
 ```bash

@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from asyncclick.testing import CliRunner
+from loguru import logger
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from hikarie_bot import __main__ as bot
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.migrations import init_database
-from hikarie_bot.models import ArrivalEvent, SyncState
+from hikarie_bot.models import ArrivalEvent
 from hikarie_bot.settings import Settings
 from hikarie_bot.sync import (
     CachedSlackSource,
@@ -88,14 +89,11 @@ class FakeSource:
         self.messages = history
         self.threads = threads
         self.fetched: list[str] = []
-        self.oldest: list[str | None] = []
 
-    async def history(self, channel: str, oldest: str | None):  # noqa: ANN201
+    async def history(self, channel: str):  # noqa: ANN201
         """Yield messages newest first, like the API."""
-        self.oldest.append(oldest)
         for message in sorted(self.messages, key=lambda m: float(m["ts"]), reverse=True):
-            if oldest is None or float(message["ts"]) >= float(oldest):
-                yield message
+            yield message
 
     async def replies(self, channel: str, thread_ts: str) -> list[dict[str, Any]]:
         """Return the parent and its replies."""
@@ -167,13 +165,12 @@ def test_parse_arrival_prefers_the_bots_arrival_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_first_sync_reads_whole_channel_and_bot_threads(session: Session) -> None:
-    """The first sync reads everything once and fetches only bot threads."""
+async def test_sync_reads_whole_channel_and_bot_threads_and_is_idempotent(session: Session) -> None:
+    """A sync reads everything and fetches only bot threads; running it again stores nothing new."""
     source = channel_with_two_days()
 
     result = await sync_channel(session, source, CHANNEL)
 
-    assert source.oldest == [None]
     assert sorted(source.fetched) == [ts(T0), ts(T0 + DAY)]
     events = session.query(ArrivalEvent).order_by(ArrivalEvent.occurred_at).all()
     assert [(e.user_id, e.source) for e in events] == [
@@ -182,54 +179,57 @@ async def test_first_sync_reads_whole_channel_and_bot_threads(session: Session) 
         ("U2", "slack_v3"),
         ("U1", "slack_v3"),
     ]
-    assert result.inserted == 4  # the broadcast is stored once
-    assert session.get(SyncState, CHANNEL).synced_until == ts(T0 + DAY + 3600)  # newest reply
-
-
-@pytest.mark.asyncio
-async def test_catch_up_reads_one_day_back_and_only_threads_with_new_replies(session: Session) -> None:
-    """Later syncs overlap by a day, skip unchanged threads, and stay idempotent."""
-    source = channel_with_two_days()
-    await sync_channel(session, source, CHANNEL)
-    synced_until = float(session.get(SyncState, CHANNEL).synced_until)
-
-    # a late reply arrives in day 2's thread, and day 3 is posted
-    day2, day3 = T0 + DAY, T0 + 2 * DAY
-    late = point_reply(day2 + 9000, day2, "U2")
-    source.threads[ts(day2)].append(late)
-    source.messages[4] = daily_post(day2, [m["ts"] for m in source.threads[ts(day2)]])
-    source.threads[ts(day3)] = [point_reply(day3 + 60, day3, "U5")]
-    source.messages.append(daily_post(day3, [source.threads[ts(day3)][0]["ts"]]))
-    source.fetched.clear()
-
-    result = await sync_channel(session, source, CHANNEL)
-
-    assert source.oldest[-1] == str(synced_until - DAY)
-    assert sorted(source.fetched) == [ts(day2), ts(day3)]  # day 1's thread is unchanged
-    assert result.inserted == 2
-    assert session.query(ArrivalEvent).count() == 6
+    assert (result.messages, result.threads, result.inserted) == (6, 2, 4)  # the broadcast is stored once
 
     source.fetched.clear()
     again = await sync_channel(session, source, CHANNEL)
+
+    assert sorted(source.fetched) == [ts(T0), ts(T0 + DAY)]  # the whole channel is read every time
     assert again.inserted == 0
-    assert source.fetched == []
+    assert session.query(ArrivalEvent).count() == 4
 
 
 @pytest.mark.asyncio
-async def test_a_thread_not_read_in_full_is_read_again(session: Session) -> None:
-    """A thread missing replies (e.g. from a partial cache) keeps the position before it."""
+async def test_sync_stores_replies_that_arrive_later(session: Session) -> None:
+    """A manual sync after a gap picks up new threads and late replies, and keeps the stored events."""
+    source = channel_with_two_days()
+    await sync_channel(session, source, CHANNEL)
+    day2, day3 = T0 + DAY, T0 + 2 * DAY
+    source.threads[ts(day2)].append(point_reply(day2 + 9000, day2, "U2"))
+    source.messages[4] = daily_post(day2, [m["ts"] for m in source.threads[ts(day2)]])
+    source.threads[ts(day3)] = [point_reply(day3 + 60, day3, "U5")]
+    source.messages.append(daily_post(day3, [source.threads[ts(day3)][0]["ts"]]))
+
+    result = await sync_channel(session, source, CHANNEL)
+
+    assert result.inserted == 2
+    assert session.query(ArrivalEvent).count() == 6
+
+
+@pytest.mark.asyncio
+async def test_a_thread_with_fewer_replies_than_counted_warns(session: Session) -> None:
+    """A thread missing replies (e.g. from a partial cache) is stored as far as it goes, with a warning."""
     source = channel_with_two_days()
     day2 = ts(T0 + DAY)
     full_thread = source.threads[day2]
     source.threads[day2] = []
-    await sync_channel(session, source, CHANNEL)
-    assert session.get(SyncState, CHANNEL).synced_until == day2
+    messages: list[str] = []
+    logger.enable("hikarie_bot")  # disabled for the test run in conftest
+    sink = logger.add(messages.append, level="WARNING", format="{message}")
+
+    try:
+        result = await sync_channel(session, source, CHANNEL)
+    finally:
+        logger.remove(sink)
+        logger.disable("hikarie_bot")
+
+    assert result.inserted == 3
+    assert [message.strip() for message in messages] == [
+        f"Thread {day2} returned 0/1 replies; run the sync again to read the rest"
+    ]
 
     source.threads[day2] = full_thread
-    result = await sync_channel(session, source, CHANNEL)
-
-    assert result.inserted == 1
-    assert session.get(SyncState, CHANNEL).synced_until == full_thread[-1]["ts"]
+    assert (await sync_channel(session, source, CHANNEL)).inserted == 1
 
 
 class FakeClient(AsyncWebClient):
@@ -246,7 +246,7 @@ class FakeClient(AsyncWebClient):
         params = dict(req_args["params"])
         self.requests.append(params)
         if api_url.endswith("conversations.history"):
-            messages = [m async for m in self.source.history(params["channel"], params.get("oldest"))]
+            messages = [m async for m in self.source.history(params["channel"])]
         else:
             messages = await self.source.replies(params["channel"], params["ts"])
         start = int(params.get("cursor") or 0)
@@ -296,10 +296,10 @@ async def test_live_source_pages_until_the_end() -> None:
     client = FakeClient(source)
     live = LiveSlackSource(client)
 
-    messages = [m async for m in live.history(CHANNEL, None)]
+    messages = [m async for m in live.history(CHANNEL)]
     thread = await live.replies(CHANNEL, ts(T0))
 
-    assert [m["ts"] for m in messages] == [m["ts"] async for m in source.history(CHANNEL, None)]
+    assert [m["ts"] for m in messages] == [m["ts"] async for m in source.history(CHANNEL)]
     assert [m["ts"] for m in thread] == [m["ts"] for m in await source.replies(CHANNEL, ts(T0))]
     assert [request.get("cursor") for request in client.requests] == [None, "2", "4", None, "2"]
 
@@ -324,7 +324,7 @@ async def test_sync_requires_bot_id(session: Session, settings: Settings) -> Non
 
     with pytest.raises(ValueError, match="must be set"):
         await sync_channel(session, channel_with_two_days(), CHANNEL)
-    assert session.get(SyncState, CHANNEL) is None
+    assert session.query(ArrivalEvent).count() == 0
 
 
 @pytest.mark.asyncio

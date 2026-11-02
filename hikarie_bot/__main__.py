@@ -91,7 +91,7 @@ async def start(*, dev: bool = False) -> None:
     help="Also save the raw Slack responses into this directory.",
 )
 async def sync(cache_dir: Path | None, record_dir: Path | None) -> None:
-    """Read arrival events from the channel into the database (read-only on Slack)."""
+    """Read the whole channel into the database (read-only on Slack; stored events are skipped)."""
     if cache_dir and record_dir:
         msg = "--from-cache and --record cannot be combined"
         raise click.UsageError(msg)

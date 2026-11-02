@@ -62,23 +62,6 @@ class ArrivalEvent(BaseSchema):
         return f"<ArrivalEvent(user_id={self.user_id}, occurred_at={self.occurred_at}, source={self.source})>"
 
 
-class SyncState(BaseSchema):
-    """Define the SyncState table.
-
-    How far a Slack channel has been read: the newest message ts seen, thread replies included.
-    """
-
-    __tablename__ = "sync_state"
-
-    channel_id: Mapped[str] = mapped_column(String, primary_key=True)
-    synced_until: Mapped[str] = mapped_column(String, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=lambda: datetime.now(UTC))
-
-    def __repr__(self) -> str:
-        """Return the string representation of the SyncState class."""
-        return f"<SyncState(channel_id={self.channel_id}, synced_until={self.synced_until})>"
-
-
 @cache
 def ensure_database() -> InitResult:
     """Migrate the schema once per process; return what that first run did."""

@@ -48,8 +48,9 @@ On Rancher, see [docs/deploy/rancher.md](docs/deploy/rancher.md) (Japanese).
 every start and every button press. Badge definitions live in code and are synced into the database on start.
 The design and its reasons: [docs/design/data-architecture.md](docs/design/data-architecture.md) (Japanese).
 
-On start the bot reads new arrivals from the channel: the whole channel the first time (about 10 minutes), then
-only what was posted since the last run. The same sync is available as a read-only command:
+On start the bot reads the whole channel (about 10 minutes) only when the database is empty; arrivals it posts are
+stored first, so later starts need no Slack read. The same full read is available as a read-only command (idempotent;
+needed after restoring an older backup):
 
 ```bash
 # read from Slack and keep the raw responses for offline use
