@@ -19,7 +19,8 @@ def record_arrival(session: Session, jst_datetime: datetime, user_id: str) -> bo
     Naive datetimes are taken as JST. Returns False if the user already arrived that day.
     """
     pressed_at = jst_datetime if jst_datetime.tzinfo else jst_datetime.replace(tzinfo=JST)
-    if record_button_arrival(session, user_id, pressed_at) is None:
+    event = record_button_arrival(session, user_id, pressed_at)
+    if event is None or event.occurred_at != pressed_at:  # an earlier arrival that day
         return False
     rebuild_derived_tables(session)
     return True

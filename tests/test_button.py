@@ -116,3 +116,26 @@ async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, monk
     post = client.chat_postMessage.await_args.kwargs
     assert post["reply_broadcast"] is False
     assert "最速" not in post["text"]
+
+
+@pytest.mark.asyncio
+async def test_press_again_retries_an_arrival_that_was_not_announced(
+    database: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the announcement fails, the arrival stays and the next press announces it at its first time."""
+    client = AsyncMock()
+    client.chat_postMessage.side_effect = RuntimeError("slack is down")
+    with pytest.raises(RuntimeError):
+        await bot.handle_button_click(AsyncMock(), click("U1"), client)
+
+    monkeypatch.setattr(bot, "get_current_jst_datetime", lambda: PRESSED.replace(minute=20))
+    client.chat_postMessage.side_effect = None
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
+    await bot.handle_button_click(AsyncMock(), click("U1"), client)
+
+    client.chat_postEphemeral.assert_not_awaited()
+    with Session(database) as session:
+        event = session.query(ArrivalEvent).one()
+        assert (event.occurred_at, event.slack_ts) == (PRESSED, "1748822999.000100")
+    metadata = client.chat_postMessage.await_args.kwargs["metadata"]
+    assert datetime.fromisoformat(metadata["event_payload"]["occurred_at"]) == PRESSED
