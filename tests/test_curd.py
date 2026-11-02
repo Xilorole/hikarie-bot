@@ -19,7 +19,6 @@ from hikarie_bot.models import (
     Badge,
     BadgeType,
     GuestArrivalInfo,
-    GuestArrivalRaw,
     User,
 )
 
@@ -93,8 +92,6 @@ def test_temp_db(temp_db: sessionmaker[Session]) -> None:
     assert user_info.point_to_next_level == 13
     assert user_info.point_range_to_next_level == 20
     assert user_info.current_level_point == 7
-
-    assert session.query(GuestArrivalRaw).filter(GuestArrivalRaw.user_id == "test_user").count() == 2
 
 
 def test_insert_arrival_action(temp_db: sessionmaker[Session]) -> None:

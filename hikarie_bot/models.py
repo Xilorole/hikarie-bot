@@ -10,39 +10,6 @@ from sqlalchemy.types import TypeDecorator
 from .database import BaseSchema, SessionLocal, engine
 
 
-# define the GuestArrivalRaw table
-class GuestArrivalRaw(BaseSchema):
-    """Define the GuestArrivalRaw table.
-
-    The GuestArrivalRaw table stores the raw data of guest arrival information.
-    The raw data includes the user ID and the arrival time.
-    Refined data is stored in the GuestArrivalInfo table.
-    """
-
-    __tablename__ = "guest_arrival_raw"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
-    arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-
-    def __repr__(self) -> str:
-        """Return the string representation of the GuestArrivalRaw class."""
-        return f"<GuestArrivalRaw(user_id={self.user_id}, arrival_time={self.arrival_time})>"
-
-
-# Add event listener to automatically set user_info_raw_id from user_id
-@event.listens_for(GuestArrivalRaw, "before_insert")
-def set_user_info_raw_id(
-    mapper: Mapper[GuestArrivalRaw],  # noqa: ARG001
-    connection: Connection,  # noqa: ARG001
-    target: GuestArrivalRaw,
-) -> None:
-    """Set user_info_raw_id to the same value as user_id before insert."""
-    if target.user_id and not target.user_info_raw_id:
-        target.user_info_raw_id = target.user_id
-
-
 # Define the GuestArrivalInfo table
 class GuestArrivalInfo(BaseSchema):
     """Define the GuestArrivalInfo table.
@@ -144,7 +111,6 @@ class User(BaseSchema):
     point_range_to_next_level: Mapped[int] = mapped_column(Integer)
     current_level_point: Mapped[int] = mapped_column(Integer)
 
-    guest_arrivals_raw = relationship("GuestArrivalRaw", backref="user")
     guest_arrivals_info = relationship("GuestArrivalInfo", backref="user")
     badges = relationship("UserBadge", back_populates="user")
 
@@ -183,7 +149,6 @@ class UserInfoRaw(BaseSchema):
     point_range_to_next_level: Mapped[int] = mapped_column(Integer)
     current_level_point: Mapped[int] = mapped_column(Integer)
 
-    guest_arrivals_raw = relationship("GuestArrivalRaw", backref="user_raw")
     guest_arrivals_info = relationship("GuestArrivalInfo", backref="user_raw")
     user_badges = relationship("UserBadge", back_populates="user_raw")
 
