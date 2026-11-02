@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 from freezegun import freeze_time
 from freezegun.api import FrozenDateTimeFactory
+from slack_sdk.models.blocks import SectionBlock
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
@@ -59,6 +60,14 @@ def item_points(engine: BadgeEngine, user_id: str, day: int) -> list[tuple[str, 
 
 
 # --- the engine ---
+
+
+def test_every_item_has_a_story_and_an_effect_that_fit_the_modal() -> None:
+    """The story is a few sentences; the name fits a radio option (75 characters)."""
+    for item in ITEMS.values():
+        assert 0 < len(item.flavor) <= 150, item.id
+        assert item.effect
+        assert len(f"*{item.label}*") <= 75, item.id
 
 
 def test_offers_are_three_distinct_items_and_the_same_every_time() -> None:
@@ -278,7 +287,9 @@ async def test_pick_is_stored_and_announced_quietly_in_the_thread(database: Engi
     metadata = await open_offers(client, "U1", 2)
     offered = [item.id for item in offers("U1", date(2025, 6, 2))]
     view = client.views_open.await_args.kwargs["view"]
-    assert [option.value for option in view.blocks[1].element.options] == offered
+    assert [option.value for option in view.blocks[-1].element.options] == offered
+    stories = [block.text.text for block in view.blocks[1:] if isinstance(block, SectionBlock)]
+    assert stories == [f"*{ITEMS[item_id].label}*\n{ITEMS[item_id].flavor}" for item_id in offered]
     ack = AsyncMock()
 
     await bot.handle_item_submission(ack, submission("U1", offered[1], metadata), client)
