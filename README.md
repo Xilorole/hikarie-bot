@@ -253,6 +253,12 @@ at the latest revision and autogenerate:
 ENV=dev DATABASE_URL=sqlite:///.db/data.db uv run alembic revision --autogenerate -m "describe the change"
 ```
 
+### Deploying to Rancher
+
+See [docs/deploy/rancher.md](docs/deploy/rancher.md) (Japanese) and the manifests in
+[deploy/rancher/](deploy/rancher/): one replica with the `Recreate` strategy, the
+SQLite database on an `ebs-sc` PVC at `/opt/.db`, and `DATABASE_URL` pointing to it.
+
 ### Syncing from Slack
 
 On startup the bot reads arrival events from the output channel into the
