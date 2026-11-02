@@ -18,7 +18,8 @@
 The repository is organized as follows:
 ### Setting Up the Development Environment
 
-To set up the development environment, use the following command:
+Development runs directly on the host (no Dev Container). Install
+[uv](https://docs.astral.sh/uv/), then install the project dependencies:
 
 ```bash
 uv sync --dev
@@ -26,10 +27,19 @@ uv sync --dev
 
 This will create a virtual environment and install all necessary dependencies for the project.
 
+Install the pre-commit hooks with pre-commit as a uv tool:
+
+```bash
+uv tool install pre-commit --with pre-commit-uv
+pre-commit install
+```
+
+The `Lint Dockerfiles` hook runs the system `hadolint`, so install it too
+(macOS: `brew install hadolint`).
+
 ```
 ├── .github             # GitHub configuration and workflows
 │   ├── workflows       # GitHub Actions workflows
-├── .devcontainer       # VSCode Dev Container configuration
 ├── hikarie_bot         # Source code for the application
 │   ├── __init__.py     # Package initialization
 │   ├── models.py       # Database models
@@ -50,7 +60,6 @@ This will create a virtual environment and install all necessary dependencies fo
 
 ## Roadmap
 
-- [x] Set up Dev Container for VSCode
 - [x] Integrate Ruff for linting and formatting
 - [x] Add GitHub Actions for CI/CD
 - [ ] Add more test cases
@@ -64,9 +73,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - [uv](https://github.com/astral-sh/uv) for development utilities
 - [Ruff](https://github.com/astral-sh/ruff) for linting and formatting
-- [VSCode Dev Containers](https://code.visualstudio.com/docs/remote/containers) for seamless development environments
 
-- **Dev Container Support**: Seamless development environment setup using VSCode's Dev Container feature.
 - **Code Quality Tools**: Integrated with `uv` and `Ruff` for formatting and linting.
 - **Automated Workflows**: Pre-configured GitHub Actions for Docker builds, testing, and linting.
 
@@ -74,8 +81,8 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 Before you begin, ensure you have the following installed:
 
-- [Docker](https://www.docker.com/)
-- [VSCode](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+- [uv](https://docs.astral.sh/uv/)
+- [Docker](https://www.docker.com/) (for building and running the production image)
 
 ## Usage
 
@@ -138,8 +145,7 @@ Contributions are welcome! Please follow these steps to contribute:
 3. Commit your changes with clear and descriptive messages.
 4. Push your branch and create a pull request.
 ## Overview
-This repository contains configurations to set up a Python development environment using VSCode's Dev Container feature.
-The environment includes uv, and Ruff.
+This repository uses uv for dependency management and Ruff for linting and formatting.
 
 If the Ruff format does not work, try reloading the VS Code window.
 Specifically, you can solve this problem by following the steps below.
@@ -199,14 +205,14 @@ Existing bind-mounted database directories must be writable by UID/GID 10001.
 Back up an existing database before changing its mount configuration. The
 Compose configuration uses a named volume for persistent database storage.
 
-Docker CI checks both Dockerfiles and verifies that the production image can
+Docker CI lints the Dockerfile and verifies that the production image can
 import its dependencies, display CLI help, and write to SQLite without network
 access. Development/test dependencies are deliberately excluded from that image;
-run the test suite in the development environment with `uv run pytest`.
+run the test suite on the host with `uv run pytest`.
 
 The dependency layer is separate from the application layer. BuildKit cache
-mounts reuse uv downloads on the same builder, while GitHub Actions uses separate
-layer cache scopes for production and development images. Cache mount contents
+mounts reuse uv downloads on the same builder, while GitHub Actions caches the
+production image layers in its own cache scope. Cache mount contents
 are not automatically exported to the GitHub Actions cache.
 
 These choices follow the [Docker build best practices](https://docs.docker.com/build/building/best-practices/)
