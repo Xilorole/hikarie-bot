@@ -1,0 +1,40 @@
+{
+  "display_information": {
+    "name": "hikarie-bot-dev"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "hikarie-bot-dev",
+      "always_online": true
+    },
+    "shortcuts": [
+      {
+        "name": "reboot",
+        "type": "message",
+        "callback_id": "reboot",
+        "description": "Reboot the bot (admin only)"
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "commands",
+        "chat:write",
+        "channels:history",
+        "groups:history",
+        "channels:read",
+        "channels:join",
+        "channels:manage"
+      ]
+    }
+  },
+  "settings": {
+    "interactivity": {
+      "is_enabled": true
+    },
+    "socket_mode_enabled": true,
+    "org_deploy_enabled": false,
+    "token_rotation_enabled": false
+  }
+}
