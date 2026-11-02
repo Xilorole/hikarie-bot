@@ -7,5 +7,5 @@ NOT_ACHIEVED_BADGE_IMAGE_URL = "https://gist.github.com/user-attachments/assets/
 
 CONTEXT_ITEM_MAX = 10
 
-# Public URLs of the item images shown on the item cards, by item ID; an item without one has no icon.
-ITEM_IMAGE_URLS: dict[str, str] = {}
+# The item images (assets/items/<item id>.png), served from the public repository's default branch.
+ITEM_IMAGE_BASE_URL = "https://raw.githubusercontent.com/Xilorole/hikarie-bot/main/assets/items"

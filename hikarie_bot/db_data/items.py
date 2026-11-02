@@ -15,6 +15,8 @@ import random
 from dataclasses import dataclass
 from datetime import date
 
+from hikarie_bot.constants import ITEM_IMAGE_BASE_URL
+
 ITEM_POINT_CAP = 3  # the most points one arrival can get from items
 OFFER_COUNT = 3
 
@@ -102,6 +104,8 @@ Items = [
     ),
 ]
 ITEMS = {item.id: item for item in Items}
+# the image on each item's card (cut from a generated sheet by scripts/cut_item_icons.py)
+ITEM_IMAGE_URLS = {item.id: f"{ITEM_IMAGE_BASE_URL}/{item.id}.png" for item in Items}
 
 
 def _seed(*parts: object) -> int:

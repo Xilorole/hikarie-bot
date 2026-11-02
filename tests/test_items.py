@@ -5,6 +5,7 @@
 import json
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -21,6 +22,7 @@ from hikarie_bot.db_data.items import (
     DASH_SHOES,
     DICE,
     ID_CARD,
+    ITEM_IMAGE_URLS,
     ITEMS,
     OFFER_COUNT,
     OMAMORI,
@@ -60,6 +62,15 @@ def item_points(engine: BadgeEngine, user_id: str, day: int) -> list[tuple[str, 
 
 
 # --- the engine ---
+
+
+def test_every_item_has_an_image_in_the_repository() -> None:
+    """Each card's image is a 128x128 file under assets/items, served by its file name."""
+    for item_id, url in ITEM_IMAGE_URLS.items():
+        path = Path(__file__).parent.parent / "assets" / "items" / f"{item_id}.png"
+        assert path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", item_id
+        assert int.from_bytes(path.read_bytes()[16:20]) == int.from_bytes(path.read_bytes()[20:24]) == 128, item_id
+        assert url.endswith(f"/assets/items/{item_id}.png")
 
 
 def test_every_item_tells_its_points_and_fits_a_radio_option() -> None:

@@ -16,12 +16,11 @@ from hikarie_bot import db_data
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     CONTEXT_ITEM_MAX,
-    ITEM_IMAGE_URLS,
     JST,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
 from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
-from hikarie_bot.db_data.items import ID_CARD, ITEMS, ItemData
+from hikarie_bot.db_data.items import ID_CARD, ITEM_IMAGE_URLS, ITEMS, ItemData
 from hikarie_bot.engine import ArrivalResult, BadgeEngine, ItemEffect, UserBadgeTally
 from hikarie_bot.utils import (
     get_level,
