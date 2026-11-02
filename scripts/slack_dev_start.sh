@@ -1,7 +1,8 @@
 #!/bin/sh
 # Start hook for `slack run`. The Slack CLI injects SLACK_BOT_TOKEN / SLACK_APP_TOKEN of the
-# local dev app, and the rest of the settings come from .env.dev (it must not contain tokens,
-# since settings.py loads it with override=True). Extra hook-protocol args are ignored.
+# local dev app, and the rest of the settings come from .env.dev (DOTENV_PATH). Environment
+# variables win over the file, so the injected tokens are always used. Extra hook-protocol args
+# are ignored.
 set -e
 export DOTENV_PATH="${DOTENV_PATH:-.env.dev}"
 if [ ! -f "$DOTENV_PATH" ]; then
