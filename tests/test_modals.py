@@ -7,19 +7,22 @@ from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, NOT_ACHIEVED_BADGE_I
 from hikarie_bot.db_data import Badges
 from hikarie_bot.engine import JST, ArrivalResult
 from hikarie_bot.modals import (
-    AchievementView,
-    InitialMessage,
-    PointGetMessage,
-    RegistryMessage,
+    achievement_view,
+    attendance_by_day,
+    initial_message,
+    point_get_message,
+    registry_message,
+    render,
+    to_text,
 )
 from tests.helpers import compute_in_order, only_badge_types
 
 
 def test_initial_message() -> None:
     """Test the initial message."""
-    message = InitialMessage()
-    assert message.to_text() == "ヒカリエに出社してる？"
-    assert message.render() == [
+    message = initial_message()
+    assert to_text(message) == "ヒカリエに出社してる？"
+    assert render(message) == [
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},
@@ -55,8 +58,8 @@ def test_initial_message() -> None:
 def test_registry_message() -> None:
     """Test the second arrived user has lower point."""
     engine = compute_in_order(("test_user_1st", datetime(2024, 1, 1, 6, 0, 0, tzinfo=JST)))
-    message = RegistryMessage(engine.arrivals_on(date(2024, 1, 1)))
-    assert message.render() == [
+    message = registry_message(engine.arrivals_on(date(2024, 1, 1)))
+    assert render(message) == [
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},
@@ -104,8 +107,8 @@ def test_registry_message_2() -> None:
         ("test_user_2nd", datetime(2024, 1, 1, 6, 1, 0, tzinfo=JST)),
         ("test_user_1st", datetime(2024, 1, 1, 6, 0, 0, tzinfo=JST)),
     )
-    message = RegistryMessage(engine.arrivals_on(date(2024, 1, 1)))
-    assert message.render() == [
+    message = registry_message(engine.arrivals_on(date(2024, 1, 1)))
+    assert render(message) == [
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},
@@ -153,9 +156,9 @@ def test_registry_message_2() -> None:
 def test_point_get_message() -> None:
     """Test the point get message."""
     engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
-    message = PointGetMessage(engine.results[0])
+    message = point_get_message(engine.results[0])
 
-    assert message.render() == [
+    assert render(message) == [
         {
             "type": "section",
             "text": {
@@ -202,7 +205,7 @@ def point_get_after(day: int, previous_score: int) -> list[dict]:
         previous_score=previous_score,
         current_score=previous_score + 5,
     )
-    return PointGetMessage(arrival).render()
+    return render(point_get_message(arrival))
 
 
 def test_point_get_message_max_level() -> None:
@@ -236,7 +239,7 @@ def test_achievement_view() -> None:
     """Test the achievement view."""
     engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
 
-    view = AchievementView(
+    view = achievement_view(
         engine,
         user_id="test_user",
     )
@@ -263,7 +266,7 @@ def test_achievement_message_type_6() -> None:
     """Test the achievement message with badge_types_to_check patched to [6]."""
     engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
 
-    view = AchievementView(
+    view = achievement_view(
         engine,
         user_id="test_user",
     )
@@ -293,7 +296,7 @@ def test_achievement_message_6xxx_taken_logic() -> None:
     engine = compute_in_order(*(("test_user", datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST)) for i in range(10)))
 
     # 取得したバッジが表示されていることのテスト
-    view = AchievementView(engine, user_id="test_user")
+    view = achievement_view(engine, user_id="test_user")
     rendered = [block.to_dict() for block in view.blocks]
     found = False
     for block in rendered:
@@ -308,7 +311,7 @@ def test_achievement_message_6xxx_taken_logic() -> None:
 
 
 def test_achievement_view_attendance_history() -> None:
-    """Test the attendance history section in AchievementView."""
+    """Test the attendance history section in the achievement view."""
     # Create test user
     test_user_id = "test_user"
 
@@ -337,7 +340,7 @@ def test_achievement_view_attendance_history() -> None:
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=test_current_date),
         only_badge_types(1),  # Minimize badge data
     ):
-        view = AchievementView(engine, user_id=test_user_id)
+        view = achievement_view(engine, user_id=test_user_id)
 
         # Get the rendered blocks
         rendered_blocks = [block.to_dict() for block in view.blocks]
@@ -402,30 +405,23 @@ def test_get_attendance_data_for_past_10_weeks() -> None:
 
     engine = compute_in_order(*((test_user_id, date_time) for date_time in attendance_dates))
 
-    with (
-        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
-        only_badge_types(1),
-    ):
-        view = AchievementView(engine, user_id=test_user_id)
+    attendance_data = attendance_by_day(engine, test_user_id, current_date.date())
 
-        # Call the protected method directly for testing
-        attendance_data = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
+    # Check that we have data for the correct date range
+    assert len(attendance_data) > 0, "Should have attendance data"
 
-        # Check that we have data for the correct date range
-        assert len(attendance_data) > 0, "Should have attendance data"
+    # Verify that only weekdays are included
+    for date_obj in attendance_data:
+        assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
 
-        # Verify that only weekdays are included
-        for date_obj in attendance_data:
-            assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
+    # Check specific attendance records
+    assert attendance_data.get(date(2024, 1, 22)) is True, "Should show attendance on 2024-01-22"
+    assert attendance_data.get(date(2024, 2, 14)) is True, "Should show attendance on 2024-02-14"
+    assert attendance_data.get(date(2024, 3, 18)) is True, "Should show attendance on 2024-03-18 (this week Monday)"
+    assert attendance_data.get(date(2024, 3, 20)) is True, "Should show attendance on 2024-03-20 (today)"
 
-        # Check specific attendance records
-        assert attendance_data.get(date(2024, 1, 22)) is True, "Should show attendance on 2024-01-22"
-        assert attendance_data.get(date(2024, 2, 14)) is True, "Should show attendance on 2024-02-14"
-        assert attendance_data.get(date(2024, 3, 18)) is True, "Should show attendance on 2024-03-18 (this week Monday)"
-        assert attendance_data.get(date(2024, 3, 20)) is True, "Should show attendance on 2024-03-20 (today)"
-
-        # Check that some non-attendance days exist
-        assert attendance_data.get(date(2024, 1, 23)) is False, "Should show no attendance on 2024-01-23"
+    # Check that some non-attendance days exist
+    assert attendance_data.get(date(2024, 1, 23)) is False, "Should show no attendance on 2024-01-23"
 
 
 def test_create_github_style_display() -> None:
@@ -445,7 +441,7 @@ def test_create_github_style_display() -> None:
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         only_badge_types(1),
     ):
-        view = AchievementView(engine, user_id=test_user_id)
+        view = achievement_view(engine, user_id=test_user_id)
 
         # Check that blocks were created
         rendered_blocks = [block.to_dict() for block in view.blocks]
@@ -486,7 +482,7 @@ def test_create_github_style_display() -> None:
 
 
 def test_achievement_view_attendance_history_simple() -> None:
-    """Test that attendance history section is added to AchievementView."""
+    """Test that attendance history section is added to the achievement view."""
     test_user_id = "test_user"
 
     # Insert a simple attendance record
@@ -500,7 +496,7 @@ def test_achievement_view_attendance_history_simple() -> None:
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         only_badge_types(1),
     ):
-        view = AchievementView(engine, user_id=test_user_id)
+        view = achievement_view(engine, user_id=test_user_id)
 
         # Check that blocks were created
         assert len(view.blocks) > 0, "View should have blocks"
@@ -542,25 +538,18 @@ def test_attendance_data_generation() -> None:
 
     current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=JST)  # Wednesday
 
-    with (
-        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
-        only_badge_types(1),
-    ):
-        view = AchievementView(engine, user_id=test_user_id)
+    attendance_data = attendance_by_day(engine, test_user_id, current_date.date())
 
-        # Test the data generation method directly
-        attendance_data = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
+    # Basic checks
+    assert isinstance(attendance_data, dict), "Should return a dictionary"
+    assert len(attendance_data) > 0, "Should have some attendance data"
 
-        # Basic checks
-        assert isinstance(attendance_data, dict), "Should return a dictionary"
-        assert len(attendance_data) > 0, "Should have some attendance data"
+    # Check that the attendance date is recorded
+    assert attendance_data.get(date(2024, 3, 18)) is True, "Should show attendance on 2024-03-18"
 
-        # Check that the attendance date is recorded
-        assert attendance_data.get(date(2024, 3, 18)) is True, "Should show attendance on 2024-03-18"
-
-        # Check that weekdays only are included
-        for date_obj in attendance_data:
-            assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
+    # Check that weekdays only are included
+    for date_obj in attendance_data:
+        assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
 
 
 @only_badge_types(6)
@@ -572,7 +561,7 @@ def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals() -> None:
         ("test_user", datetime(2024, 1, 13, 8, 0, 0, tzinfo=JST)),
     )
 
-    view = AchievementView(engine, user_id="test_user")
+    view = achievement_view(engine, user_id="test_user")
 
     texts = [block.to_dict().get("text", {}).get("text", "") for block in view.blocks]
     assert any("[6003] 20番目のお客様" in text for text in texts)  # 13 arrivals so far: 20 is next
@@ -586,18 +575,16 @@ def test_registry_message_lists_arrivals_by_time() -> None:
         ("U_late", datetime(2024, 1, 1, 9, 30, tzinfo=JST)), ("U_early", datetime(2024, 1, 1, 9, 10, tzinfo=JST))
     )
 
-    message = RegistryMessage(engine.arrivals_on(date(2024, 1, 1)))
+    message = registry_message(engine.arrivals_on(date(2024, 1, 1)))
 
-    assert message.render()[-1]["text"]["text"].splitlines()[1:] == ["*09:10* : <@U_early>", "*09:30* : <@U_late>"]
+    assert render(message)[-1]["text"]["text"].splitlines()[1:] == ["*09:10* : <@U_early>", "*09:30* : <@U_late>"]
 
 
-@only_badge_types(1)
 def test_attendance_history_counts_the_first_monday_of_the_window() -> None:
     """An arrival on the first day shown (the Monday nine weeks back) is shown as attended."""
     engine = compute_in_order(("test_user", datetime(2024, 1, 15, 9, 0, tzinfo=JST)))
-    view = AchievementView(engine, "test_user", jst_datetime=datetime(2024, 3, 20, 15, 0, tzinfo=JST))
 
-    attendance = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
+    attendance = attendance_by_day(engine, "test_user", date(2024, 3, 20))
 
     assert min(attendance) == date(2024, 1, 15)
     assert attendance[date(2024, 1, 15)] is True

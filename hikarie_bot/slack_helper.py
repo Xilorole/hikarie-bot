@@ -7,7 +7,7 @@ from apscheduler.triggers.cron import CronTrigger
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot.engine import JST
-from hikarie_bot.modals import InitialMessage
+from hikarie_bot.modals import initial_message, render, to_text
 from hikarie_bot.utils import is_jp_bizday
 
 # runs every day; days off are skipped by the same rule the streak badges use
@@ -18,8 +18,8 @@ async def send_daily_message(client: AsyncWebClient, channel: str) -> None:
     """Post the daily question on Japanese business days (not weekends, holidays, Dec 31 or Jan 1-3)."""
     if not is_jp_bizday(datetime.now(JST).date()):
         return
-    message = InitialMessage()
-    await client.chat_postMessage(channel=channel, blocks=message.render(), text=message.to_text())
+    message = initial_message()
+    await client.chat_postMessage(channel=channel, blocks=render(message), text=to_text(message))
 
 
 def schedule_daily_message(client: AsyncWebClient, channel: str) -> AsyncIOScheduler:

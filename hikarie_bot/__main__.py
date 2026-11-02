@@ -11,16 +11,19 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.context.ack.async_ack import AsyncAck
 from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
+from slack_sdk.models.views import View
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot.arrivals import attach_slack_ts, compute_arrivals, record_button_arrival
-from hikarie_bot.engine import JST
+from hikarie_bot.engine import JST, ArrivalResult
 from hikarie_bot.modals import (
-    AchievementView,
     ActionID,
-    PointGetMessage,
-    RegistryMessage,
     ShortcutID,
+    achievement_view,
+    point_get_message,
+    registry_message,
+    render,
+    to_text,
 )
 from hikarie_bot.models import get_db
 from hikarie_bot.preview import preview
@@ -114,8 +117,8 @@ class Registration(NamedTuple):
 
     event_id: int
     occurred_at: datetime
-    point_get: PointGetMessage
-    registry: RegistryMessage
+    arrival: ArrivalResult
+    arrivals_today: list[ArrivalResult]
 
 
 def register_arrival(user_id: str, now: datetime) -> Registration | None:
@@ -131,7 +134,7 @@ def register_arrival(user_id: str, now: datetime) -> Registration | None:
     if arrival is None:  # the day's first event is the one just found, so the engine counts it
         msg = f"no counted arrival for event {event_id}"
         raise RuntimeError(msg)
-    return Registration(event_id, occurred_at, PointGetMessage(arrival), RegistryMessage(engine.arrivals_on(today)))
+    return Registration(event_id, occurred_at, arrival, engine.arrivals_on(today))
 
 
 async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -174,31 +177,28 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
             )
             return
 
+        point_get = point_get_message(registration.arrival)
         response = await client.chat_postMessage(
             channel=channel_id,
             thread_ts=message_ts,
-            text=registration.point_get.to_text(),
-            blocks=registration.point_get.render(),
-            reply_broadcast=registration.point_get.initial_arrival,
+            text=to_text(point_get),
+            blocks=render(point_get),
+            reply_broadcast=registration.arrival.rank == 1,
             metadata=arrival_metadata(user_id, registration.occurred_at),
         )
         with get_db() as session:
             attach_slack_ts(session, registration.event_id, response["ts"])
 
-        # replace the message with RegistryMessage
-        await client.chat_update(
-            channel=channel_id,
-            ts=message_ts,
-            text=registration.registry.to_text(),
-            blocks=registration.registry.render(),
-        )
+        # replace the message with the day's arrivals
+        registry = registry_message(registration.arrivals_today)
+        await client.chat_update(channel=channel_id, ts=message_ts, text=to_text(registry), blocks=render(registry))
 
 
-def build_achievement_view(user_id: str) -> AchievementView:
+def build_achievement_view(user_id: str) -> View:
     """Compute scores and render the user's achievements."""
     with get_db() as session:
         engine = compute_arrivals(session)
-    return AchievementView(engine, user_id)
+    return achievement_view(engine, user_id)
 
 
 async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
