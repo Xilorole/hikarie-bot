@@ -25,7 +25,7 @@ COPY README.md LICENSE ./
 COPY hikarie_bot hikarie_bot
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=.git,target=.git \
-    uv sync --locked --no-default-groups --group core --no-editable
+    uv sync --locked --no-default-groups --group core --no-editable --refresh-package hikarie-bot
 
 FROM base AS runtime
 
