@@ -194,16 +194,16 @@ def item_pick_view(offered: list[ItemData], channel_id: str, thread_ts: str, day
         private_metadata=json.dumps({"channel": channel_id, "thread_ts": thread_ts, "day": day.isoformat()}),
         blocks=[
             blocks.SectionBlock(text="1つだけ獲得できます。効果は次の出社から。持てるアイテムは1つまでです。"),
-            *(block for item in offered for block in _item_blocks(item)),
-            blocks.DividerBlock(),
             blocks.InputBlock(
                 block_id=BlockID.ITEM_CHOICE,
-                label="獲得するアイテム",
+                label="アイテム",
                 element=block_elements.RadioButtonsElement(
                     action_id=ActionID.ITEM_CHOICE,
                     options=[
                         basic_components.Option(
-                            value=item.id, text=basic_components.MarkdownTextObject(text=f"*{item.label}*")
+                            value=item.id,
+                            text=basic_components.MarkdownTextObject(text=f"*{item.label}*"),
+                            description=basic_components.MarkdownTextObject(text=item.effect),
                         )
                         for item in offered
                     ],
@@ -211,15 +211,6 @@ def item_pick_view(offered: list[ItemData], channel_id: str, thread_ts: str, day
             ),
         ],
     )
-
-
-def _item_blocks(item: ItemData) -> list[Block]:
-    """Return an offered item's name, story and effect (option descriptions are too short for the story)."""
-    return [
-        blocks.DividerBlock(),
-        blocks.SectionBlock(text=f"*{item.label}*\n{item.flavor}"),
-        blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=f"効果: {item.effect}")]),
-    ]
 
 
 def item_picked_text(user_id: str, item: ItemData) -> str:
