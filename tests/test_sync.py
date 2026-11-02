@@ -2,11 +2,11 @@ import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from asyncclick.testing import CliRunner
+from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -232,28 +232,28 @@ async def test_a_thread_not_read_in_full_is_read_again(session: Session) -> None
     assert session.get(SyncState, CHANNEL).synced_until == full_thread[-1]["ts"]
 
 
-class FakeClient:
-    """AsyncWebClient stand-in that pages history two messages at a time."""
+class FakeClient(AsyncWebClient):
+    """A real AsyncWebClient (so the SDK paginates) whose HTTP layer serves a FakeSource, two messages per page."""
 
     def __init__(self, source: FakeSource) -> None:
         """Serve the given channel."""
+        super().__init__(token="test")  # noqa: S106
         self.source = source
+        self.requests: list[dict[str, Any]] = []
 
-    async def conversations_history(self, **params: Any) -> SimpleNamespace:  # noqa: ANN401
-        """Return one page of history."""
-        messages = [m async for m in self.source.history(params["channel"], params.get("oldest"))]
+    async def _request(self, *, http_verb: str, api_url: str, req_args: dict) -> dict[str, Any]:
+        """Return one page of history or of a thread."""
+        params = dict(req_args["params"])
+        self.requests.append(params)
+        if api_url.endswith("conversations.history"):
+            messages = [m async for m in self.source.history(params["channel"], params.get("oldest"))]
+        else:
+            messages = await self.source.replies(params["channel"], params["ts"])
         start = int(params.get("cursor") or 0)
-        page = messages[start : start + 2]
         more = start + 2 < len(messages)
-        cursor = str(start + 2) if more else ""
-        data = {"ok": True, "messages": page, "has_more": more, "response_metadata": {"next_cursor": cursor}}
-        return SimpleNamespace(data=data)
-
-    async def conversations_replies(self, **params: Any) -> SimpleNamespace:  # noqa: ANN401
-        """Return a whole thread."""
-        return SimpleNamespace(
-            data={"ok": True, "messages": await self.source.replies(params["channel"], params["ts"]), "has_more": False}
-        )
+        metadata = {"next_cursor": str(start + 2) if more else ""}
+        data = {"ok": True, "messages": messages[start : start + 2], "has_more": more, "response_metadata": metadata}
+        return {"data": data, "headers": {}, "status_code": 200}
 
 
 @pytest.mark.asyncio
@@ -265,7 +265,7 @@ async def test_recorded_cache_replays_the_same_sync(tmp_path: Path) -> None:
     client = FakeClient(channel_with_two_days())
 
     with Session(live) as session:
-        await sync_channel(session, RecordingSlackSource(client, tmp_path), CHANNEL)  # type: ignore[arg-type]
+        await sync_channel(session, RecordingSlackSource(client, tmp_path), CHANNEL)
         live_events = [
             (e.slack_ts, e.user_id, e.source) for e in session.query(ArrivalEvent).order_by(ArrivalEvent.slack_ts)
         ]
@@ -281,16 +281,27 @@ async def test_recorded_cache_replays_the_same_sync(tmp_path: Path) -> None:
     record = json.loads(pages[0].read_text())
     assert record["request"]["method"] == "conversations.history"
     assert record["response"]["ok"] is True
-    assert (tmp_path / CHANNEL / "conversations.replies" / f"{ts(T0)}.json").exists()
+    replies = tmp_path / CHANNEL / "conversations.replies"
+    assert (replies / f"{ts(T0)}.json").exists()
+    second = json.loads((replies / f"{ts(T0)}.p2.json").read_text())  # the parent and 2 replies take 2 pages
+    assert second["request"]["params"]["cursor"] == "2"
+    assert second["response"]["has_more"] is False
     assert await CachedSlackSource(tmp_path).replies(CHANNEL, "1.000000") == []
 
 
 @pytest.mark.asyncio
 async def test_live_source_pages_until_the_end() -> None:
-    """The live source follows next_cursor across pages."""
+    """The live source follows next_cursor across pages of history and of a thread."""
     source = channel_with_two_days()
-    messages = [m async for m in LiveSlackSource(FakeClient(source)).history(CHANNEL, None)]  # type: ignore[arg-type]
+    client = FakeClient(source)
+    live = LiveSlackSource(client)
+
+    messages = [m async for m in live.history(CHANNEL, None)]
+    thread = await live.replies(CHANNEL, ts(T0))
+
     assert [m["ts"] for m in messages] == [m["ts"] async for m in source.history(CHANNEL, None)]
+    assert [m["ts"] for m in thread] == [m["ts"] for m in await source.replies(CHANNEL, ts(T0))]
+    assert [request.get("cursor") for request in client.requests] == [None, "2", "4", None, "2"]
 
 
 @pytest.mark.asyncio
