@@ -91,13 +91,15 @@ async def test_first_start_reports_each_step_without_personal_data(client: Async
     await reporter.post(reporter.summary())
 
     texts = posted(client)
+    assert len(texts) == 6  # one message per section
     assert texts[0] == "starting application (v1.2.3)"
-    assert texts[1].startswith("first start: reading the whole channel")
-    summary = texts[-1]
-    assert summary.startswith(":white_check_mark: application started (v1.2.3) in ")
-    assert "*database*: schema 0000 (migrated from empty) · badge definitions 19 types / 287 badges" in summary
-    assert "*slack sync*: whole channel · 1 messages · 1 threads · 2 new events" in summary
-    assert "*scores*: 2 events → 2 arrivals · 2 users · " in summary
+    assert texts[1].startswith(
+        "*database*: schema 0000 (migrated from empty) · badge definitions 19 types / 287 badges"
+    )
+    assert texts[2].startswith("first start: reading the whole channel")
+    assert texts[3].startswith("*slack sync*: whole channel · 1 messages · 1 threads · 2 new events (")
+    assert texts[4].startswith("*scores*: 2 events → 2 arrivals · 2 users · ")
+    assert texts[5].startswith(":white_check_mark: application started (v1.2.3) in ")
     assert not any(user in text for text in texts for user in SECRET_USERS)
 
 
@@ -110,11 +112,11 @@ async def test_restart_reports_the_catch_up(client: AsyncMock) -> None:
     reporter = StartupReporter(client=client, channel="C0LOG", version="1.2.3")
 
     await prepare(reporter, Source(), CHANNEL)
-    summary = reporter.summary()
 
-    assert not any(text.startswith("first start") for text in posted(client))
-    assert "*slack sync*: since 2025-10-08 17:55 JST · 1 messages · 0 threads · 0 new events" in summary
-    assert "*database*: schema 0000 (up to date)" in summary
+    texts = posted(client)
+    assert not any(text.startswith("first start") for text in texts)
+    assert texts[1].startswith("*database*: schema 0000 (up to date)")
+    assert texts[2].startswith("*slack sync*: since 2025-10-08 17:55 JST · 1 messages · 0 threads · 0 new events")
 
 
 @pytest.mark.asyncio

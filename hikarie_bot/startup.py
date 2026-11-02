@@ -1,5 +1,8 @@
 """Prepare the database on startup and report each step to the log channel.
 
+Each step is posted as its own message when it finishes, so a slow step (the first full
+read of the channel) shows how far startup has got.
+
 The report carries only counts, durations, schema revisions and sync positions: never
 user IDs, names or message text. A failed step reports its name and exception type;
 the exception message (which may contain data) stays in the process log.
@@ -67,13 +70,13 @@ class StartupReporter:
                 f"`{type(error).__name__}` (details in the process log)"
             )
             raise
-        self.steps.append(Step(name, detail.text, perf_counter() - started))
+        step = Step(name, detail.text, perf_counter() - started)
+        self.steps.append(step)
+        await self.post(f"*{step.name}*: {step.detail} ({step.seconds:.1f}s)")
 
     def summary(self) -> str:
-        """Return the startup summary."""
-        lines = [f":white_check_mark: application started (v{self.version}) in {perf_counter() - self.started:.1f}s"]
-        lines += [f"• *{step.name}*: {step.detail} ({step.seconds:.1f}s)" for step in self.steps]
-        return "\n".join(lines)
+        """Return the closing message, posted once the bot is ready."""
+        return f":white_check_mark: application started (v{self.version}) in {perf_counter() - self.started:.1f}s"
 
 
 def describe_database(result: InitResult) -> str:
