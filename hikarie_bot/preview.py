@@ -24,12 +24,7 @@ from sqlalchemy.orm import Session
 
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.engine import JST, BadgeEngine
-from hikarie_bot.modals import (
-    AchievementView,
-    InitialMessage,
-    PointGetMessage,
-    RegistryMessage,
-)
+from hikarie_bot.modals import achievement_view, initial_message, point_get_message, registry_message, render
 from hikarie_bot.settings import get_settings
 from hikarie_bot.utils import is_jp_bizday, leveled_up
 
@@ -76,19 +71,19 @@ class Preview:
 
 def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
     arrival = None if user_id is None else context.engine.arrival_of(user_id, context.reference.date())
-    return None if arrival is None else {"blocks": PointGetMessage(arrival).render()}
+    return None if arrival is None else {"blocks": render(point_get_message(arrival))}
 
 
 def _registry(context: PreviewContext) -> dict[str, Any]:
-    return {"blocks": RegistryMessage(context.engine.arrivals_on(context.reference.date())).render()}
+    return {"blocks": render(registry_message(context.engine.arrivals_on(context.reference.date())))}
 
 
 def _achievement(context: PreviewContext) -> dict[str, Any]:
-    return AchievementView(context.engine, context.user_id, jst_datetime=context.reference).to_dict()
+    return achievement_view(context.engine, context.user_id, jst_datetime=context.reference).to_dict()
 
 
 PREVIEWS = [
-    Preview("initial_message", "毎朝の出社確認メッセージ", lambda _: {"blocks": InitialMessage().render()}),
+    Preview("initial_message", "毎朝の出社確認メッセージ", lambda _: {"blocks": render(initial_message())}),
     Preview("registry_message", "出社登録後に更新される出社確認メッセージ", _registry),
     Preview(
         "point_get_fastest",
