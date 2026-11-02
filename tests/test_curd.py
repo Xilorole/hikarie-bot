@@ -169,6 +169,37 @@ def test_level_up(temp_db: sessionmaker[Session]) -> None:
     assert user_info.current_level_point == 0
 
 
+def test_reach_max_level(temp_db: sessionmaker[Session]) -> None:
+    """Test the score beyond the upper limit is recorded and the level stays at max."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+    insert_arrival_action(
+        session=session,
+        jst_datetime=datetime(2024, 2, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+        user_id="test_user",
+    )
+    user = session.query(User).filter(User.id == "test_user").one()
+    user.current_score = 1398
+    session.commit()
+
+    for day in (2, 5):
+        assert insert_arrival_action(
+            session=session,
+            jst_datetime=datetime(2024, 2, day, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+            user_id="test_user",
+        )
+
+    user_info = session.query(User).filter(User.id == "test_user").one()
+
+    assert user_info.current_score > user_info.previous_score > 1400
+    assert user_info.level == 12
+    assert user_info.level_name == "でんせつのかいしゃいん"
+    assert not user_info.level_uped
+    assert user_info.point_to_next_level == 0
+    assert user_info.point_range_to_next_level == 1400 - 1098
+    assert user_info.current_level_point == 1400 - 1098
+
+
 # 最速出社と時間帯出社の部分をmockする
 @patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
 def test_second_arrived_user_has_lower_point(temp_db: sessionmaker[Session]) -> None:

@@ -1,15 +1,36 @@
-import pytest
-
-from hikarie_bot.exceptions import InvalidPointError
 from hikarie_bot.utils import (
     get_current_level_point,
+    get_level,
     get_level_name,
     get_point_range_to_next_level,
     get_point_to_next_level,
     is_jp_bizday,
     is_level_uped,
+    is_max_level,
+    is_max_level_reached,
     unix_timestamp_to_jst,
 )
+
+
+def test_get_level() -> None:
+    "Test levels, which stay at the max level beyond the upper limit."
+    assert get_level(0) == 1
+    assert get_level(19) == 1
+    assert get_level(20) == 2
+    assert get_level(1399) == 12
+    assert get_level(1400) == 12
+    assert get_level(5000) == 12
+
+
+def test_is_max_level() -> None:
+    "Test whether the upper limit of the level is reached."
+    assert is_max_level(1399) is False
+    assert is_max_level(1400) is True
+    assert is_max_level(1401) is True
+    assert is_max_level_reached(1399, 1400) is True
+    assert is_max_level_reached(1390, 1405) is True
+    assert is_max_level_reached(1400, 1405) is False
+    assert is_max_level_reached(1300, 1399) is False
 
 
 def test_get_level_name() -> None:
@@ -55,7 +76,10 @@ def test_is_level_uped() -> None:
     assert is_level_uped(20, 21) is False
     assert is_level_uped(20, 22) is False
     assert is_level_uped(21, 22) is False
-    # if the point is over the last level point, the level is not uped
+    assert is_level_uped(1097, 1098) is True
+    # reaching the upper limit does not change the level
+    assert is_level_uped(1399, 1400) is False
+    assert is_level_uped(1390, 1405) is False
     assert is_level_uped(1400, 1405) is False
 
 
@@ -121,9 +145,9 @@ def test_get_point_range_to_next_level() -> None:
     assert get_point_range_to_next_level(1097) == 1098 - 849
     assert get_point_range_to_next_level(1098) == 1400 - 1098
     assert get_point_range_to_next_level(1399) == 1400 - 1098
-    # when the user reached the last level, the point range function raise ValueError
-    with pytest.raises(InvalidPointError):
-        get_point_range_to_next_level(1400)
+    # beyond the upper limit, the range of the last level is kept
+    assert get_point_range_to_next_level(1400) == 1400 - 1098
+    assert get_point_range_to_next_level(1500) == 1400 - 1098
 
 
 def test_get_current_level_point() -> None:
@@ -155,9 +179,9 @@ def test_get_current_level_point() -> None:
     assert get_current_level_point(1097) == 1097 - 849
     assert get_current_level_point(1098) == 1098 - 1098
     assert get_current_level_point(1399) == 1399 - 1098
-    # when the user reached the last level, the point range function raise ValueError
-    with pytest.raises(InvalidPointError):
-        get_current_level_point(1400)
+    # beyond the upper limit, the progress is full
+    assert get_current_level_point(1400) == 1400 - 1098
+    assert get_current_level_point(1500) == 1400 - 1098
 
 
 def test_unix_timestamp_to_jst() -> None:

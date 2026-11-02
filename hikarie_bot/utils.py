@@ -2,8 +2,6 @@ from datetime import UTC, date, datetime, timedelta, timezone
 
 import jpholiday
 
-from .exceptions import InvalidPointError
-
 level_map = {
     1: {"name": "かけだしのかいしゃいん", "point": 20},
     2: {"name": "みならいのかいしゃいん", "point": 42},
@@ -18,6 +16,10 @@ level_map = {
     11: {"name": "むてきのかいしゃいん", "point": 1098},
     12: {"name": "でんせつのかいしゃいん", "point": 1400},
 }
+
+MAX_LEVEL = max(level_map)
+# reaching this point means the last level is completed; the level stays at MAX_LEVEL
+MAX_LEVEL_POINT = level_map[MAX_LEVEL]["point"]
 
 
 def get_level(point: int) -> int:
@@ -35,7 +37,7 @@ def get_level(point: int) -> int:
     for level, level_info in sorted(level_map.items(), key=lambda kv: kv[0]):
         if point < level_info["point"]:
             return level
-    raise ValueError
+    return MAX_LEVEL
 
 
 def get_level_name(point: int) -> str:
@@ -56,6 +58,16 @@ def get_level_name(point: int) -> str:
     return level_map[len(level_map)]["name"]
 
 
+def is_max_level(point: int) -> bool:
+    """Check if the point has reached the upper limit of the level."""
+    return point >= MAX_LEVEL_POINT
+
+
+def is_max_level_reached(previous_point: int, current_point: int) -> bool:
+    """Check if the upper limit of the level is reached by this point gain."""
+    return previous_point < MAX_LEVEL_POINT <= current_point
+
+
 def is_level_uped(previous_point: int, current_point: int) -> bool:
     """Check if the current point indicates a level up from the previous point.
 
@@ -69,8 +81,9 @@ def is_level_uped(previous_point: int, current_point: int) -> bool:
         bool: True if the current point indicates a level up, False otherwise.
 
     """
+    # reaching MAX_LEVEL_POINT does not change the level (see is_max_level_reached)
     for _, level_info in sorted(level_map.items(), key=lambda kv: kv[0]):
-        if previous_point < level_info["point"] <= current_point:
+        if previous_point < level_info["point"] <= current_point and level_info["point"] < MAX_LEVEL_POINT:
             return True
     return False
 
@@ -105,17 +118,14 @@ def get_point_range_to_next_level(point: int) -> int:
     -------
         int: The range of points required to reach the next level.
 
-    Raises:
-    ------
-        ValueError: If the point value is invalid.
+    If the point has reached the upper limit, the range of the last level is returned.
 
     """
     for idx, level_info in sorted(level_map.items(), key=lambda kv: kv[0]):
         if point < level_info["point"]:
             previous_level_point = level_map[idx - 1].get("point") if level_map.get(idx - 1) else 0
             return level_info["point"] - previous_level_point
-    # if the point is greater than the last level point, return undefined
-    raise InvalidPointError(point=point)
+    return MAX_LEVEL_POINT - level_map[MAX_LEVEL - 1]["point"]
 
 
 def get_current_level_point(point: int) -> int:
@@ -129,16 +139,14 @@ def get_current_level_point(point: int) -> int:
     -------
         int: The current level point.
 
-    Raises:
-    ------
-        ValueError: If the given point is invalid.
+    If the point has reached the upper limit, the whole range of the last level is returned (100%).
 
     """
     for idx, level_info in sorted(level_map.items(), key=lambda kv: kv[0]):
         if point < level_info["point"]:
             previous_level_point = level_map[idx - 1]["point"] if level_map.get(idx - 1) else 0
             return point - previous_level_point
-    raise InvalidPointError(point=point)
+    return get_point_range_to_next_level(point)
 
 
 def unix_timestamp_to_jst(unix_timestamp: float) -> datetime:

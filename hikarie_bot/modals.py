@@ -44,6 +44,8 @@ from hikarie_bot.utils import (
     get_point_range_to_next_level,
     get_point_to_next_level,
     is_level_uped,
+    is_max_level,
+    is_max_level_reached,
 )
 
 # Constants
@@ -241,6 +243,20 @@ class PointGetMessage(BaseMessage):
         digits = (experience_rate + 10 - 1) // 10
         point_rate_text = "█" * digits + " " * (10 - digits)
 
+        # the level does not go beyond the upper limit
+        if is_max_level(current_point):
+            next_level_text = "*上限に到達*"
+            progress_text = f"`{point_rate_text}` | *100%*"
+        else:
+            next_level_text = f"*{point_to_next_level}pt*"
+            progress_text = f"`{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)"
+        if is_max_level_reached(previous_point, current_point):
+            level_up_text = " *上限に到達!* :crown: "
+        elif level_up_flag:
+            level_up_text = " *LvUP!* :star2: "
+        else:
+            level_up_text = ""
+
         initial_arrival_text = "最速" if initial_arrival else ""
         hikarie_text = " :hikarie:" if initial_arrival else ""
 
@@ -257,8 +273,8 @@ class PointGetMessage(BaseMessage):
         context = dedent(
             f"""\
             かたがき: *{level_name}* (lv{level})
-            つぎのレベルまで: *{point_to_next_level}pt*
-            しんこうど: `{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)
+            つぎのレベルまで: {next_level_text}
+            しんこうど: {progress_text}
             うちわけ:
             """
         ) + (achievements_text)
@@ -270,7 +286,7 @@ class PointGetMessage(BaseMessage):
                     f"{initial_arrival_text}出社登録しました！{hikarie_text}"
                     f"\n<@{user_id}>さんのポイント "
                     f"{previous_point} → *{current_point}* "
-                    f"(*+{score_addup}*){' *LvUP!* :star2: ' if level_up_flag else ''}"
+                    f"(*+{score_addup}*){level_up_text}"
                 ),
                 blocks.DividerBlock(),
                 blocks.ContextBlock(
