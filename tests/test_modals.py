@@ -12,7 +12,7 @@ from hikarie_bot.modals import (
     PointGetMessage,
     RegistryMessage,
 )
-from tests.helpers import compute_in_order
+from tests.helpers import compute_in_order, only_badge_types
 
 
 def test_initial_message() -> None:
@@ -231,7 +231,7 @@ def test_point_get_message_zero_progress() -> None:
     assert "しんこうど: `█         ` | *  0%* (*+22%*)\n" in message[2]["elements"][0]["text"]
 
 
-@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1])
+@only_badge_types(1)
 def test_achievement_view() -> None:
     """Test the achievement view."""
     engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
@@ -258,7 +258,7 @@ def test_achievement_view() -> None:
         assert expected_block in rendered_blocks
 
 
-@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
+@only_badge_types(6)
 def test_achievement_message_type_6() -> None:
     """Test the achievement message with badge_types_to_check patched to [6]."""
     engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
@@ -283,7 +283,7 @@ def test_achievement_message_type_6() -> None:
     assert not badge_type_1_sections, "Badge type 1 section should not be present"
 
 
-@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
+@only_badge_types(6)
 def test_achievement_message_6xxx_taken_logic() -> None:
     """Test 6XXX badge logic: taken icon if any user has it, not achieved if none."""
     badge_6xxx = next(badge for badge in Badges if badge.badge_type_id == 6 and 6000 <= badge.id < 7000)
@@ -335,7 +335,7 @@ def test_achievement_view_attendance_history() -> None:
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=test_current_date),
-        mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),  # Minimize badge data
+        only_badge_types(1),  # Minimize badge data
     ):
         view = AchievementView(engine, user_id=test_user_id)
 
@@ -404,7 +404,7 @@ def test_get_attendance_data_for_past_10_weeks() -> None:
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
-        mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
+        only_badge_types(1),
     ):
         view = AchievementView(engine, user_id=test_user_id)
 
@@ -443,7 +443,7 @@ def test_create_github_style_display() -> None:
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
-        mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
+        only_badge_types(1),
     ):
         view = AchievementView(engine, user_id=test_user_id)
 
@@ -498,7 +498,7 @@ def test_achievement_view_attendance_history_simple() -> None:
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
-        mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
+        only_badge_types(1),
     ):
         view = AchievementView(engine, user_id=test_user_id)
 
@@ -544,7 +544,7 @@ def test_attendance_data_generation() -> None:
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
-        mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
+        only_badge_types(1),
     ):
         view = AchievementView(engine, user_id=test_user_id)
 
@@ -563,7 +563,7 @@ def test_attendance_data_generation() -> None:
             assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
 
 
-@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
+@only_badge_types(6)
 def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals() -> None:
     """Someone without kiribans still sees the next kiriban to be reached by everyone's arrivals."""
     # the 10th and 11th arrivals are kiribans, taken by other users
@@ -591,7 +591,7 @@ def test_registry_message_lists_arrivals_by_time() -> None:
     assert message.render()[-1]["text"]["text"].splitlines()[1:] == ["*09:10* : <@U_early>", "*09:30* : <@U_late>"]
 
 
-@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1])
+@only_badge_types(1)
 def test_attendance_history_counts_the_first_monday_of_the_window() -> None:
     """An arrival on the first day shown (the Monday nine weeks back) is shown as attended."""
     engine = compute_in_order(("test_user", datetime(2024, 1, 15, 9, 0, tzinfo=JST)))

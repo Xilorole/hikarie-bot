@@ -8,7 +8,7 @@ Why the data works the way it does: `docs/design/data-architecture.md` (Japanese
 - The database holds only `arrival_event` and the Slack sync position (`sync_state`). `arrival_event` is the source of truth: append-only, deduplicated by Slack message ts; the first event of a user's JST day counts.
 - Ranks, badges, scores and levels are never stored: `arrivals.compute_arrivals` runs `engine.py` over all events (tens of ms) for each button press and achievement view, and `modals.py` renders the engine's results. Change the rules in `engine.py`.
 - A rule change rewrites everyone's past points and badges on the next deploy. To affect only later arrivals, gate the rule on its badge type's `apply_start`.
-- Badges are defined only in code (`db_data/badges.py`). A new badge type needs its definitions there, a checker in `BadgeEngine._checkers` and its ID in `constants.BADGE_TYPES_TO_CHECK`.
+- Badges are defined only in code (`db_data/badges.py`). A new badge type needs its definitions there and a checker in `BadgeEngine.CHECKERS`, which is the list of awarded types and their evaluation order.
 
 ## Time
 

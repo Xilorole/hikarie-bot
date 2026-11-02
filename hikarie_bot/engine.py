@@ -14,12 +14,12 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from typing import ClassVar, Self
 from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
 
 from hikarie_bot import db_data
-from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
 from hikarie_bot.db_data.badges import KIRIBANS
 from hikarie_bot.utils import list_bizdays
 
@@ -86,21 +86,6 @@ class BadgeEngine:
         self.users: dict[str, UserState] = defaultdict(UserState)
         self.results: list[ArrivalResult] = []
         self.user_badges: dict[tuple[str, int], UserBadgeTally] = {}
-        self._checkers: dict[int, Callable[[str, datetime], list[int]]] = {
-            1: self._welcome,
-            2: self._fastest_arrival,
-            3: self._arrival_count,
-            4: self._straight_flash,
-            5: self._time_window,
-            6: self._kiriban,
-            7: self._long_time_no_see,
-            8: self._lucky_you_guys,
-            15: self._start_dash,
-            16: self._specific_day,
-            17: self._yearly_specific_day,
-            18: self._specific_time,
-            19: self._takanawa_welcome,
-        }
 
     def add(self, user_id: str, time: datetime) -> ArrivalResult | None:
         """Count an arrival (an aware datetime); returns None if the user already arrived that JST day."""
@@ -117,9 +102,7 @@ class BadgeEngine:
         user.times.append(time)
         self.times.append(time)
 
-        badge_ids = [
-            badge_id for type_id in BADGE_TYPES_TO_CHECK for badge_id in self._checkers[type_id](user_id, time)
-        ]
+        badge_ids = [badge_id for checker in self.CHECKERS.values() for badge_id in checker(self, user_id, time)]
         score_sum = sum(BADGE_SCORES[badge_id] for badge_id in badge_ids)
         previous_score = user.score
 
@@ -284,6 +267,23 @@ class BadgeEngine:
         if time < APPLY_START[19]:
             return []
         return [1901] if not self._since(user_id, TAKANAWA_OFFICE_START, time) else []
+
+    # The badge types the bot awards, by type ID, in evaluation order.
+    CHECKERS: ClassVar[dict[int, Callable[[Self, str, datetime], list[int]]]] = {
+        1: _welcome,
+        2: _fastest_arrival,
+        3: _arrival_count,
+        4: _straight_flash,
+        5: _time_window,
+        6: _kiriban,
+        7: _long_time_no_see,
+        8: _lucky_you_guys,
+        15: _start_dash,
+        16: _specific_day,
+        17: _yearly_specific_day,
+        18: _specific_time,
+        19: _takanawa_welcome,
+    }
 
 
 def compute(arrivals: Iterable[tuple[str, datetime]]) -> BadgeEngine:

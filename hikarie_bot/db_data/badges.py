@@ -9,12 +9,13 @@ Variables:
     Badges (list): A list of Badge instances defining various badges and their conditions.
 """
 
-from collections.abc import Generator
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import pairwise
 from zoneinfo import ZoneInfo
 
-from hikarie_bot.constants import KIRIBAN_GENERATION_LIMIT
+KIRIBAN_GENERATION_LIMIT = 10000
+FIRST_KIRIBAN_ID = 6001  # kiriban badge IDs start here (6000 series to avoid conflicts)
 
 
 @dataclass
@@ -24,117 +25,30 @@ class Kiriban:
     id: int
     number: int
     score: int
-    kiriban_type: str
 
 
-class KiribanGenerator:
-    """Generator for kiriban numbers with appropriate scoring."""
+def kiriban_score(n: int) -> int | None:
+    """Return the score of the kiriban n, or None if n is not one.
 
-    def _is_power_of_ten_multiple(self, n: int) -> bool:
-        """Check if a number is a multiple of power of 10 with first digit non-zero.
-
-        Examples: 10, 20, 100, 300, 1000, 5000, etc.
-        """
-        if n < 10:  # noqa: PLR2004
-            return False
-
-        str_n = str(n)
-        # Check if all digits except the first are zeros
-        return str_n[0] != "0" and all(digit == "0" for digit in str_n[1:])
-
-    def _is_repetitive(self, n: int) -> bool:
-        """Check if a number consists of the same digit repeated.
-
-        Examples: 11, 222, 1111, 7777, etc.
-        """
-        str_n = str(n)
-        return len(str_n) >= 2 and len(set(str_n)) == 1  # noqa: PLR2004
-
-    def _is_sequential(self, n: int) -> bool:
-        """Check if a number has digits in sequential order (ascending or descending).
-
-        Examples: 123, 1234, 4321, 987, etc.
-        """
-        str_n = str(n)
-        if len(str_n) < 3:  # Need at least 3 digits for a meaningful sequence  # noqa: PLR2004
-            return False
-
-        digits = [int(d) for d in str_n]
-
-        # Check ascending sequence
-        is_ascending = all(digits[i] + 1 == digits[i + 1] for i in range(len(digits) - 1))
-
-        # Check descending sequence
-        is_descending = all(digits[i] - 1 == digits[i + 1] for i in range(len(digits) - 1))
-
-        return is_ascending or is_descending
-
-    def _is_palindrome(self, n: int) -> bool:
-        """Check if a number is a palindrome (reads the same forwards and backwards).
-
-        Examples: 121, 1221, 5445, 12321, etc.
-        """
-        str_n = str(n)
-        return len(str_n) >= 2 and str_n == str_n[::-1]  # noqa: PLR2004
-
-    def _calculate_score(self, number: int, kiriban_type: str) -> int:
-        """Calculate the score for a kiriban based on its type and characteristics.
-
-        Args:
-            number: The kiriban number
-            kiriban_type: Type of kiriban
-
-        Returns:
-            Calculated score
-        """
-        digit_count = len(str(number))
-
-        if kiriban_type == "repetitive":  # ゾロ目
-            return digit_count * 2
-        if kiriban_type == "palindrome":  # 回文
-            return 5
-        if kiriban_type == "sequential":  # 階段状
-            return 7
-        if kiriban_type == "power_of_ten":  # 累乗
-            return digit_count * 2
-        return 1  # Default score
-
-    def _get_kiriban_type(self, n: int) -> str | None:
-        """Get the type of kiriban for a given number.
-
-        Priority order (highest to lowest):
-        1. Repetitive (ゾロ目)
-        2. Palindrome (回文数)
-        3. Sequential (階段状)
-        4. Power of ten multiple (整数x10の累乗)
-        """
-        if self._is_repetitive(n):
-            return "repetitive"
-        if self._is_palindrome(n):
-            return "palindrome"
-        if self._is_sequential(n):
-            return "sequential"
-        if self._is_power_of_ten_multiple(n):
-            return "power_of_ten"
+    The first kind that matches decides the score, in this priority order:
+    1. Repetitive (ゾロ目): one digit repeated, like 11 or 7777
+    2. Palindrome (回文数): like 121 or 5445
+    3. Sequential (階段状): three or more digits ascending or descending, like 123 or 4321
+    4. Power of ten multiple (整数x10の累乗): a digit followed by zeros, like 10 or 5000
+    """
+    digits = str(n)
+    if len(digits) < 2:  # noqa: PLR2004
         return None
-
-    def generate_kiriban(self, under: int) -> Generator[Kiriban]:
-        """Generate kiriban instances up to a specified limit.
-
-        Args:
-            under: Maximum number to generate (exclusive)
-
-        Yields:
-            Kiriban instances with appropriate scores
-        """
-        kiriban_id = 6001  # Starting ID for kiriban badges (6000 series to avoid conflicts)
-
-        for n in range(1, under):
-            kiriban_type = self._get_kiriban_type(n)
-            if kiriban_type:
-                score = self._calculate_score(n, kiriban_type)
-                yield Kiriban(id=kiriban_id, number=n, score=score, kiriban_type=kiriban_type)
-                kiriban_id += 1
+    if len(set(digits)) == 1:
+        return len(digits) * 2
+    if digits == digits[::-1]:
+        return 5
+    steps = {int(next_digit) - int(digit) for digit, next_digit in pairwise(digits)}
+    if len(digits) >= 3 and steps in ({1}, {-1}):  # noqa: PLR2004
+        return 7
+    if set(digits[1:]) == {"0"}:
+        return len(digits) * 2
+    return None
 
 
 @dataclass
@@ -159,8 +73,12 @@ class BadgeData:
     badge_type_id: int
 
 
-# every kiriban below the limit, with badge IDs from 6001 in order
-KIRIBANS = list(KiribanGenerator().generate_kiriban(under=KIRIBAN_GENERATION_LIMIT))
+# every kiriban below the limit, with badge IDs from FIRST_KIRIBAN_ID in order
+_KIRIBAN_SCORES = {n: score for n in range(1, KIRIBAN_GENERATION_LIMIT) if (score := kiriban_score(n)) is not None}
+KIRIBANS = [
+    Kiriban(id=kiriban_id, number=n, score=score)
+    for kiriban_id, (n, score) in enumerate(_KIRIBAN_SCORES.items(), start=FIRST_KIRIBAN_ID)
+]
 
 
 # Define the badge types.
@@ -204,32 +122,6 @@ BadgeTypes = [
         id=8,
         name="lucky_you_guys",
         description="同じ時間に出社登録をした",
-    ),
-    BadgeTypeData(
-        id=9,
-        name="reincarnation",
-        description="転生した",
-    ),
-    BadgeTypeData(
-        id=10,
-        name="item_shop",
-        description="道具屋を利用した",
-    ),
-    BadgeTypeData(
-        id=11,
-        name="used_log_report",
-        description="ログ分析レポートを利用した",
-    ),
-    BadgeTypeData(id=12, name="seasonal_rank", description="特定のシーズンでランクインした"),
-    BadgeTypeData(
-        id=13,
-        name="reactioner",
-        description="リアクションをした",
-    ),
-    BadgeTypeData(
-        id=14,
-        name="advance_notice_success",
-        description="予告出社を成功させた",
     ),
     BadgeTypeData(
         id=15,
@@ -436,85 +328,6 @@ Badges = [
         level=3,
         score=4,
         badge_type_id=8,
-    ),
-    # BadgeTypeData id=9, name="reincarnation", description="転生した"
-    BadgeData(
-        id=901,
-        message="新しくなったあなた",
-        condition="1回目の転生をした",
-        level=1,
-        score=1,
-        badge_type_id=9,
-    ),
-    BadgeData(
-        id=902,
-        message="2回目の目覚め",
-        condition="2回目の転生をした",
-        level=2,
-        score=1,
-        badge_type_id=9,
-    ),
-    # BadgeTypeData id=10, name="item_shop", description="道具屋を利用した"
-    BadgeData(
-        id=1001,
-        message="道具屋利用",
-        condition="道具屋を利用した",
-        level=1,
-        score=1,
-        badge_type_id=10,
-    ),
-    # BadgeTypeData id=11, name="used_log_report", description="ログ分析レポートを利用した"
-    BadgeData(
-        id=1101,
-        message="ログ分析レポート利用",
-        condition="ログ分析レポートを利用した",
-        level=1,
-        score=1,
-        badge_type_id=11,
-    ),
-    # BadgeTypeData id=12, name="seasonal_rank",
-    #           description="特定のシーズンでランクインした" # noqa: ERA001
-    BadgeData(
-        id=1201,
-        message="Top of Top",
-        condition="特定のシーズンで首位になった",
-        level=2,
-        score=1,
-        badge_type_id=12,
-    ),
-    BadgeData(
-        id=1202,
-        message="Seasonal Ranker",
-        condition="特定のシーズンで3位以内になった",
-        level=1,
-        score=1,
-        badge_type_id=12,
-    ),
-    # BadgeTypeData id=13, name="reactioner", description="リアクションをした"
-    BadgeData(
-        id=1301,
-        message="盛り上げ役",
-        condition="10回リアクションをした",
-        level=1,
-        score=1,
-        badge_type_id=13,
-    ),
-    BadgeData(
-        id=1302,
-        message="大衆の扇動者",
-        condition="50回リアクションをした",
-        level=2,
-        score=1,
-        badge_type_id=13,
-    ),
-    # BadgeTypeData id=14, name="advance_notice_success", description="予告出社を成功させた"
-    BadgeData(
-        id=1401,
-        message="予告出社成功",
-        condition="予告出社を成功させた",
-        level=1,
-        score=1,
-        badge_type_id=14,
     ),
     # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"
     BadgeData(

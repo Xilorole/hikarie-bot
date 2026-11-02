@@ -13,7 +13,6 @@ from slack_sdk.models.views import View
 from hikarie_bot import db_data
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
-    BADGE_TYPES_TO_CHECK,
     CONTEXT_ITEM_MAX,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
@@ -43,7 +42,7 @@ BADGES_BY_TYPE = {
 
 def badge_types_to_show() -> list[BadgeTypeData]:
     """Return the badge types the bot awards, in ID order."""
-    return [badge_type for badge_type in db_data.BadgeTypes if badge_type.id in BADGE_TYPES_TO_CHECK]
+    return [badge_type for badge_type in db_data.BadgeTypes if badge_type.id in BadgeEngine.CHECKERS]
 
 
 class ActionID:
@@ -504,7 +503,7 @@ class AchievementView(View):
             (
                 (user_badge, BADGES[badge_id])
                 for badge_id, user_badge in self._user_badges.items()
-                if BADGES[badge_id].badge_type_id in BADGE_TYPES_TO_CHECK
+                if BADGES[badge_id].badge_type_id in BadgeEngine.CHECKERS
             ),
             key=lambda pair: pair[0].first,
         )
