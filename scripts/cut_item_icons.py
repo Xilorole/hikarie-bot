@@ -8,11 +8,15 @@ square (the corners are transparent).
 
     uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-2.png assets/items
 
+Naming items after the output directory writes only those icons, e.g. one item from a newer sheet:
+
+    uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-3.png assets/items dice
+
 A single regenerated item (one item on a white background) replaces one icon instead; it is scaled so
 that the longer side of the item matches the others (about ITEM_LONG_SIDE of the 128 pixels):
 
     uv run --with pillow --with numpy python scripts/cut_item_icons.py \
-        --single dice assets/items/sources/dice-2.png assets/items
+        --single dice <image of one item> assets/items
 
 A sheet drawn as pixel art (each item on an ART_SIZE x ART_SIZE grid, scaled up by an integer factor)
 is read back pixel for pixel instead, so the icons stay crisp:
@@ -94,8 +98,8 @@ def rounded_mask() -> Image.Image:
     return mask.resize((ICON_SIZE, ICON_SIZE), Image.Resampling.LANCZOS)
 
 
-def cut(sheet_path: Path, output_dir: Path) -> list[Placement]:
-    """Write one icon per cell as <name>.png and return how each item was moved."""
+def cut(sheet_path: Path, output_dir: Path, only: set[str] | None = None) -> list[Placement]:
+    """Write one icon per cell (or only the named ones) as <name>.png and return how each item was moved."""
     pixels = np.asarray(Image.open(sheet_path).convert("RGB"))
     cell = pixels.shape[0] // GRID
     foreground = pixels.min(axis=2) <= WHITE_THRESHOLD
@@ -111,6 +115,8 @@ def cut(sheet_path: Path, output_dir: Path) -> list[Placement]:
     mask = rounded_mask()
     placements = []
     for index, name in enumerate(CELLS):
+        if only and name not in only:
+            continue
         row, column = divmod(index, GRID)
         mine = np.isin(labels, [label for label, owner in owners.items() if owner == index])
         selected = np.repeat(np.repeat(mine, BLOCK, axis=0), BLOCK, axis=1) & foreground[: cell * GRID, : cell * GRID]
@@ -219,5 +225,5 @@ if __name__ == "__main__":
     elif sys.argv[1] == "--single":
         cut_single(Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[2])
     else:
-        for placement in cut(Path(sys.argv[1]), Path(sys.argv[2])):
+        for placement in cut(Path(sys.argv[1]), Path(sys.argv[2]), set(sys.argv[3:]) or None):
             print(placement)
