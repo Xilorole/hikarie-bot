@@ -165,6 +165,5 @@ cython_debug/
 !.env.template
 !.env.dev.template
 deploy/rancher/secret.yaml
-test_modals/*
-!test_modals/.gitkeep
+test_modals/
 

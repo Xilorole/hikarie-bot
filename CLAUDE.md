@@ -21,14 +21,14 @@ Alembic, with `0000` as the baseline; databases from before Alembic are refused 
 
 ```bash
 export ENV=dev DATABASE_URL=sqlite:////tmp/alembic.db
-uv run alembic upgrade head && uv run alembic revision --autogenerate --rev-id 0001 -m "..."
+uv run alembic upgrade head && uv run alembic revision --autogenerate --rev-id <next, e.g. 0001> -m "..."
 ```
 
 ## Running
 
 - Settings are read at import. Outside `ENV=dev` / `ENV=test` every name in `settings.REQUIRED` must be set and the DB must be a file; pytest sets `ENV=test` itself.
 - `python -m hikarie_bot` also needs `SLACK_BOT_TOKEN` at import; any `xoxb-` string works for offline commands:
-  - `ENV=dev SLACK_BOT_TOKEN=xoxb-dummy uv run python -m hikarie_bot preview`: message mocks from synthetic data.
+  - `ENV=dev SLACK_BOT_TOKEN=xoxb-dummy uv run python -m hikarie_bot preview --workspace-id T0000`: message mocks from synthetic data (without `--workspace-id` it calls `auth.test`).
   - `... sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and a file `DATABASE_URL`).
 - Never run the bot locally with the production app's tokens: Socket Mode would take button presses away from production. Use `slack run` (dev app, `.env.dev`).
 - CI runs `uv run pytest -n auto`, `uv run ruff check .` and `uv run ruff format --check .`. pyright is installed but not enforced and has existing errors.
