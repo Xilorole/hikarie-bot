@@ -18,7 +18,6 @@ core = [
     "aiohttp",
     "asyncclick",
     "click",
-    "cryptography",
     "jpholiday",
     "loguru",
     "pydantic",
