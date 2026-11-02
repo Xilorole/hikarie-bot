@@ -156,6 +156,8 @@ alembic_version                     -- Alembic のリビジョン（0000 が基�
 
 ### 7.2 本番（Rancher 2.9.3）
 
+手順とマニフェストは [docs/deploy/rancher.md](../deploy/rancher.md) と `deploy/rancher/` にある。
+
 - PVC: StorageClass `ebs-sc`、1Gi、ReadWriteOnce。
 - Deployment: `replicas: 1`、**`strategy: Recreate`**（EBS は 1 ノードにしかマウントできず、ローリング更新だと新 Pod が起動できない）。
 - `securityContext.fsGroup: 10001`（コンテナは UID 10001 で動くため、ボリュームを書き込み可能にする）。
