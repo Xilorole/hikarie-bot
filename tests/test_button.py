@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from hikarie_bot import __main__ as bot
 from hikarie_bot.migrations import init_database
@@ -22,7 +23,8 @@ PRESSED = datetime(2025, 6, 2, 9, 10, 30, 123456, tzinfo=JST)
 @pytest.fixture
 def database(monkeypatch: pytest.MonkeyPatch) -> Engine:
     """Point the handler at a fresh database and freeze its clock."""
-    engine = create_engine("sqlite://")
+    # one shared connection: the handler works on the database in a worker thread
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     init_database(engine)
 
     @contextmanager

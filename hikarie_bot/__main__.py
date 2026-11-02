@@ -1,7 +1,7 @@
 # アプリを起動します
 import asyncio
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -126,6 +126,19 @@ async def sync(cache_dir: Path | None, record_dir: Path | None, *, rebuild: bool
             click.echo(f"rebuilt from {rebuild_derived_tables(session)} events")
 
 
+ARRIVAL_LOCK = asyncio.Lock()
+
+
+def register_arrival(user_id: str, now: datetime) -> tuple[int, PointGetMessage, RegistryMessage] | None:
+    """Record a press and recompute scores; return the event ID and its messages, or None if already arrived."""
+    with get_db() as session:
+        event = record_button_arrival(session, user_id, now)
+        if event is None:
+            return None
+        rebuild_derived_tables(session)
+        return event.id, PointGetMessage(session, user_id, now), RegistryMessage(session, now)
+
+
 @app.action(ActionID.ARRIVED_OFFICE)
 @app.action(ActionID.FASTEST_ARRIVAL)
 async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -154,10 +167,10 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         )
         return
 
-    with get_db() as session:
-        event = record_button_arrival(session, user_id, now)
-        event_id = event.id if event else None
-    if event_id is None:
+    # one press at a time (a rebuild replaces the derived tables), with the database work off the event loop
+    async with ARRIVAL_LOCK:
+        registered = await asyncio.to_thread(register_arrival, user_id, now)
+    if registered is None:
         await client.chat_postEphemeral(
             channel=channel_id,
             user=user_id,
@@ -165,14 +178,7 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         )
         return
 
-    # recompute scores and badges from the events (well under a second), then announce them
-    with get_db() as session:
-        rebuild_derived_tables(session)
-        point_get_message = PointGetMessage(session=session, user_id=user_id, jst_datetime=now)
-        registry_message = RegistryMessage(
-            session=session,
-            jst_datetime=now,
-        )
+    event_id, point_get_message, registry_message = registered
     response = await client.chat_postMessage(
         channel=channel_id,
         thread_ts=message_ts,
