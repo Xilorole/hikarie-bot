@@ -23,7 +23,7 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from hikarie_bot.curd import insert_arrival_action, sync_badge_master_data
+from hikarie_bot.curd import sync_badge_master_data
 from hikarie_bot.database import BaseSchema
 from hikarie_bot.modals import (
     AchievementView,
@@ -33,8 +33,9 @@ from hikarie_bot.modals import (
     PointGetMessage,
     RegistryMessage,
 )
-from hikarie_bot.models import GuestArrivalInfo, User
+from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, User
 from hikarie_bot.settings import SLACK_BOT_TOKEN, SLACK_WORKSPACE_ID
+from hikarie_bot.sync import rebuild_derived_tables
 from hikarie_bot.utils import is_jp_bizday
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -168,7 +169,13 @@ def build_synthetic_context(session: Session) -> PreviewContext:
             if rng.random() < SYNTHETIC_ATTENDANCE_RATE
         ]
         for user_id, arrival in sorted(arrivals, key=lambda item: item[1]):
-            insert_arrival_action(session, datetime.combine(day.date(), arrival, tzinfo=JST), user_id)
+            session.add(
+                ArrivalEvent(
+                    user_id=user_id, occurred_at=datetime.combine(day.date(), arrival, tzinfo=JST), source="button"
+                )
+            )
+        session.commit()
+        rebuild_derived_tables(session)
         level_up_user = session.query(User).filter(User.id == LEVEL_UP_USER).one()
         if index + 1 >= SYNTHETIC_MIN_DAYS and level_up_user.level_uped and len(arrivals) >= 3:  # noqa: PLR2004
             break

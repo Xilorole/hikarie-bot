@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from hikarie_bot.curd import (
     _update_achievements,
     initially_insert_badge_data,
-    insert_arrival_action,
 )
 from hikarie_bot.exceptions import (
     AchievementAlreadyRegisteredError,
@@ -21,6 +20,7 @@ from hikarie_bot.models import (
     GuestArrivalInfo,
     User,
 )
+from tests.helpers import record_arrival
 
 
 def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
@@ -61,12 +61,12 @@ def test_update_achievements(temp_db: sessionmaker[Session]) -> None:
 
 
 # 最速出社と時間帯出社の部分をmockする
-@patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
+@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2, 5])
 def test_temp_db(temp_db: sessionmaker[Session]) -> None:
     """Test temporary database."""
     session: Session = temp_db()
     initially_insert_badge_data(session=session)
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
@@ -75,7 +75,7 @@ def test_temp_db(temp_db: sessionmaker[Session]) -> None:
     assert session.query(GuestArrivalInfo).all() is not None
     assert session.query(GuestArrivalInfo).filter(GuestArrivalInfo.user_id == "test_user").count() == 1
     assert session.query(GuestArrivalInfo).filter(GuestArrivalInfo.user_id == "invalid_user_name").count() == 0
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
@@ -94,16 +94,16 @@ def test_temp_db(temp_db: sessionmaker[Session]) -> None:
     assert user_info.current_level_point == 7
 
 
-def test_insert_arrival_action(temp_db: sessionmaker[Session]) -> None:
+def test_record_arrival(temp_db: sessionmaker[Session]) -> None:
     """Test insert arrival action."""
     session = temp_db()
     initially_insert_badge_data(session=session)
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="1st_arrived_user",
     )
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 1, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="2nd_arrived_user",
@@ -111,13 +111,13 @@ def test_insert_arrival_action(temp_db: sessionmaker[Session]) -> None:
 
     # add data for tommorow and yesterday to check the rank is properly calculated
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 5, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="1st_arrived_user",
     )
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="1st_arrived_user",
@@ -142,13 +142,13 @@ def test_insert_arrival_action(temp_db: sessionmaker[Session]) -> None:
 
 
 # 最速出社と時間帯出社の部分をmockする
-@patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
+@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2, 5])
 def test_level_up(temp_db: sessionmaker[Session]) -> None:
     """Test level up."""
     session = temp_db()
     initially_insert_badge_data(session=session)
     for i in range(4):
-        insert_arrival_action(
+        record_arrival(
             session=session,
             jst_datetime=datetime(2024, 2, i + 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
             user_id="test_user",
@@ -166,21 +166,15 @@ def test_level_up(temp_db: sessionmaker[Session]) -> None:
     assert user_info.current_level_point == 0
 
 
+# only the fastest-arrival badge, worth 701pt, so three arrivals cross the 1400pt upper limit
+@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2])
+@patch.dict("hikarie_bot.engine.BADGE_SCORES", {201: 701})
 def test_reach_max_level(temp_db: sessionmaker[Session]) -> None:
     """Test the score beyond the upper limit is recorded and the level stays at max."""
     session = temp_db()
     initially_insert_badge_data(session=session)
-    insert_arrival_action(
-        session=session,
-        jst_datetime=datetime(2024, 2, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user",
-    )
-    user = session.query(User).filter(User.id == "test_user").one()
-    user.current_score = 1398
-    session.commit()
-
-    for day in (2, 5):
-        assert insert_arrival_action(
+    for day in (1, 2, 5):
+        assert record_arrival(
             session=session,
             jst_datetime=datetime(2024, 2, day, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
             user_id="test_user",
@@ -198,18 +192,18 @@ def test_reach_max_level(temp_db: sessionmaker[Session]) -> None:
 
 
 # 最速出社と時間帯出社の部分をmockする
-@patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2, 5])
+@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2, 5])
 def test_second_arrived_user_has_lower_point(temp_db: sessionmaker[Session]) -> None:
     """Test the second arrived user has lower point."""
     session = temp_db()
 
     initially_insert_badge_data(session=session)
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_1st",
     )
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_2nd",
