@@ -8,7 +8,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapped, Mapper, Session, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
-from .database import BaseSchema, SessionLocal, engine
+from .database import BaseSchema, SessionLocal, check_sqlite_location, engine
 
 if TYPE_CHECKING:
     from hikarie_bot.migrations import InitResult
@@ -315,6 +315,7 @@ def ensure_database() -> "InitResult":
     if id(engine) not in _initialized_engines:
         from hikarie_bot.migrations import init_database  # migrations imports this module
 
+        check_sqlite_location(str(engine.url))
         _initialized_engines[id(engine)] = init_database(engine)
     return _initialized_engines[id(engine)]
 
