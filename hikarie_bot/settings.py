@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # log
     loguru_level: str = "DEBUG"
 
+    # the commit the running image was built from (set by the Docker build)
+    app_revision: str = ""
+
     @model_validator(mode="after")
     def _require_production_values(self) -> Self:
         if self.env in {"dev", "test"}:
@@ -83,3 +86,4 @@ SLACK_BOT_TOKEN = settings.slack_bot_token
 SLACK_APP_TOKEN = settings.slack_app_token
 DATABASE_URL = settings.database_url
 LOGURU_LEVEL = settings.loguru_level
+APP_REVISION = settings.app_revision

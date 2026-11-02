@@ -49,6 +49,8 @@ jobs:
           context: .
           file: ./Dockerfile
           load: true
+          build-args: |
+            APP_REVISION=${{ github.sha }}
           tags: ${{ env.RELEASE_TEST_TAG }}
           cache-from: type=gha,scope=release
           cache-to: type=gha,scope=release,mode=max
@@ -61,6 +63,12 @@ jobs:
             'import importlib.util, os; import hikarie_bot, aiohttp, slack_bolt; from dateutil.relativedelta import relativedelta; from sqlalchemy import create_engine, text; assert os.getuid() == 10001; assert importlib.util.find_spec("pytest") is None; assert importlib.util.find_spec("ruff") is None; engine = create_engine("sqlite:////opt/.db/smoke.db"); connection = engine.connect(); connection.execute(text("CREATE TABLE smoke (id INTEGER)")); connection.close(); engine.dispose()'
           docker run --rm --network none -e ENV=test -e SLACK_BOT_TOKEN=xoxb-test \
             "${{ env.RELEASE_TEST_TAG }}" /opt/.venv/bin/python -m hikarie_bot --help
+
+      - name: Verify the image knows its commit
+        run: |
+          docker run --rm --network none -e ENV=test --entrypoint /opt/.venv/bin/python \
+            "${{ env.RELEASE_TEST_TAG }}" -c \
+            'from hikarie_bot.startup import current_revision; assert current_revision() == "${{ github.sha }}"[:7], current_revision()'
 
       - name: Verify offline database migration
         run: |

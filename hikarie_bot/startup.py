@@ -8,10 +8,12 @@ user IDs, names or message text. A failed step reports its name and exception ty
 the exception message (which may contain data) stays in the process log.
 """
 
+import subprocess
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from time import perf_counter
 
 from loguru import logger
@@ -21,7 +23,28 @@ from sqlalchemy import func, select
 from hikarie_bot.engine import JST
 from hikarie_bot.migrations import InitResult
 from hikarie_bot.models import Achievement, ArrivalEvent, SyncState, User, ensure_database, get_db
+from hikarie_bot.settings import APP_REVISION
 from hikarie_bot.sync import SlackSource, SyncResult, rebuild_derived_tables, sync_channel
+
+
+def current_revision() -> str:
+    """Return the short commit of the running code.
+
+    Images get it from the build (APP_REVISION); a source checkout asks git.
+    """
+    if APP_REVISION:
+        return APP_REVISION[:7]
+    try:
+        return subprocess.run(  # noqa: RUF100, S603  # fixed git command; older ruff flags it
+            ["git", "rev-parse", "--short=7", "HEAD"],  # noqa: S607
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
 
 
 @dataclass
@@ -46,7 +69,7 @@ class StartupReporter:
 
     client: AsyncWebClient
     channel: str
-    version: str
+    revision: str
     steps: list[Step] = field(default_factory=list)
     started: float = field(default_factory=perf_counter)
 
@@ -76,7 +99,7 @@ class StartupReporter:
 
     def summary(self) -> str:
         """Return the closing message, posted once the bot is ready."""
-        return f":white_check_mark: application started (v{self.version}) in {perf_counter() - self.started:.1f}s"
+        return f":white_check_mark: application started (rev {self.revision}) in {perf_counter() - self.started:.1f}s"
 
 
 def describe_database(result: InitResult) -> str:
@@ -106,7 +129,7 @@ def describe_sync(result: SyncResult) -> str:
 
 async def prepare(reporter: StartupReporter, source: SlackSource, channel: str) -> None:
     """Migrate, sync from Slack and recompute scores, reporting each step."""
-    await reporter.post(f"starting application (v{reporter.version})")
+    await reporter.post(f"starting application (rev {reporter.revision})")
 
     async with reporter.step("database") as step:
         step.text = describe_database(ensure_database())

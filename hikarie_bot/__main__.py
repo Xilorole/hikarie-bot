@@ -12,7 +12,6 @@ from slack_bolt.context.ack.async_ack import AsyncAck
 from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
 from slack_sdk.web.async_client import AsyncWebClient
 
-from hikarie_bot._version import version
 from hikarie_bot.arrivals import attach_slack_ts, record_button_arrival
 from hikarie_bot.modals import (
     ActionID,
@@ -32,7 +31,7 @@ from hikarie_bot.settings import (
 from hikarie_bot.slack_helper import (
     send_daily_message,
 )
-from hikarie_bot.startup import StartupReporter, prepare
+from hikarie_bot.startup import StartupReporter, current_revision, prepare
 from hikarie_bot.sync import (
     CachedSlackSource,
     LiveSlackSource,
@@ -64,7 +63,7 @@ async def start(*, dev: bool = False) -> None:
 
     # migrate, read arrivals posted while the bot was stopped (the whole channel on first start)
     # and recompute scores before any task touches the database; each step goes to the log channel
-    reporter = StartupReporter(client=app.client, channel=LOG_CHANNEL, version=version)
+    reporter = StartupReporter(client=app.client, channel=LOG_CHANNEL, revision=current_revision())
     await prepare(reporter, LiveSlackSource(app.client), OUTPUT_CHANNEL)
 
     background_task = set()
