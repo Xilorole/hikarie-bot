@@ -98,3 +98,19 @@ async def test_press_outside_the_window_is_rejected(database: Engine, monkeypatc
     assert "6時から18時" in client.chat_postEphemeral.await_args.kwargs["text"]
     with Session(database) as session:
         assert session.query(ArrivalEvent).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A second press on the not yet replaced fastest button is announced as a normal arrival."""
+    client = AsyncMock()
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
+    await bot.handle_button_click(AsyncMock(), click("U1", ActionID.FASTEST_ARRIVAL), client)
+
+    monkeypatch.setattr(bot, "get_current_jst_datetime", lambda: PRESSED.replace(second=31))
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000200"}
+    await bot.handle_button_click(AsyncMock(), click("U2", ActionID.FASTEST_ARRIVAL), client)
+
+    post = client.chat_postMessage.await_args.kwargs
+    assert post["reply_broadcast"] is False
+    assert "最速" not in post["text"]

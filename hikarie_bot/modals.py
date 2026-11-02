@@ -195,15 +195,11 @@ class FastestArrivalMessage(BaseMessage):
 class PointGetMessage(BaseMessage):
     """Class for creating the point get Slack message."""
 
-    def __init__(
-        self,
-        session: Session,
-        user_id: str,
-        jst_datetime: datetime,
-        *,
-        initial_arrival: bool,
-    ) -> None:
-        """Initialize the PointGetMessage with the user ID and time."""
+    def __init__(self, session: Session, user_id: str, jst_datetime: datetime) -> None:
+        """Initialize the PointGetMessage with the user ID and time.
+
+        initial_arrival tells whether this was the day's first arrival, by the computed rank.
+        """
         super().__init__()
 
         ## variable
@@ -256,8 +252,9 @@ class PointGetMessage(BaseMessage):
         else:
             level_up_text = ""
 
-        initial_arrival_text = "最速" if initial_arrival else ""
-        hikarie_text = " :hikarie:" if initial_arrival else ""
+        self.initial_arrival = arrival.arrival_rank == 1
+        initial_arrival_text = "最速" if self.initial_arrival else ""
+        hikarie_text = " :hikarie:" if self.initial_arrival else ""
 
         # get the Achievements
         badges = (

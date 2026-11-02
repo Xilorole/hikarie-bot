@@ -220,7 +220,6 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
         session,
         user_id="test_user",
         jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        initial_arrival=True,
     )
 
     assert message.render() == [
@@ -273,7 +272,6 @@ def point_get_after(session: Session, day: int, previous_score: int) -> list[dic
         session,
         user_id="test_user",
         jst_datetime=arrival_time.replace(tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        initial_arrival=True,
     ).render()
 
 

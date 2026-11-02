@@ -91,16 +91,11 @@ def _arrival_of(context: PreviewContext, user_id: str) -> GuestArrivalInfo | Non
     )
 
 
-def _point_get(context: PreviewContext, user_id: str | None, *, initial_arrival: bool) -> dict[str, Any] | None:
+def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
     # PointGetMessage shows the user's latest score, so it only renders on the user's latest arrival day.
     if user_id is None or _arrival_of(context, user_id) is None:
         return None
-    message = PointGetMessage(
-        session=context.session,
-        user_id=user_id,
-        jst_datetime=context.reference,
-        initial_arrival=initial_arrival,
-    )
+    message = PointGetMessage(session=context.session, user_id=user_id, jst_datetime=context.reference)
     return {"blocks": message.render()}
 
 
@@ -134,17 +129,17 @@ PREVIEWS = [
     Preview(
         "point_get_fastest",
         "最速出社時のポイント獲得メッセージ",
-        lambda context: _point_get(context, context.fastest_user_id, initial_arrival=True),
+        lambda context: _point_get(context, context.fastest_user_id),
     ),
     Preview(
         "point_get",
         "出社登録時のポイント獲得メッセージ",
-        lambda context: _point_get(context, context.user_id, initial_arrival=False),
+        lambda context: _point_get(context, context.user_id),
     ),
     Preview(
         "point_get_level_up",
         "レベルアップ時のポイント獲得メッセージ",
-        lambda context: _point_get(context, context.level_up_user_id, initial_arrival=False),
+        lambda context: _point_get(context, context.level_up_user_id),
     ),
     Preview("already_registered", "出社登録済みメッセージ", _already_registered),
     Preview("fastest_arrival", "最速出社メッセージ", _fastest_arrival),
