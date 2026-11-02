@@ -31,7 +31,7 @@ from hikarie_bot.modals import (
     RegistryMessage,
 )
 from hikarie_bot.settings import get_settings
-from hikarie_bot.utils import is_jp_bizday, is_level_uped
+from hikarie_bot.utils import is_jp_bizday, leveled_up
 
 BLOCK_KIT_BUILDER_URL = "https://app.slack.com/block-kit-builder/{workspace_id}#{payload}"
 
@@ -128,8 +128,8 @@ def build_synthetic_context() -> PreviewContext:
         for user_id, arrival in sorted(arrivals, key=lambda item: item[1]):
             engine.add(user_id, datetime.combine(day.date(), arrival, tzinfo=JST))
         level_up = engine.arrival_of(LEVEL_UP_USER, day.date())
-        leveled_up = level_up is not None and is_level_uped(level_up.previous_score, level_up.current_score)
-        if index + 1 >= SYNTHETIC_MIN_DAYS and leveled_up and len(arrivals) >= 3:  # noqa: PLR2004
+        level_up_day = level_up is not None and leveled_up(level_up.previous_score, level_up.current_score)
+        if index + 1 >= SYNTHETIC_MIN_DAYS and level_up_day and len(arrivals) >= 3:  # noqa: PLR2004
             break
     else:
         msg = "Synthetic data did not reach a level-up day"
@@ -161,7 +161,7 @@ def build_database_context(session: Session, user_id: str | None, date: datetime
             raise click.ClickException(msg)
         user_id = ordered[-1]
     level_up_user_id = next(
-        (arrival.user_id for arrival in arrivals if is_level_uped(arrival.previous_score, arrival.current_score)),
+        (arrival.user_id for arrival in arrivals if leveled_up(arrival.previous_score, arrival.current_score)),
         None,
     )
     return PreviewContext(
