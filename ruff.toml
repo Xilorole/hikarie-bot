@@ -32,8 +32,8 @@ exclude = [
 line-length = 120
 indent-width = 4
 
-# Assume Python 3.12
-target-version = "py312"
+# Assume Python 3.14
+target-version = "py314"
 
 
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
@@ -60,6 +60,12 @@ lint.ignore = [
     "RUF003", # full width parenthesis
     "RUF001",
     "CPY001", # license lives in the LICENSE file, not per-file headers
+    # Since 3.14 annotations are lazy, so these ask to move annotation-only imports under TYPE_CHECKING.
+    # SQLAlchemy (Mapped[...]) and slack_bolt (listener signatures) evaluate annotations at runtime,
+    # where those names would be missing; the imports are needed at startup anyway.
+    "TC001",
+    "TC002",
+    "TC003",
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

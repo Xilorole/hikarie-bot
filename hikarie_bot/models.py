@@ -307,10 +307,10 @@ class SyncState(BaseSchema):
 
 # Dependency
 
-_initialized_engines: dict[int, "InitResult"] = {}
+_initialized_engines: dict[int, InitResult] = {}
 
 
-def ensure_database() -> "InitResult":
+def ensure_database() -> InitResult:
     """Migrate the schema and sync master data once per process; return what that first run did."""
     if id(engine) not in _initialized_engines:
         from hikarie_bot.migrations import init_database  # noqa: PLC0415 - migrations imports this module
@@ -321,7 +321,7 @@ def ensure_database() -> "InitResult":
 
 
 @contextmanager
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """Get the database session, preparing the schema and master data on first use."""
     ensure_database()
     db = SessionLocal()  # sessionを生成
