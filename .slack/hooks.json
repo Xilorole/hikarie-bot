@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "get-hooks": "uv run --group dev python -m slack_cli_hooks.hooks.get_hooks",
+    "start": "sh scripts/slack_dev_start.sh"
+  }
+}

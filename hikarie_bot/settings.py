@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 
 from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
 
-load_dotenv(override=True)
+# DOTENV_PATH pins the env file (e.g. .env.dev for `slack run`); otherwise .env is searched upward
+load_dotenv(os.environ.get("DOTENV_PATH"), override=True)
 
 # slack.channel
 OUTPUT_CHANNEL = os.environ.get("OUTPUT_CHANNEL", "")

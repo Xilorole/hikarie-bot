@@ -163,6 +163,7 @@ cython_debug/
 !.db/.gitkeep
 .env*
 !.env.template
+!.env.dev.template
 test_modals/*
 !test_modals/.gitkeep
 
