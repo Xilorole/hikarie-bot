@@ -2,10 +2,11 @@
 
 Arrivals are processed in time order; each badge rule reads only the state built from
 earlier arrivals, so the whole history is one pass with no SQL. The rules reproduce the
-previous SQL-based checks (including their quirks); tests/data holds that implementation's
-results on synthetic arrivals for comparison.
+previous SQL-based checks (including their quirks); tests/test_engine.py holds that
+implementation's results on synthetic arrivals for comparison.
 
-Times are naive JST wall-clock datetimes, as the derived tables store them.
+Nothing computed here is stored: the messages read the engine's results, recomputed from
+arrival_event when needed. Times are aware datetimes in JST, so dates and hours are JST.
 """
 
 from bisect import bisect_left, bisect_right
@@ -20,42 +21,18 @@ from dateutil.relativedelta import relativedelta
 from hikarie_bot import db_data
 from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
 from hikarie_bot.db_data.badges import KIRIBANS
-from hikarie_bot.utils import (
-    get_current_level_point,
-    get_level,
-    get_level_name,
-    get_point_range_to_next_level,
-    get_point_to_next_level,
-    is_level_uped,
-    list_bizdays,
-)
+from hikarie_bot.utils import list_bizdays
 
 JST = ZoneInfo("Asia/Tokyo")
 
 BADGE_SCORES = {badge.id: badge.score for badge in db_data.Badges}
 APPLY_START = {
-    badge_type.id: badge_type.apply_start.replace(tzinfo=None)
-    for badge_type in db_data.BadgeTypes
-    if badge_type.apply_start is not None
+    badge_type.id: badge_type.apply_start for badge_type in db_data.BadgeTypes if badge_type.apply_start is not None
 }
 KIRIBAN_BADGES = {kiriban.number: kiriban.id for kiriban in KIRIBANS}
 STRAIGHT_FLASH_LENGTH = 5
 STRAIGHT_FLASH, ROYAL_STRAIGHT_FLASH, ULTRA_ROYAL_STRAIGHT_FLASH = 401, 402, 403
-TAKANAWA_OFFICE_START = datetime(2026, 1, 19)  # noqa: DTZ001  # naive JST like the stored times
-
-
-def to_jst_wall_clock(moment: datetime) -> datetime:
-    """Convert an aware datetime to the naive JST wall-clock time stored in derived tables."""
-    return moment.astimezone(JST).replace(tzinfo=None)
-
-
-@dataclass
-class UserState:
-    """What the rules need to know about one user's earlier arrivals."""
-
-    times: list[datetime] = field(default_factory=list)
-    straight_flash: list[set[int]] = field(default_factory=list)
-    score: int | None = None
+TAKANAWA_OFFICE_START = datetime(2026, 1, 19, tzinfo=JST)
 
 
 @dataclass
@@ -73,6 +50,20 @@ class ArrivalResult:
 
 
 @dataclass
+class UserState:
+    """What the rules need to know about one user's earlier arrivals."""
+
+    times: list[datetime] = field(default_factory=list)
+    straight_flash: list[set[int]] = field(default_factory=list)
+    results: list[ArrivalResult] = field(default_factory=list)
+
+    @property
+    def score(self) -> int:
+        """Return the score after the user's latest arrival."""
+        return self.results[-1].current_score if self.results else 0
+
+
+@dataclass
 class UserBadgeTally:
     """How often and when a user earned a badge."""
 
@@ -81,13 +72,17 @@ class UserBadgeTally:
     count: int
 
 
+def _time(result: ArrivalResult) -> datetime:
+    return result.time
+
+
 class BadgeEngine:
     """Process arrivals in time order and keep the state the badge rules read."""
 
     def __init__(self) -> None:
         """Start with no arrivals."""
         self.times: list[datetime] = []  # every counted arrival, in processing (= time) order
-        self.days: dict[date, list[datetime]] = defaultdict(list)
+        self.days: dict[date, list[ArrivalResult]] = defaultdict(list)
         self.users: dict[str, UserState] = defaultdict(UserState)
         self.results: list[ArrivalResult] = []
         self.user_badges: dict[tuple[str, int], UserBadgeTally] = {}
@@ -108,23 +103,25 @@ class BadgeEngine:
         }
 
     def add(self, user_id: str, time: datetime) -> ArrivalResult | None:
-        """Count an arrival; returns None if the user already arrived that day."""
+        """Count an arrival (an aware datetime); returns None if the user already arrived that JST day."""
+        if time.tzinfo is None:
+            msg = "the engine requires timezone-aware datetimes"
+            raise ValueError(msg)
+        time = time.astimezone(JST)
         user = self.users[user_id]
         if user.times and user.times[-1].date() == time.date():
             return None
         day = self.days[time.date()]
-        rank = bisect_left(day, time) + 1
+        rank = bisect_left(day, time, key=_time) + 1
 
         user.times.append(time)
-        day.append(time)
         self.times.append(time)
 
         badge_ids = [
             badge_id for type_id in BADGE_TYPES_TO_CHECK for badge_id in self._checkers[type_id](user_id, time)
         ]
         score_sum = sum(BADGE_SCORES[badge_id] for badge_id in badge_ids)
-        previous_score = user.score or 0
-        user.score = previous_score + score_sum
+        previous_score = user.score
 
         for badge_id in badge_ids:
             tally = self.user_badges.get((user_id, badge_id))
@@ -142,10 +139,20 @@ class BadgeEngine:
             badge_ids=badge_ids,
             score_sum=score_sum,
             previous_score=previous_score,
-            current_score=user.score,
+            current_score=previous_score + score_sum,
         )
         self.results.append(result)
+        user.results.append(result)
+        day.append(result)
         return result
+
+    def arrivals_on(self, day: date) -> list[ArrivalResult]:
+        """Return the arrivals on a JST day, in time order."""
+        return self.days.get(day, [])
+
+    def arrival_of(self, user_id: str, day: date) -> ArrivalResult | None:
+        """Return the user's counted arrival on a JST day, if any."""
+        return next((result for result in self.arrivals_on(day) if result.user_id == user_id), None)
 
     # --- badge rules ---
 
@@ -162,7 +169,7 @@ class BadgeEngine:
         return [101] if not self._before(user_id, self._start_of_day(time)) else []
 
     def _fastest_arrival(self, _user_id: str, time: datetime) -> list[int]:
-        return [201] if bisect_left(self.days[time.date()], time) == 0 else []
+        return [201] if bisect_left(self.days[time.date()], time, key=_time) == 0 else []
 
     def _arrival_count(self, user_id: str, time: datetime) -> list[int]:
         count = len(self._before(user_id, self._start_of_day(time) + timedelta(days=1)))
@@ -247,9 +254,9 @@ class BadgeEngine:
         month, day = time.month, time.day
         if (month, day) == (12, 25):
             return [1701]
-        if month == 3 and 24 < day <= 31 and not self._since(user_id, datetime(time.year, 3, 25), time):  # noqa: DTZ001, PLR2004
+        if month == 3 and 24 < day <= 31 and not self._since(user_id, datetime(time.year, 3, 25, tzinfo=JST), time):  # noqa: PLR2004
             return [1702]
-        if month == 4 and 1 <= day < 8 and not self._since(user_id, datetime(time.year, 4, 1), time):  # noqa: DTZ001, PLR2004
+        if month == 4 and 1 <= day < 8 and not self._since(user_id, datetime(time.year, 4, 1, tzinfo=JST), time):  # noqa: PLR2004
             return [1703]
         if (month, day) in {(4, 29), (4, 30), (5, 1), (5, 2), (5, 3), (5, 4), (5, 5)}:
             return [1704]
@@ -279,32 +286,8 @@ class BadgeEngine:
         return [1901] if not self._since(user_id, TAKANAWA_OFFICE_START, time) else []
 
 
-@dataclass
-class UserLevel:
-    """The level fields stored on User and UserInfoRaw for a score change."""
-
-    level: int
-    level_name: str
-    level_uped: bool
-    point_to_next_level: int
-    point_range_to_next_level: int
-    current_level_point: int
-
-    @classmethod
-    def of(cls, previous_score: int, current_score: int) -> UserLevel:
-        """Compute the level fields for a score change."""
-        return cls(
-            level=get_level(current_score),
-            level_name=get_level_name(current_score),
-            level_uped=is_level_uped(previous_score, current_score),
-            point_to_next_level=get_point_to_next_level(current_score),
-            point_range_to_next_level=get_point_range_to_next_level(current_score),
-            current_level_point=get_current_level_point(current_score),
-        )
-
-
 def compute(arrivals: Iterable[tuple[str, datetime]]) -> BadgeEngine:
-    """Run the engine over (user_id, naive JST time) pairs in time order."""
+    """Run the engine over (user_id, aware time) pairs in time order."""
     engine = BadgeEngine()
     for user_id, time in arrivals:
         engine.add(user_id, time)

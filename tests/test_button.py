@@ -7,8 +7,9 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from hikarie_bot import __main__ as bot
+from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.modals import ActionID
-from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, User
+from hikarie_bot.models import ArrivalEvent
 from hikarie_bot.settings import Settings
 from hikarie_bot.sync import parse_arrival
 
@@ -37,7 +38,7 @@ def click(user_id: str, action_id: str = ActionID.ARRIVED_OFFICE) -> dict:
 
 @pytest.mark.asyncio
 async def test_button_records_an_event_and_announces_it_with_metadata(database: Engine) -> None:
-    """A press stores a button event, recomputes scores, posts with metadata and links the post."""
+    """A press stores a button event, computes scores, posts with metadata and links the post."""
     client = AsyncMock()
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
 
@@ -47,9 +48,9 @@ async def test_button_records_an_event_and_announces_it_with_metadata(database: 
         event = session.query(ArrivalEvent).one()
         assert (event.user_id, event.source, event.occurred_at) == ("U1", "button", PRESSED)
         assert event.slack_ts == "1748822999.000100"
-        arrival = session.query(GuestArrivalInfo).one()
-        assert (arrival.user_id, arrival.arrival_time, arrival.arrival_rank) == ("U1", PRESSED.replace(tzinfo=None), 1)
-        assert session.get(User, "U1").current_score == arrival.acquired_score_sum > 0
+        [arrival] = compute_arrivals(session).results
+        assert (arrival.user_id, arrival.time, arrival.rank) == ("U1", PRESSED, 1)
+        assert arrival.current_score == arrival.score_sum > 0
 
     post = client.chat_postMessage.await_args.kwargs
     assert post["thread_ts"] == f"{DAILY_POST.timestamp():.6f}"

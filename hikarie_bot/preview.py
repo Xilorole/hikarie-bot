@@ -14,31 +14,25 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import asyncclick as click
 from loguru import logger
 from slack_sdk import WebClient
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from hikarie_bot.curd import sync_badge_master_data
-from hikarie_bot.database import BaseSchema
+from hikarie_bot.arrivals import compute_arrivals
+from hikarie_bot.engine import JST, BadgeEngine
 from hikarie_bot.modals import (
     AchievementView,
-    AlreadyRegisteredMessage,
-    FastestArrivalMessage,
     InitialMessage,
     PointGetMessage,
     RegistryMessage,
 )
-from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, User
 from hikarie_bot.settings import get_settings
-from hikarie_bot.sync import rebuild_derived_tables
-from hikarie_bot.utils import is_jp_bizday
+from hikarie_bot.utils import is_jp_bizday, is_level_uped
 
-JST = ZoneInfo("Asia/Tokyo")
 BLOCK_KIT_BUILDER_URL = "https://app.slack.com/block-kit-builder/{workspace_id}#{payload}"
 
 SYNTHETIC_START = datetime(2025, 4, 7, tzinfo=JST)
@@ -64,7 +58,7 @@ def create_clickable_link(url: str, display_text: str) -> str:
 class PreviewContext:
     """The data a preview is rendered from."""
 
-    session: Session
+    engine: BadgeEngine
     reference: datetime
     fastest_user_id: str
     user_id: str
@@ -80,47 +74,17 @@ class Preview:
     render: Callable[[PreviewContext], dict[str, Any] | None]
 
 
-def _arrival_of(context: PreviewContext, user_id: str) -> GuestArrivalInfo | None:
-    start = context.reference.replace(hour=0, minute=0, second=0, microsecond=0)
-    return (
-        context.session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.user_id == user_id)
-        .filter(GuestArrivalInfo.arrival_time >= start.replace(tzinfo=None))
-        .filter(GuestArrivalInfo.arrival_time < (start + timedelta(days=1)).replace(tzinfo=None))
-        .one_or_none()
-    )
-
-
 def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
-    # PointGetMessage shows the user's latest score, so it only renders on the user's latest arrival day.
-    if user_id is None or _arrival_of(context, user_id) is None:
-        return None
-    message = PointGetMessage(session=context.session, user_id=user_id, jst_datetime=context.reference)
-    return {"blocks": message.render()}
+    arrival = None if user_id is None else context.engine.arrival_of(user_id, context.reference.date())
+    return None if arrival is None else {"blocks": PointGetMessage(arrival).render()}
 
 
 def _registry(context: PreviewContext) -> dict[str, Any]:
-    end_of_day = context.reference.replace(hour=18, minute=0, second=0, microsecond=0)
-    return {"blocks": RegistryMessage(session=context.session, jst_datetime=end_of_day).render()}
-
-
-def _already_registered(context: PreviewContext) -> dict[str, Any] | None:
-    arrival = _arrival_of(context, context.user_id)
-    if arrival is None:
-        return None
-    return {"blocks": AlreadyRegisteredMessage(user_id=context.user_id, jst_datetime=arrival.arrival_time).render()}
-
-
-def _fastest_arrival(context: PreviewContext) -> dict[str, Any] | None:
-    arrival = _arrival_of(context, context.fastest_user_id)
-    if arrival is None:
-        return None
-    message = FastestArrivalMessage(user_id=context.fastest_user_id, jst_datetime=arrival.arrival_time)
-    return {"blocks": message.render()}
+    return {"blocks": RegistryMessage(context.engine.arrivals_on(context.reference.date())).render()}
 
 
 def _achievement(context: PreviewContext) -> dict[str, Any]:
-    return AchievementView(session=context.session, user_id=context.user_id, jst_datetime=context.reference).to_dict()
+    return AchievementView(context.engine, context.user_id, jst_datetime=context.reference).to_dict()
 
 
 PREVIEWS = [
@@ -141,8 +105,6 @@ PREVIEWS = [
         "レベルアップ時のポイント獲得メッセージ",
         lambda context: _point_get(context, context.level_up_user_id),
     ),
-    Preview("already_registered", "出社登録済みメッセージ", _already_registered),
-    Preview("fastest_arrival", "最速出社メッセージ", _fastest_arrival),
     Preview("achievement_view", "実績確認モーダル", _achievement),
 ]
 PREVIEW_NAMES = [preview.name for preview in PREVIEWS]
@@ -152,9 +114,9 @@ def _bizdays(start: datetime) -> list[datetime]:
     return [day for offset in range(SYNTHETIC_MAX_DAYS) if is_jp_bizday((day := start + timedelta(days=offset)).date())]
 
 
-def build_synthetic_context(session: Session) -> PreviewContext:
-    """Fill an empty database with deterministic arrivals that end on a level-up day."""
-    sync_badge_master_data(session)
+def build_synthetic_context() -> PreviewContext:
+    """Compute deterministic arrivals that end on a level-up day (no database)."""
+    engine = BadgeEngine()
     rng = random.Random(0)  # noqa: S311
     for index, day in enumerate(_bizdays(SYNTHETIC_START)):
         arrivals = [(LEVEL_UP_USER, time(9, rng.randint(0, 59)))]
@@ -164,23 +126,18 @@ def build_synthetic_context(session: Session) -> PreviewContext:
             if rng.random() < SYNTHETIC_ATTENDANCE_RATE
         ]
         for user_id, arrival in sorted(arrivals, key=lambda item: item[1]):
-            session.add(
-                ArrivalEvent(
-                    user_id=user_id, occurred_at=datetime.combine(day.date(), arrival, tzinfo=JST), source="button"
-                )
-            )
-        session.commit()
-        rebuild_derived_tables(session)
-        level_up_user = session.query(User).filter(User.id == LEVEL_UP_USER).one()
-        if index + 1 >= SYNTHETIC_MIN_DAYS and level_up_user.level_uped and len(arrivals) >= 3:  # noqa: PLR2004
+            engine.add(user_id, datetime.combine(day.date(), arrival, tzinfo=JST))
+        level_up = engine.arrival_of(LEVEL_UP_USER, day.date())
+        leveled_up = level_up is not None and is_level_uped(level_up.previous_score, level_up.current_score)
+        if index + 1 >= SYNTHETIC_MIN_DAYS and leveled_up and len(arrivals) >= 3:  # noqa: PLR2004
             break
     else:
         msg = "Synthetic data did not reach a level-up day"
         raise RuntimeError(msg)
 
-    ordered = [arrival.user_id for arrival in _arrivals_on(session, day)]
+    ordered = [arrival.user_id for arrival in engine.arrivals_on(day.date())]
     return PreviewContext(
-        session=session,
+        engine=engine,
         reference=day,
         fastest_user_id=ordered[0],
         user_id=next(user_id for user_id in ordered[1:] if user_id != LEVEL_UP_USER),
@@ -188,50 +145,32 @@ def build_synthetic_context(session: Session) -> PreviewContext:
     )
 
 
-def _arrivals_on(session: Session, day: datetime) -> list[GuestArrivalInfo]:
-    start = day.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-    return (
-        session.query(GuestArrivalInfo)
-        .filter(GuestArrivalInfo.arrival_time >= start)
-        .filter(GuestArrivalInfo.arrival_time < start + timedelta(days=1))
-        .order_by(GuestArrivalInfo.arrival_time)
-        .all()
-    )
-
-
 def build_database_context(session: Session, user_id: str | None, date: datetime | None) -> PreviewContext:
-    """Pick the reference day and users from an existing database."""
+    """Compute the arrivals of an existing database and pick the reference day and users."""
+    engine = compute_arrivals(session)
     if date is None:
-        latest = session.query(func.max(GuestArrivalInfo.arrival_time)).scalar()
-        if latest is None:
+        if not engine.results:
             msg = "The database has no arrivals"
             raise click.ClickException(msg)
-        date = latest.replace(tzinfo=JST)
-    ordered = [arrival.user_id for arrival in _arrivals_on(session, date)]
+        date = engine.results[-1].time
+    arrivals = engine.arrivals_on(date.date())
+    ordered = [arrival.user_id for arrival in arrivals]
     if user_id is None:
         if not ordered:
             msg = f"No arrivals on {date:%Y-%m-%d}; pass --user-id or another --date"
             raise click.ClickException(msg)
         user_id = ordered[-1]
     level_up_user_id = next(
-        (
-            user.id
-            for user in session.query(User).filter(User.id.in_(ordered), User.level_uped.is_(True)).all()
-            if _same_day(user.update_datetime, date)
-        ),
+        (arrival.user_id for arrival in arrivals if is_level_uped(arrival.previous_score, arrival.current_score)),
         None,
     )
     return PreviewContext(
-        session=session,
+        engine=engine,
         reference=date.replace(hour=18, minute=0, second=0, microsecond=0),
         fastest_user_id=ordered[0] if ordered else user_id,
         user_id=user_id,
         level_up_user_id=level_up_user_id,
     )
-
-
-def _same_day(value: datetime | None, day: datetime) -> bool:
-    return value is not None and value.date() == day.date()
 
 
 def _read_only_url(database_url: str) -> str:
@@ -277,33 +216,30 @@ def preview(  # noqa: PLR0913, PLR0917
     """
     team_id = resolve_workspace_id(workspace_id)
     logger.disable("hikarie_bot")
-    engine = create_engine(_read_only_url(database_url) if database_url else "sqlite://")
     if database_url is None:
-        BaseSchema.metadata.create_all(engine)
+        context = build_synthetic_context()
+    else:
+        engine = create_engine(_read_only_url(database_url))
+        try:
+            with Session(engine) as session:
+                context = build_database_context(session, user_id, date.replace(tzinfo=JST) if date else None)
+        finally:
+            engine.dispose()
     output_dir.mkdir(parents=True, exist_ok=True)
     selected = [preview for preview in PREVIEWS if not names or preview.name in names]
     lines = [f"# Block Kit previews ({'synthetic data' if database_url is None else 'database'})", ""]
-    try:
-        with Session(engine) as session:
-            if database_url is None:
-                context = build_synthetic_context(session)
-            else:
-                context = build_database_context(session, user_id, date.replace(tzinfo=JST) if date else None)
-            click.echo(f"📅 {context.reference:%Y-%m-%d} / user: {context.user_id}")
-            for item in selected:
-                payload = item.render(context)
-                if payload is None:
-                    click.echo(f"⏭️  {item.name}: no matching data for this day")
-                    continue
-                (output_dir / f"{item.name}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2))
-                url = create_block_kit_url(payload, team_id)
-                link = f": {create_clickable_link(url, '🔗 open')}" if sys.stdout.isatty() else ""
-                click.echo(f"✅ {item.name} ({item.description}){link}")
-                click.echo(f"   {url}")
-                lines.append(f"- [{item.name}]({url}) — {item.description}")
-            session.rollback()
-    finally:
-        engine.dispose()
+    click.echo(f"📅 {context.reference:%Y-%m-%d} / user: {context.user_id}")
+    for item in selected:
+        payload = item.render(context)
+        if payload is None:
+            click.echo(f"⏭️  {item.name}: no matching data for this day")
+            continue
+        (output_dir / f"{item.name}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        url = create_block_kit_url(payload, team_id)
+        link = f": {create_clickable_link(url, '🔗 open')}" if sys.stdout.isatty() else ""
+        click.echo(f"✅ {item.name} ({item.description}){link}")
+        click.echo(f"   {url}")
+        lines.append(f"- [{item.name}]({url}) — {item.description}")
     index = output_dir / "previews.md"
     index.write_text("\n".join(lines) + "\n")
     click.echo(f"📂 JSON and {index.name} saved in: {output_dir.resolve()}")

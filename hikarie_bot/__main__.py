@@ -13,8 +13,10 @@ from slack_bolt.context.ack.async_ack import AsyncAck
 from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
 from slack_sdk.web.async_client import AsyncWebClient
 
-from hikarie_bot.arrivals import attach_slack_ts, record_button_arrival
+from hikarie_bot.arrivals import attach_slack_ts, compute_arrivals, record_button_arrival
+from hikarie_bot.engine import JST
 from hikarie_bot.modals import (
+    AchievementView,
     ActionID,
     PointGetMessage,
     RegistryMessage,
@@ -23,7 +25,6 @@ from hikarie_bot.modals import (
 from hikarie_bot.models import get_db
 from hikarie_bot.preview import preview
 from hikarie_bot.settings import REQUIRED, get_settings
-from hikarie_bot.slack_components import open_achievement_view
 from hikarie_bot.slack_helper import schedule_daily_message, send_daily_message
 from hikarie_bot.startup import StartupReporter, current_revision, prepare
 from hikarie_bot.sync import (
@@ -31,7 +32,6 @@ from hikarie_bot.sync import (
     LiveSlackSource,
     RecordingSlackSource,
     arrival_metadata,
-    rebuild_derived_tables,
     sync_channel,
 )
 from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
@@ -90,8 +90,7 @@ async def start(*, dev: bool = False) -> None:
     type=click.Path(path_type=Path, file_okay=False),
     help="Also save the raw Slack responses into this directory.",
 )
-@click.option("--rebuild/--no-rebuild", default=True, show_default=True, help="Recompute scores and badges afterwards.")
-async def sync(cache_dir: Path | None, record_dir: Path | None, *, rebuild: bool) -> None:
+async def sync(cache_dir: Path | None, record_dir: Path | None) -> None:
     """Read arrival events from the channel into the database (read-only on Slack)."""
     if cache_dir and record_dir:
         msg = "--from-cache and --record cannot be combined"
@@ -105,8 +104,6 @@ async def sync(cache_dir: Path | None, record_dir: Path | None, *, rebuild: bool
     with get_db() as session:
         result = await sync_channel(session, source, get_settings().output_channel)
         click.echo(f"synced: {result}")
-        if rebuild:
-            click.echo(f"rebuilt from {rebuild_derived_tables(session)} events")
 
 
 ARRIVAL_LOCK = asyncio.Lock()
@@ -122,15 +119,19 @@ class Registration(NamedTuple):
 
 
 def register_arrival(user_id: str, now: datetime) -> Registration | None:
-    """Record a press and recompute scores; return the arrival to announce, or None if already announced."""
+    """Record a press and compute scores; return the arrival to announce, or None if already announced."""
     with get_db() as session:
         event = record_button_arrival(session, user_id, now)
         if event is None:
             return None
-        rebuild_derived_tables(session)
-        return Registration(
-            event.id, event.occurred_at, PointGetMessage(session, user_id, now), RegistryMessage(session, now)
-        )
+        event_id, occurred_at = event.id, event.occurred_at
+        engine = compute_arrivals(session)
+    today = now.astimezone(JST).date()
+    arrival = engine.arrival_of(user_id, today)
+    if arrival is None:  # the day's first event is the one just found, so the engine counts it
+        msg = f"no counted arrival for event {event_id}"
+        raise RuntimeError(msg)
+    return Registration(event_id, occurred_at, PointGetMessage(arrival), RegistryMessage(engine.arrivals_on(today)))
 
 
 async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -159,8 +160,8 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         )
         return
 
-    # One press at a time, until it is announced: a rebuild replaces the derived tables, and a second press
-    # retries an arrival only if it was not announced. The database work runs off the event loop.
+    # One press at a time, until it is announced: a second press retries an arrival only if it was not
+    # announced. The database work and the computation run off the event loop.
     async with ARRIVAL_LOCK:
         registration = await asyncio.to_thread(register_arrival, user_id, now)
         if registration is None:
@@ -191,13 +192,20 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
     )
 
 
+def build_achievement_view(user_id: str) -> AchievementView:
+    """Compute scores and render the user's achievements."""
+    with get_db() as session:
+        engine = compute_arrivals(session)
+    return AchievementView(engine, user_id)
+
+
 async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Handle the check achievement button click event."""
     await ack()
     user_id = body["user"]["id"]
-
-    with get_db() as session:
-        await open_achievement_view(client, session, body["trigger_id"], user_id)
+    view = await asyncio.to_thread(build_achievement_view, user_id)
+    logger.info(f"Opening achievement view for user {user_id}")
+    await client.views_open(trigger_id=body["trigger_id"], view=view)
 
 
 async def handle_reboot(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -231,8 +239,6 @@ def create_app() -> AsyncApp:
 
 
 cli.add_command(preview)
-# Kept for existing usage; renders the same previews.
-cli.add_command(preview, name="build-modals")
 
 
 if __name__ == "__main__":

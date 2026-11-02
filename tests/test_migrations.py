@@ -3,17 +3,17 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.autogenerate import compare_metadata
+from alembic.config import Config
 from alembic.migration import MigrationContext
 from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
-from hikarie_bot.curd import sync_badge_master_data
 from hikarie_bot.database import BaseSchema, configure_sqlite
-from hikarie_bot.db_data import Badges, BadgeTypes
-from hikarie_bot.migrations import UnversionedDatabaseError, init_database, upgrade_database
-from hikarie_bot.models import ArrivalEvent, Badge, BadgeType, SyncState
+from hikarie_bot.migrations import SCRIPT_LOCATION, UnversionedDatabaseError, init_database, upgrade_database
+from hikarie_bot.models import ArrivalEvent, SyncState
 
 JST = timezone(timedelta(hours=9))
 
@@ -33,7 +33,7 @@ def test_upgrade_creates_schema_matching_models(tmp_path: Path) -> None:
 
     with engine.connect() as connection:
         assert compare_metadata(MigrationContext.configure(connection), BaseSchema.metadata) == []
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0000",)]
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0001",)]
         assert connection.execute(text("PRAGMA journal_mode")).scalar() == "wal"
     engine.dispose()
 
@@ -49,38 +49,27 @@ def test_upgrade_rejects_database_from_before_alembic(tmp_path: Path) -> None:
     engine.dispose()
 
 
-def test_sync_badge_master_data_updates_persistent_database(tmp_path: Path) -> None:
-    """Badges added or changed in code reach an existing database; unknown rows are kept."""
+def test_upgrade_from_0000_drops_derived_tables_and_keeps_events(tmp_path: Path) -> None:
+    """Revision 0001 removes the tables that are now computed, and leaves the events alone."""
     engine = _file_engine(tmp_path / "data.db")
-    init_database(engine)
-    missing, changed = Badges[0], Badges[1]
-    with Session(engine) as session:
-        session.query(Badge).filter(Badge.id == missing.id).delete()
-        session.query(Badge).filter(Badge.id == changed.id).one().message = "old message"
-        session.add(Badge(id=999999, message="retired", condition="", level=1, score=0, badge_type_id=1))
-        session.commit()
+    config = Config()
+    config.set_main_option("script_location", str(SCRIPT_LOCATION))
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0000")
+        connection.execute(
+            text(
+                "INSERT INTO arrival_event (user_id, occurred_at, source, recorded_at) "
+                "VALUES ('U1', '2026-11-02T00:00:00.000000+00:00', 'button', '2026-11-02T00:00:00.000000+00:00')"
+            )
+        )
 
-    init_database(engine)
+    assert init_database(engine).revision_before == "0000"
 
+    assert set(inspect(engine).get_table_names()) == {"alembic_version", "arrival_event", "sync_state"}
     with Session(engine) as session:
-        assert session.query(Badge).filter(Badge.id == missing.id).one().message == missing.message
-        assert session.query(Badge).filter(Badge.id == changed.id).one().message == changed.message
-        assert session.query(Badge).filter(Badge.id == 999999).one_or_none() is not None
-        assert session.query(Badge).count() == len(Badges) + 1
-        assert session.query(BadgeType).count() == len(BadgeTypes)
+        assert session.query(ArrivalEvent).one().user_id == "U1"
     engine.dispose()
-
-
-def test_sync_badge_master_data_leaves_unchanged_rows_alone() -> None:
-    """Timezone-aware apply_start values compare equal to their stored wall-clock form."""
-    engine = create_engine("sqlite://")
-    upgrade_database(engine)
-    with Session(engine) as session:
-        sync_badge_master_data(session)
-        session.expire_all()
-        sync_badge_master_data(session)
-        assert not session.dirty
-        assert not session.new
 
 
 def test_arrival_event_stores_utc_and_rejects_naive_datetimes() -> None:
@@ -123,4 +112,4 @@ def test_read_only_open_of_wal_database(tmp_path: Path) -> None:
     engine.dispose()
 
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM badges").fetchone()[0] == len(Badges)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)

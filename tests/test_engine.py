@@ -1,14 +1,14 @@
-# The engine works on naive JST wall-clock times, as the derived tables store them.
+# Times are written naive for brevity and taken as JST.
 # ruff: noqa: DTZ001
 import random
 from collections import Counter
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
 from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
 from hikarie_bot.db_data import Badges
-from hikarie_bot.engine import BadgeEngine, compute
+from hikarie_bot.engine import JST, BadgeEngine, compute
 from hikarie_bot.utils import is_jp_bizday
 
 BADGE_TYPE = {badge.id: badge.badge_type_id for badge in Badges}
@@ -57,7 +57,9 @@ def synthetic_arrivals() -> list[tuple[str, datetime]]:
     special += [
         (user, datetime(2025, 9, 9, 7, 5, second)) for user, second in (("U2", 1), ("U3", 2), ("U4", 3), ("U6", 4))
     ]
-    return sorted(arrivals + special, key=lambda arrival: arrival[1])
+    return sorted(
+        ((user, time.replace(tzinfo=JST)) for user, time in arrivals + special), key=lambda arrival: arrival[1]
+    )
 
 
 # Recorded from the previous SQL-based implementation (insert_arrival_action) on synthetic_arrivals()
@@ -98,9 +100,20 @@ def test_engine_matches_the_previous_implementation(arrivals: list[tuple[str, da
 def test_second_arrival_on_the_same_day_is_not_counted() -> None:
     """Only the first arrival of a user's day counts, like insert_arrival_action."""
     engine = BadgeEngine()
-    assert engine.add("U1", datetime(2025, 6, 2, 9, 0)) is not None
-    assert engine.add("U1", datetime(2025, 6, 2, 10, 0)) is None
-    assert engine.add("U2", datetime(2025, 6, 2, 10, 0)).rank == 2
+    assert engine.add("U1", datetime(2025, 6, 2, 9, 0, tzinfo=JST)) is not None
+    assert engine.add("U1", datetime(2025, 6, 2, 10, 0, tzinfo=JST)) is None
+    assert engine.add("U2", datetime(2025, 6, 2, 10, 0, tzinfo=JST)).rank == 2
+
+
+def test_days_follow_jst_whatever_the_input_timezone() -> None:
+    """An arrival given in UTC counts on its JST day, and naive times are refused."""
+    engine = BadgeEngine()
+    engine.add("U1", datetime(2025, 6, 1, 23, 30, tzinfo=UTC))  # 08:30 on 2 June in JST
+
+    assert [arrival.user_id for arrival in engine.arrivals_on(date(2025, 6, 2))] == ["U1"]
+    assert engine.arrival_of("U1", date(2025, 6, 2)).time.hour == 8
+    with pytest.raises(ValueError, match="timezone-aware"):
+        engine.add("U2", datetime(2025, 6, 2, 9, 0))
 
 
 def test_straight_flash_without_five_business_days_is_no_streak(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,6 +121,6 @@ def test_straight_flash_without_five_business_days_is_no_streak(monkeypatch: pyt
     monkeypatch.setattr("hikarie_bot.engine.list_bizdays", lambda start, _length: [start.date()])
     engine = BadgeEngine()
     for day in range(2, 7):
-        result = engine.add("U1", datetime(2025, 6, day, 9, 0))
+        result = engine.add("U1", datetime(2025, 6, day, 9, 0, tzinfo=JST))
 
     assert not {401, 402, 403} & set(result.badge_ids)

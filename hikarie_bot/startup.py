@@ -20,12 +20,13 @@ from loguru import logger
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import func, select
 
+from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.engine import JST
 from hikarie_bot.exceptions import DatabaseLocationError, InMemoryDatabaseError
 from hikarie_bot.migrations import InitResult, UnversionedDatabaseError
-from hikarie_bot.models import Achievement, ArrivalEvent, SyncState, User, ensure_database, get_db
+from hikarie_bot.models import ArrivalEvent, SyncState, ensure_database, get_db
 from hikarie_bot.settings import get_settings
-from hikarie_bot.sync import SlackSource, SyncResult, rebuild_derived_tables, sync_channel
+from hikarie_bot.sync import SlackSource, SyncResult, sync_channel
 
 PUBLIC_ERRORS = (DatabaseLocationError, InMemoryDatabaseError, UnversionedDatabaseError)
 
@@ -108,17 +109,10 @@ class StartupReporter:
 
 
 def describe_database(result: InitResult) -> str:
-    """Describe the schema and badge master data without personal data."""
+    """Describe the schema revision."""
     if result.revision_before == result.revision:
-        schema = f"schema {result.revision} (up to date)"
-    else:
-        schema = f"schema {result.revision} (migrated from {result.revision_before or 'empty'})"
-    master = result.master_data
-    return (
-        f"{schema} · badge definitions {master.badge_types} types / {master.badges} badges "
-        f"({master.badge_types_added + master.badges_added} added, "
-        f"{master.badge_types_updated + master.badges_updated} updated)"
-    )
+        return f"schema {result.revision} (up to date)"
+    return f"schema {result.revision} (migrated from {result.revision_before or 'empty'})"
 
 
 def format_ts(ts: str) -> str:
@@ -133,7 +127,7 @@ def describe_sync(result: SyncResult) -> str:
 
 
 async def prepare(reporter: StartupReporter, source: SlackSource, channel: str) -> None:
-    """Migrate, sync from Slack and recompute scores, reporting each step."""
+    """Migrate, sync from Slack and compute scores once (a check before answering), reporting each step."""
     await reporter.post(f"starting application (rev {reporter.revision})")
 
     async with reporter.step("database") as step:
@@ -148,8 +142,9 @@ async def prepare(reporter: StartupReporter, source: SlackSource, channel: str) 
             step.text = describe_sync(await sync_channel(session, source, channel))
 
         async with reporter.step("scores") as step:
-            arrivals = rebuild_derived_tables(session)
+            engine = compute_arrivals(session)
             events = session.scalar(select(func.count()).select_from(ArrivalEvent))
-            users = session.scalar(select(func.count()).select_from(User))
-            badges = session.scalar(select(func.count()).select_from(Achievement))
-            step.text = f"{events} events → {arrivals} arrivals · {users} users · {badges} badges earned"
+            badges = sum(len(result.badge_ids) for result in engine.results)
+            step.text = (
+                f"{events} events → {len(engine.results)} arrivals · {len(engine.users)} users · {badges} badges earned"
+            )

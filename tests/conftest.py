@@ -6,7 +6,6 @@ from loguru import logger
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from hikarie_bot.curd import initially_insert_badge_data
 from hikarie_bot.database import BaseSchema, get_engine
 from hikarie_bot.models import ensure_database
 from hikarie_bot.settings import Settings, get_settings
@@ -71,21 +70,12 @@ def session_factory(test_engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
-@pytest.fixture(scope="session")
-def seed_badge_data(session_factory: sessionmaker[Session]) -> None:
-    """Seed the badge data once for all tests."""
-    with session_factory() as session:
-        initially_insert_badge_data(session)
-
-
 @pytest.fixture
-def temp_db(
-    session_factory: sessionmaker[Session], seed_badge_data: None
-) -> Generator[sessionmaker[Session], Any, Any]:
-    """Create a test database session with pre-seeded badge data.
+def temp_db(session_factory: sessionmaker[Session]) -> Generator[sessionmaker[Session], Any, Any]:
+    """Create a test database session.
 
-    This fixture uses the session-scoped engine and badge data,
-    but uses transaction rollback for fast cleanup after each test.
+    This fixture uses the session-scoped engine, but uses transaction rollback
+    for fast cleanup after each test.
     """
     # Start a transaction
     connection = session_factory.kw["bind"].connect()
