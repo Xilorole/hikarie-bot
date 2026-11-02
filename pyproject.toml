@@ -41,11 +41,6 @@ dev = [
     "slack-cli-hooks>=0.3.0",
     "python-dotenv>=1.2.4",
 ]
-jupyter = [
-    "jupyter",
-    "matplotlib",
-    "ing-theme-matplotlib",
-]
 
 [tool.setuptools.packages.find]
 exclude = ["build", "tests"]

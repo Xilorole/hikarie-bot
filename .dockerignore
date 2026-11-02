@@ -15,4 +15,3 @@ htmlcov/
 build/
 dist/
 *.egg-info/
-notebook/

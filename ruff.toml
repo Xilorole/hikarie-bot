@@ -27,7 +27,6 @@ exclude = [
     "site-packages",
     "venv",
     "hikarie_bot/_version.py",
-    "notebook",
 ]
 
 line-length = 120
