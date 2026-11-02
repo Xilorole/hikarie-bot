@@ -233,6 +233,7 @@ class SyncResult:
     messages: int = 0
     threads: int = 0
     inserted: int = 0
+    since: str | None = None  # the oldest ts read; None for a full read of the channel
 
 
 async def sync_channel(session: Session, source: SlackSource, channel: str) -> SyncResult:
@@ -246,7 +247,7 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
     oldest = None if synced_until is None else str(synced_until - THREAD_OVERLAP.total_seconds())
     logger.info("Syncing {} from {}", channel, oldest or "the beginning")
 
-    result = SyncResult()
+    result = SyncResult(since=oldest)
     arrivals: list[ParsedArrival] = []
     # The position is the newest ts seen, replies included, so unchanged threads are skipped next time.
     seen = [state.synced_until] if state else []

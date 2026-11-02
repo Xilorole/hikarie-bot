@@ -1,5 +1,6 @@
 """Badge master data in the database, kept in sync with the definitions in code."""
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from loguru import logger
@@ -32,7 +33,19 @@ def _sync_rows(session: Session, model: type, rows: list, fields: list[str]) -> 
     return inserted, updated
 
 
-def sync_badge_master_data(session: Session) -> None:
+@dataclass
+class MasterDataSync:
+    """How many badge types and badges the sync added and updated, and how many are defined."""
+
+    badge_types_added: int
+    badge_types_updated: int
+    badge_types: int
+    badges_added: int
+    badges_updated: int
+    badges: int
+
+
+def sync_badge_master_data(session: Session) -> MasterDataSync:
     """Synchronize the badge master data in the database with the definitions in code.
 
     New badges are inserted and changed ones updated, so a persistent database picks up
@@ -49,6 +62,7 @@ def sync_badge_master_data(session: Session) -> None:
     badges = _sync_rows(session, Badge, db_data.Badges, ["message", "condition", "level", "score", "badge_type_id"])
     session.commit()
     logger.info("Badge types synchronized (inserted, updated): {}; badges: {}", badge_types, badges)
+    return MasterDataSync(*badge_types, len(db_data.BadgeTypes), *badges, len(db_data.Badges))
 
 
 # Kept for existing callers and tests.
