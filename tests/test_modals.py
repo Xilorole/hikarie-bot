@@ -722,3 +722,16 @@ def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals(temp_db: session
     assert any("[6003] 20番目のお客様" in text for text in texts)  # 13 arrivals so far: 20 is next
     assert not any("[6001]" in text or "[6002]" in text for text in texts)
     assert "次のキリ番まで: あと *7回* (20回目)" in texts
+
+
+def test_registry_message_lists_arrivals_by_time(temp_db: sessionmaker[Session]) -> None:
+    """The list follows the arrival times, whatever order the rows were stored in."""
+    session = temp_db()
+    for user_id, minute in (("U_late", 30), ("U_early", 10)):
+        arrival_time = datetime(2024, 1, 1, 9, minute)  # noqa: DTZ001  # naive JST like the stored times
+        session.add(GuestArrivalInfo(user_id=user_id, arrival_time=arrival_time, arrival_rank=1, acquired_score_sum=0))
+    session.flush()
+
+    message = RegistryMessage(session=session, jst_datetime=datetime(2024, 1, 1, 12, 0, tzinfo=JST))
+
+    assert message.render()[-1]["text"]["text"].splitlines()[1:] == ["*09:10* : <@U_early>", "*09:30* : <@U_late>"]
