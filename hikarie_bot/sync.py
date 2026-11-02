@@ -39,6 +39,7 @@ from hikarie_bot.slack_helper import MessageFilter
 Message = dict[str, Any]
 
 PAGE_SIZE = 200
+ARRIVAL_EVENT_TYPE = "hikarie_arrival"
 THREAD_OVERLAP = timedelta(days=1)
 
 
@@ -188,8 +189,32 @@ class ParsedArrival:
     slack_ts: str
 
 
+def arrival_metadata(user_id: str, occurred_at: datetime) -> dict[str, Any]:
+    """Return the Slack message metadata the bot attaches to an arrival's thread post.
+
+    It records the button press time, so a rebuild from Slack restores it exactly
+    instead of using the post's (slightly later) ts.
+    """
+    return {
+        "event_type": ARRIVAL_EVENT_TYPE,
+        "event_payload": {"user_id": user_id, "occurred_at": occurred_at.astimezone(UTC).isoformat()},
+    }
+
+
 def parse_arrival(message: Message) -> ParsedArrival | None:
-    """Return the arrival a bot message records, if any."""
+    """Return the arrival a bot message records, if any.
+
+    The bot's arrival metadata wins; older posts are read from their text and ts.
+    """
+    metadata = message.get("metadata") or {}
+    if message.get("bot_id") == BOT_ID and metadata.get("event_type") == ARRIVAL_EVENT_TYPE:
+        payload = metadata["event_payload"]
+        return ParsedArrival(
+            user_id=payload["user_id"],
+            occurred_at=datetime.fromisoformat(payload["occurred_at"]),
+            source="slack_v3",
+            slack_ts=message["ts"],
+        )
     if message.get("subtype") == "channel_join" or not (user_id := MessageFilter.extract_user_id(message)):
         return None
     source = {V1_BOT_ID: "slack_v1", V2_BOT_ID: "slack_v2", BOT_ID: "slack_v3"}[message["bot_id"]]

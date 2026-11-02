@@ -17,6 +17,7 @@ from hikarie_bot.sync import (
     CachedSlackSource,
     LiveSlackSource,
     RecordingSlackSource,
+    arrival_metadata,
     parse_arrival,
     rebuild_derived_tables,
     sync_channel,
@@ -129,6 +130,20 @@ def test_parse_arrival_reads_only_bot_arrivals() -> None:
     assert parse_arrival(daily_post(T0)) is None
     assert parse_arrival({"ts": ts(T0), "user": "U1", "text": "<@U2> おはよう"}) is None
     assert parse_arrival({"ts": ts(T0), "bot_id": BOT, "subtype": "channel_join", "text": "<@U4>"}) is None
+
+
+def test_parse_arrival_prefers_the_bots_arrival_metadata() -> None:
+    """The press time in the metadata wins over the post's ts; other apps' metadata is ignored."""
+    pressed = datetime(2025, 10, 9, 0, 30, 1, 250000, tzinfo=UTC)
+    reply = point_reply(T0, T0 - 60, "U1") | {"metadata": arrival_metadata("U1", pressed)}
+
+    arrival = parse_arrival(reply)
+
+    assert arrival is not None
+    assert (arrival.user_id, arrival.occurred_at, arrival.slack_ts) == ("U1", pressed, ts(T0))
+    assert arrival.occurred_at.tzinfo == UTC
+    spoofed = {"ts": ts(T0), "bot_id": "B0OTHER", "text": "hello", "metadata": arrival_metadata("U9", pressed)}
+    assert parse_arrival(spoofed) is None
 
 
 @pytest.mark.asyncio
