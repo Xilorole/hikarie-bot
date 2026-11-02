@@ -5,8 +5,6 @@ __all__ = [
     "BadgeType",
     "GuestArrivalInfo",
     "User",
-    "version",
 ]
 
-from ._version import version
 from .models import Badge, BadgeType, GuestArrivalInfo, User

@@ -12,11 +12,6 @@ ENV UV_LINK_MODE=copy \
 
 WORKDIR /opt
 
-# hadolint ignore=DL3008
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
-    rm -rf /var/lib/apt/lists/*
-
 COPY pyproject.toml uv.lock .python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --group core --no-install-project
@@ -24,7 +19,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY README.md LICENSE ./
 COPY hikarie_bot hikarie_bot
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=.git,target=.git \
     uv sync --locked --no-default-groups --group core --no-editable --refresh-package hikarie-bot
 
 FROM base AS runtime
