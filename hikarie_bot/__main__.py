@@ -3,7 +3,7 @@ import asyncio
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import asyncclick as click
 from loguru import logger
@@ -129,14 +129,25 @@ async def sync(cache_dir: Path | None, record_dir: Path | None, *, rebuild: bool
 ARRIVAL_LOCK = asyncio.Lock()
 
 
-def register_arrival(user_id: str, now: datetime) -> tuple[int, PointGetMessage, RegistryMessage] | None:
-    """Record a press and recompute scores; return the event ID and its messages, or None if already arrived."""
+class Registration(NamedTuple):
+    """An arrival to announce: its event, the time it records, and its messages."""
+
+    event_id: int
+    occurred_at: datetime
+    point_get: PointGetMessage
+    registry: RegistryMessage
+
+
+def register_arrival(user_id: str, now: datetime) -> Registration | None:
+    """Record a press and recompute scores; return the arrival to announce, or None if already announced."""
     with get_db() as session:
         event = record_button_arrival(session, user_id, now)
         if event is None:
             return None
         rebuild_derived_tables(session)
-        return event.id, PointGetMessage(session, user_id, now), RegistryMessage(session, now)
+        return Registration(
+            event.id, event.occurred_at, PointGetMessage(session, user_id, now), RegistryMessage(session, now)
+        )
 
 
 @app.action(ActionID.ARRIVED_OFFICE)
@@ -167,35 +178,35 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         )
         return
 
-    # one press at a time (a rebuild replaces the derived tables), with the database work off the event loop
+    # One press at a time, until it is announced: a rebuild replaces the derived tables, and a second press
+    # retries an arrival only if it was not announced. The database work runs off the event loop.
     async with ARRIVAL_LOCK:
-        registered = await asyncio.to_thread(register_arrival, user_id, now)
-    if registered is None:
-        await client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text="本日は既に出社申告を済ませています",
-        )
-        return
+        registration = await asyncio.to_thread(register_arrival, user_id, now)
+        if registration is None:
+            await client.chat_postEphemeral(
+                channel=channel_id,
+                user=user_id,
+                text="本日は既に出社申告を済ませています",
+            )
+            return
 
-    event_id, point_get_message, registry_message = registered
-    response = await client.chat_postMessage(
-        channel=channel_id,
-        thread_ts=message_ts,
-        text=point_get_message.to_text(),
-        blocks=point_get_message.render(),
-        reply_broadcast=point_get_message.initial_arrival,
-        metadata=arrival_metadata(user_id, now),
-    )
-    with get_db() as session:
-        attach_slack_ts(session, event_id, response["ts"])
+        response = await client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=message_ts,
+            text=registration.point_get.to_text(),
+            blocks=registration.point_get.render(),
+            reply_broadcast=registration.point_get.initial_arrival,
+            metadata=arrival_metadata(user_id, registration.occurred_at),
+        )
+        with get_db() as session:
+            attach_slack_ts(session, registration.event_id, response["ts"])
 
     # replace the message with RegistryMessage
     await client.chat_update(
         channel=channel_id,
         ts=message_ts,
-        text=registry_message.to_text(),
-        blocks=registry_message.render(),
+        text=registration.registry.to_text(),
+        blocks=registration.registry.render(),
     )
 
 
