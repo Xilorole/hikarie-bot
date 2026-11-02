@@ -2,8 +2,9 @@
 
 The first run reads the whole channel. Later runs read top-level messages from one day
 before the stored position (the newest ts seen; thread replies arrive within the same
-day) and fetch only the bot threads whose latest reply is newer than that position. Events are keyed by
-the Slack message ts, so syncing is idempotent.
+day) and fetch only the bot threads whose latest reply is newer than that position. A thread whose
+replies were not all read (e.g. missing from a recorded cache) holds the position back, so it is read
+again next time. Events are keyed by the Slack message ts, so syncing is idempotent.
 
 Slack data comes from a SlackSource: the live API, the API while recording raw
 responses, or a recorded cache (offline). Recorded files have the shape
@@ -263,6 +264,7 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
     arrivals: list[ParsedArrival] = []
     # The position is the newest ts seen, replies included, so unchanged threads are skipped next time.
     seen = [state.synced_until] if state else []
+    unread_threads: list[str] = []
     async for message in source.history(channel, oldest):
         result.messages += 1
         seen.append(message["ts"])
@@ -272,9 +274,17 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
         if message.get("bot_id") == BOT_ID and message.get("reply_count") and has_new_replies:
             result.threads += 1
             replies = (await source.replies(channel, message["ts"]))[1:]
+            if len(replies) < message["reply_count"]:
+                logger.warning(
+                    "Thread {} returned {}/{} replies; reading it again next time",
+                    message["ts"],
+                    len(replies),
+                    message["reply_count"],
+                )
+                unread_threads.append(message["ts"])
             seen += [reply["ts"] for reply in replies]
             arrivals += [arrival for reply in replies if (arrival := parse_arrival(reply))]
-    latest_ts = max(seen, key=float, default=None)
+    latest_ts = min(unread_threads, key=float) if unread_threads else max(seen, key=float, default=None)
 
     if arrivals:
         statement = insert(ArrivalEvent).on_conflict_do_nothing(index_elements=["slack_ts"])
