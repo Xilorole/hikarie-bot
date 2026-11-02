@@ -193,8 +193,10 @@ not install or update dependencies when starting. Python and uv images are
 pinned by digest; Dependabot checks Docker image updates weekly.
 
 Create `.env` from `.env.template` and fill in the Slack configuration before
-starting the bot. If using `URL=sqlite:///.db/data.db`, persist `/opt/.db` with a
-Docker volume when recreating containers:
+starting the bot. `DATABASE_URL` is required outside `ENV=dev`/`ENV=test`; with
+`DATABASE_URL=sqlite:////opt/.db/data.db`, persist `/opt/.db` with a Docker volume
+when recreating containers. Settings come from environment variables, then
+`DOTENV_PATH` or `./.env` (a parent directory's `.env` is never read):
 
 ```bash
 docker run -d --name hikarie-bot-container --env-file .env \

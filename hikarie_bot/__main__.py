@@ -1,11 +1,9 @@
 # アプリを起動します
-import os
 import sys
 from datetime import timedelta
 from typing import Any
 
 import asyncclick as click
-from dotenv import load_dotenv
 from loguru import logger
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
@@ -25,6 +23,7 @@ from hikarie_bot.preview import preview
 from hikarie_bot.settings import (
     ADMIN,
     LOG_CHANNEL,
+    SLACK_APP_TOKEN,
     SLACK_BOT_TOKEN,
 )
 from hikarie_bot.slack_helper import (
@@ -36,7 +35,6 @@ from hikarie_bot.slack_helper import (
 )
 from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
 
-load_dotenv(override=True)
 app = AsyncApp(token=SLACK_BOT_TOKEN)
 
 
@@ -145,7 +143,7 @@ async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
         text=f"application started (v{version})",
     )
 
-    handler = AsyncSocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
+    handler = AsyncSocketModeHandler(app, SLACK_APP_TOKEN)
     await handler.start_async()
 
 
