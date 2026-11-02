@@ -5,15 +5,15 @@ Why the data works the way it does: `docs/design/data-architecture.md` (Japanese
 
 ## Data model
 
-- `arrival_event` is the only source of truth: append-only, deduplicated by Slack message ts; the first event of a user's JST day counts.
-- `GuestArrivalInfo`, `Achievement`, `User`, `UserInfoRaw` and `UserBadge` are derived. `sync.rebuild_derived_tables` deletes and recomputes them from all events on every startup and every button press, so never write to them; change the rules in `engine.py`.
+- The database holds only `arrival_event` and the Slack sync position (`sync_state`). `arrival_event` is the source of truth: append-only, deduplicated by Slack message ts; the first event of a user's JST day counts.
+- Ranks, badges, scores and levels are never stored: `arrivals.compute_arrivals` runs `engine.py` over all events (tens of ms) for each button press and achievement view, and `modals.py` renders the engine's results. Change the rules in `engine.py`.
 - A rule change rewrites everyone's past points and badges on the next deploy. To affect only later arrivals, gate the rule on its badge type's `apply_start`.
-- Badges are defined in code (`db_data/badges.py`) and synced into the DB at startup. A new badge type needs its definitions there, a checker in `BadgeEngine._checkers` and its ID in `constants.BADGE_TYPES_TO_CHECK`.
+- Badges are defined only in code (`db_data/badges.py`). A new badge type needs its definitions there, a checker in `BadgeEngine._checkers` and its ID in `constants.BADGE_TYPES_TO_CHECK`.
 
 ## Time
 
 - `arrival_event` stores timezone-aware UTC (`UTCDateTime` rejects naive values).
-- The engine and the derived tables use naive JST wall-clock times. SQLite drops tzinfo when comparing, so filtering derived tables with a UTC datetime is silently 9 hours off: use JST (`engine.to_jst_wall_clock`).
+- The engine works on aware datetimes in JST (`BadgeEngine.add` converts aware input and rejects naive), so `.date()` and `.hour` of its results are JST.
 
 ## Schema
 

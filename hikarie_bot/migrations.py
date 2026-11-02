@@ -13,9 +13,6 @@ from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-
-from hikarie_bot.curd import MasterDataSync, sync_badge_master_data
 
 SCRIPT_LOCATION = Path(__file__).parent / "alembic"
 
@@ -30,11 +27,10 @@ class UnversionedDatabaseError(RuntimeError):
 
 @dataclass
 class InitResult:
-    """The schema revision before and after startup, and the badge master data sync."""
+    """The schema revision before and after startup."""
 
     revision_before: str | None
     revision: str
-    master_data: MasterDataSync
 
 
 def upgrade_database(engine: Engine) -> tuple[str | None, str]:
@@ -52,7 +48,5 @@ def upgrade_database(engine: Engine) -> tuple[str | None, str]:
 
 
 def init_database(engine: Engine) -> InitResult:
-    """Bring the schema up to date and synchronize master data from code."""
-    before, after = upgrade_database(engine)
-    with Session(engine) as session:
-        return InitResult(revision_before=before, revision=after, master_data=sync_badge_master_data(session))
+    """Bring the schema up to date."""
+    return InitResult(*upgrade_database(engine))

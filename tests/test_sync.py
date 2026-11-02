@@ -11,8 +11,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from hikarie_bot import __main__ as bot
+from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.migrations import init_database
-from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, SyncState, User
+from hikarie_bot.models import ArrivalEvent, SyncState
 from hikarie_bot.settings import Settings
 from hikarie_bot.sync import (
     CachedSlackSource,
@@ -20,7 +21,6 @@ from hikarie_bot.sync import (
     RecordingSlackSource,
     arrival_metadata,
     parse_arrival,
-    rebuild_derived_tables,
     sync_channel,
 )
 
@@ -294,18 +294,16 @@ async def test_live_source_pages_until_the_end() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rebuild_derived_tables_is_repeatable(session: Session) -> None:
-    """Derived tables are replaced, not appended to, on every rebuild."""
+async def test_synced_events_count_once_per_user_and_day(session: Session) -> None:
+    """Syncing again stores nothing new, so the computed arrivals stay the same."""
     await sync_channel(session, channel_with_two_days(), CHANNEL)
-
-    assert rebuild_derived_tables(session) == 4
-    first = [(a.user_id, a.arrival_rank, a.acquired_score_sum) for a in session.query(GuestArrivalInfo)]
-    rebuild_derived_tables(session)
-    second = [(a.user_id, a.arrival_rank, a.acquired_score_sum) for a in session.query(GuestArrivalInfo)]
+    first = [(a.user_id, a.rank, a.score_sum) for a in compute_arrivals(session).results]
+    await sync_channel(session, channel_with_two_days(), CHANNEL)
+    second = [(a.user_id, a.rank, a.score_sum) for a in compute_arrivals(session).results]
 
     assert first == second
     assert len(first) == 4
-    assert {user.id for user in session.query(User)} == {"U1", "U2", "U3"}
+    assert {user_id for user_id, _, _ in first} == {"U1", "U2", "U3"}
 
 
 @pytest.mark.asyncio

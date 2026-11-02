@@ -21,20 +21,12 @@ from typing import Any, Protocol
 
 from loguru import logger
 from slack_sdk.web.async_client import AsyncWebClient
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
-from hikarie_bot.engine import JST, UserLevel, compute, to_jst_wall_clock
-from hikarie_bot.models import (
-    Achievement,
-    ArrivalEvent,
-    GuestArrivalInfo,
-    SyncState,
-    User,
-    UserBadge,
-    UserInfoRaw,
-)
+from hikarie_bot.engine import JST
+from hikarie_bot.models import ArrivalEvent, SyncState
 from hikarie_bot.settings import get_settings
 
 Message = dict[str, Any]
@@ -309,71 +301,3 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
     session.commit()
     logger.info("Synced {}: {}", channel, result)
     return result
-
-
-DERIVED_TABLES = [Achievement, UserBadge, UserInfoRaw, GuestArrivalInfo, User]
-
-
-def rebuild_derived_tables(session: Session) -> int:
-    """Recompute ranks, badges and scores from arrival_event, replacing the derived tables.
-
-    Returns the number of counted arrivals (the first of each user's day).
-    """
-    events = session.execute(
-        select(ArrivalEvent.user_id, ArrivalEvent.occurred_at).order_by(ArrivalEvent.occurred_at, ArrivalEvent.id)
-    ).all()
-    engine = compute((user_id, to_jst_wall_clock(occurred_at)) for user_id, occurred_at in events)
-
-    # Core inserts skip the ORM hooks that copy user_id into user_info_raw_id, so set it here.
-    arrivals, achievements, snapshots, users = [], [], [], {}
-    for result in engine.results:
-        level = vars(UserLevel.of(result.previous_score, result.current_score))
-        scores = {"current_score": result.current_score, "previous_score": result.previous_score}
-        arrivals.append(
-            {
-                "id": result.id,
-                "user_id": result.user_id,
-                "user_info_raw_id": result.user_id,
-                "arrival_time": result.time,
-                "arrival_rank": result.rank,
-                "acquired_score_sum": result.score_sum,
-            }
-        )
-        achievements += [
-            {
-                "user_id": result.user_id,
-                "user_info_raw_id": result.user_id,
-                "arrival_id": result.id,
-                "badge_id": badge_id,
-                "achieved_time": result.time,
-            }
-            for badge_id in result.badge_ids
-        ]
-        snapshots.append({"user_id": result.user_id, "update_datetime": result.time, **scores, **level})
-        users[result.user_id] = {"id": result.user_id, "update_datetime": result.time, **scores, **level}
-    user_badges = [
-        {
-            "user_id": user_id,
-            "user_info_raw_id": user_id,
-            "badge_id": badge_id,
-            "initially_acquired_datetime": tally.first,
-            "last_acquired_datetime": tally.last,
-            "count": tally.count,
-        }
-        for (user_id, badge_id), tally in engine.user_badges.items()
-    ]
-
-    for model in DERIVED_TABLES:
-        session.execute(delete(model))
-    for model, rows in (
-        (User, list(users.values())),
-        (GuestArrivalInfo, arrivals),
-        (Achievement, achievements),
-        (UserInfoRaw, snapshots),
-        (UserBadge, user_badges),
-    ):
-        if rows:
-            session.execute(insert(model), rows)
-    session.commit()
-    logger.info("Rebuilt derived tables from {} events ({} counted arrivals)", len(events), len(engine.results))
-    return len(engine.results)

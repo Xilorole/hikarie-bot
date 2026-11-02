@@ -1,29 +1,28 @@
 """Shared test helpers."""
 
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hikarie_bot import db_data
-from hikarie_bot.arrivals import record_button_arrival
-from hikarie_bot.engine import JST
-from hikarie_bot.models import Achievement, GuestArrivalInfo
-from hikarie_bot.sync import rebuild_derived_tables
+from hikarie_bot.arrivals import compute_arrivals, record_button_arrival
+from hikarie_bot.engine import JST, BadgeEngine, compute
 
 
 def record_arrival(session: Session, jst_datetime: datetime, user_id: str) -> bool:
-    """Record an arrival and recompute the derived tables, as the bot does for a button press.
+    """Record an arrival as the bot does for a button press.
 
     Naive datetimes are taken as JST. Returns False if the user already arrived that day.
     """
     pressed_at = jst_datetime if jst_datetime.tzinfo else jst_datetime.replace(tzinfo=JST)
     event = record_button_arrival(session, user_id, pressed_at)
-    if event is None or event.occurred_at != pressed_at:  # an earlier arrival that day
-        return False
-    rebuild_derived_tables(session)
-    return True
+    return event is not None and event.occurred_at == pressed_at  # otherwise an earlier arrival that day
+
+
+def compute_in_order(*arrivals: tuple[str, datetime]) -> BadgeEngine:
+    """Run the engine over (user_id, aware time) pairs given in any order."""
+    return compute(sorted(arrivals, key=lambda arrival: arrival[1]))
 
 
 CHECK_TYPES = {
@@ -45,7 +44,7 @@ BADGE_TYPE = {badge.id: badge.badge_type_id for badge in db_data.Badges}
 
 
 class EngineChecker:
-    """Answer per-rule badge questions from the engine's results stored by record_arrival.
+    """Answer per-rule badge questions from the engine's results on the events stored by record_arrival.
 
     `check_<rule>(session, user_id, target_date)` returns the badge IDs of that rule earned by
     the user's arrival on target_date's day; `check` covers every rule given at construction.
@@ -72,12 +71,5 @@ class EngineChecker:
 
     @staticmethod
     def _earned(session: Session, user_id: str, target_date: datetime, types: set[int]) -> list[int]:
-        day = target_date.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
-        badge_ids = session.scalars(
-            select(Achievement.badge_id)
-            .join(GuestArrivalInfo, GuestArrivalInfo.id == Achievement.arrival_id)
-            .where(Achievement.user_id == user_id)
-            .where(GuestArrivalInfo.arrival_time >= day, GuestArrivalInfo.arrival_time < day + timedelta(days=1))
-            .order_by(Achievement.id)
-        )
-        return [badge_id for badge_id in badge_ids if BADGE_TYPE[badge_id] in types]
+        arrival = compute_arrivals(session).arrival_of(user_id, target_date.date())
+        return [badge_id for badge_id in arrival.badge_ids if BADGE_TYPE[badge_id] in types] if arrival else []

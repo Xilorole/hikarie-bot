@@ -1,24 +1,22 @@
 import re
-import zoneinfo
-from datetime import date, datetime, timedelta  # Added date back
+from datetime import date, datetime, timedelta
 from textwrap import dedent
 from unittest import mock
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, NOT_ACHIEVED_BADGE_IMAGE_URL
-from hikarie_bot.curd import initially_insert_badge_data
-from hikarie_bot.engine import JST, UserLevel
+from hikarie_bot.db_data import Badges
+from hikarie_bot.engine import JST, ArrivalResult
 from hikarie_bot.modals import (
     AchievementView,
-    AlreadyRegisteredMessage,
-    FastestArrivalMessage,
     InitialMessage,
     PointGetMessage,
     RegistryMessage,
 )
-from hikarie_bot.models import Badge, GuestArrivalInfo, User
-from tests.helpers import record_arrival
+from hikarie_bot.models import ArrivalEvent
+from tests.helpers import compute_in_order
 
 
 def test_initial_message() -> None:
@@ -58,20 +56,10 @@ def test_initial_message() -> None:
     ]
 
 
-def test_registry_message(temp_db: sessionmaker[Session]) -> None:
+def test_registry_message() -> None:
     """Test the second arrived user has lower point."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    record_arrival(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user_1st",
-    )
-    message = RegistryMessage(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-    )
+    engine = compute_in_order(("test_user_1st", datetime(2024, 1, 1, 6, 0, 0, tzinfo=JST)))
+    message = RegistryMessage(engine.arrivals_on(date(2024, 1, 1)))
     assert message.render() == [
         {
             "type": "section",
@@ -114,25 +102,13 @@ def test_registry_message(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
-def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
+def test_registry_message_2() -> None:
     """Test the second arrived user has lower point."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    record_arrival(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user_1st",
+    engine = compute_in_order(
+        ("test_user_2nd", datetime(2024, 1, 1, 6, 1, 0, tzinfo=JST)),
+        ("test_user_1st", datetime(2024, 1, 1, 6, 0, 0, tzinfo=JST)),
     )
-    record_arrival(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 6, 1, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user_2nd",
-    )
-    message = RegistryMessage(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-    )
+    message = RegistryMessage(engine.arrivals_on(date(2024, 1, 1)))
     assert message.render() == [
         {
             "type": "section",
@@ -178,49 +154,10 @@ def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
-def test_fastest_arrival_message(temp_db: sessionmaker[Session]) -> None:
-    """Test the fastest arrival message."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    record_arrival(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user",
-    )
-    message = FastestArrivalMessage(
-        user_id="test_user",
-        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-    )
-
-    assert message.render() == [
-        {
-            "type": "section",
-            "block_id": "FASTEST_ARRIVAL_REPLY",
-            "text": {
-                "type": "mrkdwn",
-                "text": "ヒカリエは正義 :hikarie:\n本日の最速出社: <@test_user> @ 2024-01-01 06:00:00",
-            },
-        }
-    ]
-
-
-def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
+def test_point_get_message() -> None:
     """Test the point get message."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    record_arrival(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user",
-    )
-
-    message = PointGetMessage(
-        session,
-        user_id="test_user",
-        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-    )
+    engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
+    message = PointGetMessage(engine.results[0])
 
     assert message.render() == [
         {
@@ -254,34 +191,28 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
-def point_get_after(session: Session, day: int, previous_score: int) -> list[dict]:
-    """Render the point message for a +5pt arrival on 2024-01-<day>, starting from previous_score.
+def point_get_after(day: int, previous_score: int) -> list[dict]:
+    """Render the point message for a +5pt fastest arrival on 2024-01-<day>, starting from previous_score.
 
-    The derived rows are written as the engine would; reaching arbitrary scores through
-    arrivals would take years of them.
+    The result is built by hand; reaching arbitrary scores through arrivals would take years of them.
     """
-    arrival_time = datetime(2024, 1, day, 7, 0, 0)  # noqa: DTZ001
-    level = UserLevel.of(previous_score, previous_score + 5)
-    session.merge(
-        User(id="test_user", previous_score=previous_score, current_score=previous_score + 5,
-             update_datetime=arrival_time, **vars(level))
-    )  # fmt: skip
-    session.add(GuestArrivalInfo(user_id="test_user", arrival_time=arrival_time, arrival_rank=1, acquired_score_sum=5))
-    session.commit()
-    return PointGetMessage(
-        session,
+    arrival = ArrivalResult(
+        id=1,
         user_id="test_user",
-        jst_datetime=arrival_time.replace(tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-    ).render()
+        time=datetime(2024, 1, day, 7, 0, 0, tzinfo=JST),
+        rank=1,
+        badge_ids=[],
+        score_sum=5,
+        previous_score=previous_score,
+        current_score=previous_score + 5,
+    )
+    return PointGetMessage(arrival).render()
 
 
-def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
+def test_point_get_message_max_level() -> None:
     """Test the point get message says the upper limit is reached."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
     # 1398 -> 1403: the upper limit is reached by this arrival
-    message = point_get_after(session, 2, 1398)
+    message = point_get_after(2, 1398)
     assert message[0]["text"]["text"] == (
         "*07:00* 最速出社登録しました！ :hikarie:\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *上限に到達!* :crown: "
     )
@@ -290,59 +221,27 @@ def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
     )
 
     # 1403 -> 1408: already at the upper limit
-    message = point_get_after(session, 3, 1403)
+    message = point_get_after(3, 1403)
     assert message[0]["text"]["text"].endswith("1403 → *1408* (*+5*)")
     assert "つぎのレベルまで: *上限に到達*" in message[2]["elements"][0]["text"]
 
 
-def test_point_get_message_zero_progress(temp_db: sessionmaker[Session]) -> None:
+def test_point_get_message_zero_progress() -> None:
     """Test the progress bar shows at least one cell when the progress is 0%."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
     # 15 -> 20: exactly at the start of lv2
-    message = point_get_after(session, 2, 15)
+    message = point_get_after(2, 15)
 
     assert message[0]["text"]["text"].endswith("15 → *20* (*+5*) *LvUP!* :star2: ")
     assert "しんこうど: `█         ` | *  0%* (*+22%*)\n" in message[2]["elements"][0]["text"]
 
 
-def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
-    """Test the already registered message."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    message = AlreadyRegisteredMessage(
-        user_id="test_user",
-        jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-    )
-
-    assert message.render() == [
-        {
-            "type": "section",
-            "block_id": "ALREADY_REGISTERED_REPLY",
-            "text": {
-                "type": "mrkdwn",
-                "text": "本日の出社登録はすでに完了しています\n<@test_user> @ 2024-01-01 06:00:00",
-            },
-        }
-    ]
-
-
 @mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1])
-def test_achievement_view(temp_db: sessionmaker[Session]) -> None:
+def test_achievement_view() -> None:
     """Test the achievement view."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    record_arrival(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user",
-    )
+    engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
 
     view = AchievementView(
-        session=session,
+        engine,
         user_id="test_user",
     )
     expected_blocks = [
@@ -364,19 +263,12 @@ def test_achievement_view(temp_db: sessionmaker[Session]) -> None:
 
 
 @mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
-def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
+def test_achievement_message_type_6() -> None:
     """Test the achievement message with badge_types_to_check patched to [6]."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    record_arrival(
-        session=session,
-        jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-        user_id="test_user",
-    )
+    engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
 
     view = AchievementView(
-        session=session,
+        engine,
         user_id="test_user",
     )
 
@@ -396,24 +288,16 @@ def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
 
 
 @mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
-def test_achievement_message_6xxx_taken_logic(temp_db: sessionmaker[Session]) -> None:
+def test_achievement_message_6xxx_taken_logic() -> None:
     """Test 6XXX badge logic: taken icon if any user has it, not achieved if none."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    badge_6xxx = session.query(Badge).filter(Badge.badge_type_id == 6, Badge.id >= 6000, Badge.id < 7000).first()
+    badge_6xxx = next(badge for badge in Badges if badge.badge_type_id == 6 and 6000 <= badge.id < 7000)
     assert badge_6xxx is not None, "Test requires a 6XXX badge of type 6"
 
     # at least 10 arrivals to get the 6XXX badge
-    for i in range(10):
-        record_arrival(
-            session=session,
-            jst_datetime=datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
-            user_id="test_user",
-        )
+    engine = compute_in_order(*(("test_user", datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST)) for i in range(10)))
 
     # 取得したバッジが表示されていることのテスト
-    view = AchievementView(session=session, user_id="test_user")
+    view = AchievementView(engine, user_id="test_user")
     rendered = [block.to_dict() for block in view.blocks]
     found = False
     for block in rendered:
@@ -427,18 +311,13 @@ def test_achievement_message_6xxx_taken_logic(temp_db: sessionmaker[Session]) ->
     assert found, "Should find taken icon for 6XXX badge when another user has it"
 
 
-def test_achievement_view_attendance_history(temp_db: sessionmaker[Session]) -> None:
+def test_achievement_view_attendance_history() -> None:
     """Test the attendance history section in AchievementView."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    tokyo_tz = zoneinfo.ZoneInfo("Asia/Tokyo")
-
     # Create test user
     test_user_id = "test_user"
 
     # Create attendance data over the past 10 weeks (some attended, some not)
-    base_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz)  # Monday
+    base_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=JST)  # Monday
     attendance_dates = []
 
     # Add some attendance records over 10 weeks (weekdays only)
@@ -453,8 +332,7 @@ def test_achievement_view_attendance_history(temp_db: sessionmaker[Session]) -> 
             attendance_dates.extend([monday, wednesday])
 
     # Insert arrival actions for the attendance dates
-    for date_time in attendance_dates:
-        record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
+    engine = compute_in_order(*((test_user_id, date_time) for date_time in attendance_dates))
 
     # Test with current date being a Wednesday in week 10
     test_current_date = base_date + timedelta(weeks=9, days=2)  # Wednesday of week 10
@@ -463,7 +341,7 @@ def test_achievement_view_attendance_history(temp_db: sessionmaker[Session]) -> 
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=test_current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),  # Minimize badge data
     ):
-        view = AchievementView(session=session, user_id=test_user_id)
+        view = AchievementView(engine, user_id=test_user_id)
 
         # Get the rendered blocks
         rendered_blocks = [block.to_dict() for block in view.blocks]
@@ -511,33 +389,28 @@ def test_achievement_view_attendance_history(temp_db: sessionmaker[Session]) -> 
                 assert "/" in alt_text, f"Alt text should contain date with /: {alt_text}"
 
 
-def test_get_attendance_data_for_past_10_weeks(temp_db: sessionmaker[Session]) -> None:
+def test_get_attendance_data_for_past_10_weeks() -> None:
     """Test the _get_attendance_data_for_past_10_weeks method specifically."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    tokyo_tz = zoneinfo.ZoneInfo("Asia/Tokyo")
     test_user_id = "test_user"
 
     # Set current date to a Wednesday
-    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)  # Wednesday
+    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=JST)  # Wednesday
 
     # Create attendance on specific dates
     attendance_dates = [
-        datetime(2024, 1, 22, 9, 0, 0, tzinfo=tokyo_tz),  # Monday, 8 weeks ago
-        datetime(2024, 2, 14, 9, 0, 0, tzinfo=tokyo_tz),  # Wednesday, 5 weeks ago
-        datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz),  # Monday, this week
-        datetime(2024, 3, 20, 9, 0, 0, tzinfo=tokyo_tz),  # Wednesday, today
+        datetime(2024, 1, 22, 9, 0, 0, tzinfo=JST),  # Monday, 8 weeks ago
+        datetime(2024, 2, 14, 9, 0, 0, tzinfo=JST),  # Wednesday, 5 weeks ago
+        datetime(2024, 3, 18, 9, 0, 0, tzinfo=JST),  # Monday, this week
+        datetime(2024, 3, 20, 9, 0, 0, tzinfo=JST),  # Wednesday, today
     ]
 
-    for date_time in attendance_dates:
-        record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
+    engine = compute_in_order(*((test_user_id, date_time) for date_time in attendance_dates))
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
-        view = AchievementView(session=session, user_id=test_user_id)
+        view = AchievementView(engine, user_id=test_user_id)
 
         # Call the protected method directly for testing
         attendance_data = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
@@ -559,29 +432,24 @@ def test_get_attendance_data_for_past_10_weeks(temp_db: sessionmaker[Session]) -
         assert attendance_data.get(date(2024, 1, 23)) is False, "Should show no attendance on 2024-01-23"
 
 
-def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
+def test_create_github_style_display() -> None:
     """Test the _create_github_style_display method."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    tokyo_tz = zoneinfo.ZoneInfo("Asia/Tokyo")
     test_user_id = "test_user"
-    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)
+    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=JST)
 
     # Create a small set of test data
     test_attendance_data = [
-        datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz),  # monday
-        datetime(2024, 3, 20, 9, 0, 0, tzinfo=tokyo_tz),  # wednesday
+        datetime(2024, 3, 18, 9, 0, 0, tzinfo=JST),  # monday
+        datetime(2024, 3, 20, 9, 0, 0, tzinfo=JST),  # wednesday
     ]
 
-    for date_time in test_attendance_data:
-        record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
+    engine = compute_in_order(*((test_user_id, date_time) for date_time in test_attendance_data))
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
-        view = AchievementView(session=session, user_id=test_user_id)
+        view = AchievementView(engine, user_id=test_user_id)
 
         # Check that blocks were created
         rendered_blocks = [block.to_dict() for block in view.blocks]
@@ -621,26 +489,22 @@ def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
         )
 
 
-def test_achievement_view_attendance_history_simple(temp_db: sessionmaker[Session]) -> None:
+def test_achievement_view_attendance_history_simple() -> None:
     """Test that attendance history section is added to AchievementView."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    tokyo_tz = zoneinfo.ZoneInfo("Asia/Tokyo")
     test_user_id = "test_user"
 
     # Insert a simple attendance record
-    attendance_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz)  # Monday
-    record_arrival(session=session, jst_datetime=attendance_date, user_id=test_user_id)
+    attendance_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=JST)  # Monday
+    engine = compute_in_order((test_user_id, attendance_date))
 
     # Mock current date to be in the same timeframe
-    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)  # Wednesday
+    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=JST)  # Wednesday
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
-        view = AchievementView(session=session, user_id=test_user_id)
+        view = AchievementView(engine, user_id=test_user_id)
 
         # Check that blocks were created
         assert len(view.blocks) > 0, "View should have blocks"
@@ -672,25 +536,21 @@ def test_achievement_view_attendance_history_simple(temp_db: sessionmaker[Sessio
         assert len(attendance_context_blocks) > 0, "Should have attendance context blocks"
 
 
-def test_attendance_data_generation(temp_db: sessionmaker[Session]) -> None:
+def test_attendance_data_generation() -> None:
     """Test basic attendance data generation."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-
-    tokyo_tz = zoneinfo.ZoneInfo("Asia/Tokyo")
     test_user_id = "test_user"
 
     # Create test data
-    attendance_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz)  # Monday
-    record_arrival(session=session, jst_datetime=attendance_date, user_id=test_user_id)
+    attendance_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=JST)  # Monday
+    engine = compute_in_order((test_user_id, attendance_date))
 
-    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)  # Wednesday
+    current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=JST)  # Wednesday
 
     with (
         mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
         mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1]),
     ):
-        view = AchievementView(session=session, user_id=test_user_id)
+        view = AchievementView(engine, user_id=test_user_id)
 
         # Test the data generation method directly
         attendance_data = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
@@ -708,15 +568,15 @@ def test_attendance_data_generation(temp_db: sessionmaker[Session]) -> None:
 
 
 @mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
-def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals(temp_db: sessionmaker[Session]) -> None:
+def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals() -> None:
     """Someone without kiribans still sees the next kiriban to be reached by everyone's arrivals."""
-    session = temp_db()
-    initially_insert_badge_data(session=session)
-    for i in range(12):  # the 10th and 11th arrivals are kiribans, taken by other users
-        record_arrival(session=session, jst_datetime=datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST), user_id=f"user_{i}")
-    record_arrival(session=session, jst_datetime=datetime(2024, 1, 13, 8, 0, 0, tzinfo=JST), user_id="test_user")
+    # the 10th and 11th arrivals are kiribans, taken by other users
+    engine = compute_in_order(
+        *((f"user_{i}", datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST)) for i in range(12)),
+        ("test_user", datetime(2024, 1, 13, 8, 0, 0, tzinfo=JST)),
+    )
 
-    view = AchievementView(session=session, user_id="test_user")
+    view = AchievementView(engine, user_id="test_user")
 
     texts = [block.to_dict().get("text", {}).get("text", "") for block in view.blocks]
     assert any("[6003] 20番目のお客様" in text for text in texts)  # 13 arrivals so far: 20 is next
@@ -725,13 +585,26 @@ def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals(temp_db: session
 
 
 def test_registry_message_lists_arrivals_by_time(temp_db: sessionmaker[Session]) -> None:
-    """The list follows the arrival times, whatever order the rows were stored in."""
+    """The list follows the arrival times, whatever order the events were stored in."""
     session = temp_db()
     for user_id, minute in (("U_late", 30), ("U_early", 10)):
-        arrival_time = datetime(2024, 1, 1, 9, minute)  # noqa: DTZ001  # naive JST like the stored times
-        session.add(GuestArrivalInfo(user_id=user_id, arrival_time=arrival_time, arrival_rank=1, acquired_score_sum=0))
+        session.add(
+            ArrivalEvent(user_id=user_id, occurred_at=datetime(2024, 1, 1, 9, minute, tzinfo=JST), source="button")
+        )
     session.flush()
 
-    message = RegistryMessage(session=session, jst_datetime=datetime(2024, 1, 1, 12, 0, tzinfo=JST))
+    message = RegistryMessage(compute_arrivals(session).arrivals_on(date(2024, 1, 1)))
 
     assert message.render()[-1]["text"]["text"].splitlines()[1:] == ["*09:10* : <@U_early>", "*09:30* : <@U_late>"]
+
+
+@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [1])
+def test_attendance_history_counts_the_first_monday_of_the_window() -> None:
+    """An arrival on the first day shown (the Monday nine weeks back) is shown as attended."""
+    engine = compute_in_order(("test_user", datetime(2024, 1, 15, 9, 0, tzinfo=JST)))
+    view = AchievementView(engine, "test_user", jst_datetime=datetime(2024, 3, 20, 15, 0, tzinfo=JST))
+
+    attendance = view._get_attendance_data_for_past_10_weeks()  # noqa: SLF001
+
+    assert min(attendance) == date(2024, 1, 15)
+    assert attendance[date(2024, 1, 15)] is True

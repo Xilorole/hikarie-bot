@@ -1,11 +1,11 @@
-"""Record arrivals reported with the Slack button as arrival events."""
+"""Record arrivals as events and compute ranks, badges and scores from them."""
 
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from hikarie_bot.engine import JST
+from hikarie_bot.engine import JST, BadgeEngine, compute
 from hikarie_bot.models import ArrivalEvent
 
 
@@ -37,3 +37,11 @@ def attach_slack_ts(session: Session, event_id: int, slack_ts: str) -> None:
     if event is not None and event.slack_ts is None:
         event.slack_ts = slack_ts
         session.commit()
+
+
+def compute_arrivals(session: Session) -> BadgeEngine:
+    """Compute ranks, badges and scores from every stored arrival event (the first of each user's day counts)."""
+    events = session.execute(
+        select(ArrivalEvent.user_id, ArrivalEvent.occurred_at).order_by(ArrivalEvent.occurred_at, ArrivalEvent.id)
+    )
+    return compute(events.tuples())

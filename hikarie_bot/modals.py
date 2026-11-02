@@ -9,8 +9,8 @@ from slack_sdk.models.blocks import (
     blocks,
 )
 from slack_sdk.models.views import View
-from sqlalchemy.orm import Session
 
+from hikarie_bot import db_data
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     BADGE_TYPES_TO_CHECK,
@@ -23,15 +23,8 @@ from hikarie_bot.constants import (
 from hikarie_bot.constants import (
     NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL,
 )
-from hikarie_bot.db_data.badges import KIRIBANS, Kiriban
-from hikarie_bot.models import (
-    Achievement,
-    Badge,
-    BadgeType,
-    GuestArrivalInfo,
-    User,
-    UserBadge,
-)
+from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
+from hikarie_bot.engine import ArrivalResult, BadgeEngine, UserBadgeTally
 from hikarie_bot.utils import (
     get_current_jst_datetime,
     get_current_level_point,
@@ -46,6 +39,16 @@ from hikarie_bot.utils import (
 
 # Constants
 KIRIBAN_BADGE_TYPE_ID = 6
+BADGES = {badge.id: badge for badge in db_data.Badges}
+BADGES_BY_TYPE = {
+    badge_type.id: [badge for badge in db_data.Badges if badge.badge_type_id == badge_type.id]
+    for badge_type in db_data.BadgeTypes
+}
+
+
+def badge_types_to_show() -> list[BadgeTypeData]:
+    """Return the badge types the bot awards, in ID order."""
+    return [badge_type for badge_type in db_data.BadgeTypes if badge_type.id in BADGE_TYPES_TO_CHECK]
 
 
 class ActionID:
@@ -53,7 +56,6 @@ class ActionID:
 
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
-    POINT_GET = "POINT_GET"
     CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
 
 
@@ -61,10 +63,7 @@ class BlockID:
     """Class for storing the block IDs used in the Slack app."""
 
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
-    FASTEST_ARRIVAL_REPLY = "FASTEST_ARRIVAL_REPLY"
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
-    ALREADY_REGISTERED_REPLY = "ALREADY_REGISTERED_REPLY"
-    CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
 
 
 class ShortcutID:
@@ -128,20 +127,9 @@ class InitialMessage(BaseMessage):
 class RegistryMessage(BaseMessage):
     """Class for creating the registry Slack message with a question and a button."""
 
-    def __init__(self, session: Session, jst_datetime: datetime) -> None:
-        """Initialize the RegistryMessage with a question and a button."""
+    def __init__(self, arrivals: list[ArrivalResult]) -> None:
+        """Initialize the RegistryMessage with a question, a button and the day's arrivals in time order."""
         super().__init__()
-
-        start_of_day = jst_datetime.replace(hour=6, minute=0, second=0, microsecond=0)
-
-        arrived_users = (
-            session.query(GuestArrivalInfo)
-            .filter(GuestArrivalInfo.arrival_time >= start_of_day)
-            .filter(GuestArrivalInfo.arrival_time <= jst_datetime)
-            .order_by(GuestArrivalInfo.arrival_time)
-            .all()
-        )
-
         self.blocks.extend(
             [
                 blocks.SectionBlock(text="ヒカリエに出社してる？"),
@@ -161,24 +149,8 @@ class RegistryMessage(BaseMessage):
                 blocks.DividerBlock(),
                 blocks.SectionBlock(
                     text="本日の出社ユーザー :hikarie: :\n"
-                    + "\n".join([f"*{user.arrival_time:%H:%M}* : <@{user.user_id}>" for user in arrived_users]),
+                    + "\n".join([f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>" for arrival in arrivals]),
                 ),
-            ]
-        )
-
-
-class FastestArrivalMessage(BaseMessage):
-    """Class for creating the fastest arrival Slack message."""
-
-    def __init__(self, user_id: str, jst_datetime: datetime) -> None:
-        """Initialize the FastestArrivalMessage with the fastest arrival user ID and time."""
-        super().__init__()
-        self.blocks.extend(
-            [
-                blocks.SectionBlock(
-                    text=f"ヒカリエは正義 :hikarie:\n本日の最速出社: <@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
-                    block_id=BlockID.FASTEST_ARRIVAL_REPLY,
-                )
             ]
         )
 
@@ -186,33 +158,18 @@ class FastestArrivalMessage(BaseMessage):
 class PointGetMessage(BaseMessage):
     """Class for creating the point get Slack message."""
 
-    def __init__(self, session: Session, user_id: str, jst_datetime: datetime) -> None:
-        """Initialize the PointGetMessage with the user ID and time.
+    def __init__(self, arrival: ArrivalResult) -> None:
+        """Initialize the PointGetMessage with a counted arrival.
 
         initial_arrival tells whether this was the day's first arrival, by the computed rank.
         """
         super().__init__()
 
-        ## variable
-        score = session.query(User).filter(User.id == user_id).one()
-
-        # retrieve guest arrival data
-        start_of_day = jst_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = start_of_day + timedelta(days=1)
-
-        # Check for existing arrival for the same user on the same day
-        arrival = (
-            session.query(GuestArrivalInfo)
-            .filter(GuestArrivalInfo.user_id == user_id)
-            .filter(GuestArrivalInfo.arrival_time >= start_of_day)
-            .filter(GuestArrivalInfo.arrival_time < end_of_day)
-            .one()
-        )
-
-        arrive_time = score.update_datetime
-        previous_point = score.previous_score
-        current_point = score.current_score
-        score_addup = arrival.acquired_score_sum
+        user_id = arrival.user_id
+        arrive_time = arrival.time
+        previous_point = arrival.previous_score
+        current_point = arrival.current_score
+        score_addup = arrival.score_sum
 
         # get the variables
         level = get_level(current_point)
@@ -243,18 +200,11 @@ class PointGetMessage(BaseMessage):
         else:
             level_up_text = ""
 
-        self.initial_arrival = arrival.arrival_rank == 1
+        self.initial_arrival = arrival.rank == 1
         initial_arrival_text = "最速" if self.initial_arrival else ""
         hikarie_text = " :hikarie:" if self.initial_arrival else ""
 
-        # get the Achievements
-        badges = (
-            session.query(Badge)
-            .join(Achievement, Achievement.badge_id == Badge.id)
-            .filter(Achievement.arrival_id == arrival.id)
-            .order_by(Achievement.badge_id)
-            .all()
-        )
+        badges = [BADGES[badge_id] for badge_id in sorted(arrival.badge_ids)]
         achievements_text = "\n".join([f" - {badge.message}:*+{badge.score}pt*" for badge in badges])
 
         context = dedent(
@@ -288,33 +238,17 @@ class PointGetMessage(BaseMessage):
         )
 
 
-class AlreadyRegisteredMessage(BaseMessage):
-    """Class for creating the already registered Slack message."""
-
-    def __init__(self, user_id: str, jst_datetime: datetime) -> None:
-        """Initialize the AlreadyRegisteredMessage with the user ID and time."""
-        super().__init__()
-        self.blocks.extend(
-            [
-                blocks.SectionBlock(
-                    text=f"本日の出社登録はすでに完了しています\n<@{user_id}> @ {jst_datetime:%Y-%m-%d %H:%M:%S}",
-                    block_id=BlockID.ALREADY_REGISTERED_REPLY,
-                )
-            ]
-        )
-
-
 class AchievementView(View):
     """Class for creating the achievement Slack view."""
 
-    def __init__(self, session: Session, user_id: str, jst_datetime: datetime | None = None) -> None:
-        """Initialize the AchievementView with the user ID.
+    def __init__(self, engine: BadgeEngine, user_id: str, jst_datetime: datetime | None = None) -> None:
+        """Initialize the AchievementView with the computed arrivals and the user ID.
 
         jst_datetime is the "today" of the attendance history (default: now).
         """
         super().__init__(type="modal", title="Achievements", close="閉じる")
 
-        self.session = session
+        self.engine = engine
         self.user_id = user_id
         self.jst_datetime = jst_datetime
 
@@ -358,11 +292,7 @@ class AchievementView(View):
         blocks_list: list[Block] = [blocks.HeaderBlock(text="獲得したバッジ")]
 
         # バッジの全量を表示する
-        all_badge_types = (
-            self.session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
-        )
-
-        for badge_type in all_badge_types:
+        for badge_type in badge_types_to_show():
             # バッジタイプの説明を追加
             blocks_list.append(blocks.SectionBlock(text=f"*{badge_type.id}系 : {badge_type.description}*"))
 
@@ -407,10 +337,10 @@ class AchievementView(View):
 
         return stats_info.rstrip()
 
-    def _generate_badge_elements_for_type(self, badge_type: BadgeType) -> list[block_elements.ImageElement]:
+    def _generate_badge_elements_for_type(self, badge_type: BadgeTypeData) -> list[block_elements.ImageElement]:
         """Generate badge elements for a specific badge type."""
         elements = []
-        badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
+        badges = BADGES_BY_TYPE[badge_type.id]
 
         # 6xx番台（キリ番バッジ）の場合は取得済みのみ表示
         if badge_type.id == KIRIBAN_BADGE_TYPE_ID:
@@ -419,9 +349,7 @@ class AchievementView(View):
                 if user_badge:
                     element = block_elements.ImageElement(
                         image_url=ACHIEVED_BADGE_IMAGE_URL,
-                        alt_text=(
-                            f"【{badge.message}】{badge.condition} @ {user_badge.initially_acquired_datetime:%Y-%m-%d}"
-                        ),
+                        alt_text=f"【{badge.message}】{badge.condition} @ {user_badge.first:%Y-%m-%d}",
                     )
                     elements.append(element)
         else:
@@ -432,14 +360,14 @@ class AchievementView(View):
 
         return elements
 
-    def _create_badge_element(self, badge: Badge) -> block_elements.ImageElement:
+    def _create_badge_element(self, badge: BadgeData) -> block_elements.ImageElement:
         """Create a single badge element based on user's badge status."""
         user_badge = self._user_badges.get(badge.id)
 
         if user_badge:
             return block_elements.ImageElement(
                 image_url=ACHIEVED_BADGE_IMAGE_URL,
-                alt_text=f"【{badge.message}】{badge.condition} @ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
+                alt_text=f"【{badge.message}】{badge.condition} @ {user_badge.first:%Y-%m-%d}",
             )
         return block_elements.ImageElement(
             image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
@@ -447,17 +375,16 @@ class AchievementView(View):
         )
 
     @cached_property
-    def _user_badges(self) -> dict[int, UserBadge]:
-        """Return the user's badges by badge ID, read once for the whole view."""
+    def _user_badges(self) -> dict[int, UserBadgeTally]:
+        """Return the user's badges by badge ID, in the order they were first earned."""
         return {
-            user_badge.badge_id: user_badge
-            for user_badge in self.session.query(UserBadge).filter(UserBadge.user_id == self.user_id)
+            badge_id: tally for (user_id, badge_id), tally in self.engine.user_badges.items() if user_id == self.user_id
         }
 
     @cached_property
     def _arrival_count(self) -> int:
         """Count the arrivals of all users, which kiribans number."""
-        return self.session.query(GuestArrivalInfo).count()
+        return len(self.engine.results)
 
     @cached_property
     def _next_kiriban(self) -> Kiriban | None:
@@ -493,12 +420,8 @@ class AchievementView(View):
     def _get_user_statistics(self) -> dict:
         """Get comprehensive statistics for the user."""
         # 全出社データを取得
-        all_arrivals = (
-            self.session.query(GuestArrivalInfo)
-            .filter(GuestArrivalInfo.user_id == self.user_id)
-            .order_by(GuestArrivalInfo.arrival_time)
-            .all()
-        )
+        user = self.engine.users.get(self.user_id)
+        all_arrivals = user.results if user else []
 
         if not all_arrivals:
             return {
@@ -511,23 +434,20 @@ class AchievementView(View):
                 "latest_time": None,
             }
 
-        # ユーザー情報を取得
-        user = self.session.query(User).filter(User.id == self.user_id).first()
-
         stats = {
             "total_arrivals": len(all_arrivals),
-            "fastest_arrivals": sum(1 for arrival in all_arrivals if arrival.arrival_rank == 1),
-            "current_level": user.level if user else 1,
-            "current_score": user.current_score if user else 0,
-            "first_arrival_date": all_arrivals[0].arrival_time.strftime("%Y-%m-%d"),
+            "fastest_arrivals": sum(1 for arrival in all_arrivals if arrival.rank == 1),
+            "current_level": get_level(user.score),
+            "current_score": user.score,
+            "first_arrival_date": all_arrivals[0].time.strftime("%Y-%m-%d"),
         }
 
         # 最早・最遅の出社時刻
-        earliest = min(all_arrivals, key=lambda x: x.arrival_time.hour * 60 + x.arrival_time.minute)
-        latest = max(all_arrivals, key=lambda x: x.arrival_time.hour * 60 + x.arrival_time.minute)
+        earliest = min(all_arrivals, key=lambda x: x.time.hour * 60 + x.time.minute)
+        latest = max(all_arrivals, key=lambda x: x.time.hour * 60 + x.time.minute)
 
-        stats["earliest_time"] = earliest.arrival_time.strftime("%H:%M")
-        stats["latest_time"] = latest.arrival_time.strftime("%H:%M")
+        stats["earliest_time"] = earliest.time.strftime("%H:%M")
+        stats["latest_time"] = latest.time.strftime("%H:%M")
 
         return stats
 
@@ -537,47 +457,15 @@ class AchievementView(View):
         Returns:
             Dict mapping date objects to attendance status (bool)
         """
-        current_date = self.jst_datetime or get_current_jst_datetime()
-        # 時刻を除いて日付のみにする
-        current_date = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        today = (self.jst_datetime or get_current_jst_datetime()).date()
+        # 10週間前の月曜日（今週を含む）から今日まで
+        start_monday = today - timedelta(days=today.weekday(), weeks=9)
+        days = (start_monday + timedelta(days=offset) for offset in range((today - start_monday).days + 1))
 
-        # 今週の月曜日を計算
-        days_since_monday = current_date.weekday()  # 今週の月曜日からの日数
-        this_week_monday = current_date - timedelta(days=days_since_monday)
-
-        # 10週間前の月曜日を計算（今週を含む）
-        start_monday = this_week_monday - timedelta(weeks=9)  # 9週前 + 今週 = 10週間
-
-        # その期間の出社データを取得
-        arrivals = (
-            self.session.query(GuestArrivalInfo)
-            .filter(
-                GuestArrivalInfo.user_id == self.user_id,
-                GuestArrivalInfo.arrival_time >= start_monday,
-                GuestArrivalInfo.arrival_time <= current_date,
-            )
-            .all()
-        )
-
-        # 出社した日付のセットを作成
-        arrival_dates = set()
-        for arrival in arrivals:
-            arrival_date = arrival.arrival_time.date()
-            arrival_dates.add(arrival_date)
-
-        # 10週間前の月曜日から今日までの平日について出社状況を記録
-        attendance_data = {}
-        current_check_date = start_monday
-
-        while current_check_date <= current_date:
-            # 平日のみ（月曜日=0 から 金曜日=4）
-            if current_check_date.weekday() < 5:  # noqa: PLR2004
-                check_date = current_check_date.date()
-                attendance_data[check_date] = check_date in arrival_dates
-
-            current_check_date += timedelta(days=1)
-
-        return attendance_data
+        user = self.engine.users.get(self.user_id)
+        arrival_dates = {time.date() for time in user.times} if user else set()
+        # 平日のみ（月曜日=0 から 金曜日=4）
+        return {day: day in arrival_dates for day in days if day.weekday() < 5}  # noqa: PLR2004
 
     def _create_github_style_display(self, attendance_data: dict[date, bool]) -> list[Block]:
         """Create GitHub-style vertical activity display.
@@ -622,14 +510,13 @@ class AchievementView(View):
     def _create_all_achieved_badges_summary(self) -> list[Block]:
         """Create a summary block for all achieved badges."""
         # 獲得済みバッジを全て取得し、獲得日時の早い順でソート
-        achieved_user_badges = (
-            self.session.query(UserBadge, Badge)
-            .join(Badge, UserBadge.badge_id == Badge.id)
-            .join(BadgeType, Badge.badge_type_id == BadgeType.id)
-            .filter(UserBadge.user_id == self.user_id)
-            .filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK))
-            .order_by(UserBadge.initially_acquired_datetime)
-            .all()
+        achieved_user_badges = sorted(
+            (
+                (user_badge, BADGES[badge_id])
+                for badge_id, user_badge in self._user_badges.items()
+                if BADGES[badge_id].badge_type_id in BADGE_TYPES_TO_CHECK
+            ),
+            key=lambda pair: pair[0].first,
         )
 
         if not achieved_user_badges:
@@ -642,7 +529,7 @@ class AchievementView(View):
             achievement_count = user_badge.count
 
             # トップレベル: ID、タイトル、獲得日
-            initial_date = user_badge.initially_acquired_datetime.strftime("%Y-%m-%d")
+            initial_date = user_badge.first.strftime("%Y-%m-%d")
             top_level_text_elements = [
                 {"type": "text", "text": f"{badge.message} ", "style": {"bold": True}},
                 {"type": "text", "text": f"@ {initial_date} "},
@@ -689,14 +576,9 @@ class AchievementView(View):
         blocks_list: list[Block] = []
         unachieved_badges_text = ""
 
-        # バッジの全タイプを取得
-        all_badge_types = (
-            self.session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
-        )
-
         next_kiriban_id = self._next_kiriban.id if self._next_kiriban else None
-        for badge_type in all_badge_types:
-            badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
+        for badge_type in badge_types_to_show():
+            badges = BADGES_BY_TYPE[badge_type.id]
             # キリ番は全体の出社回数で次に来るものだけを表示
             type_unachieved = [
                 f"[{badge.id}] {badge.message}"
