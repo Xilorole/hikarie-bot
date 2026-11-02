@@ -10,7 +10,6 @@ services:
       - .env
     environment:
       DATABASE_URL: sqlite:////opt/.db/data.db
-    command: ["/opt/.venv/bin/python", "-m", "hikarie_bot", "start", "--skip-db-create"]
     volumes:
       - bot-db:/opt/.db
 
