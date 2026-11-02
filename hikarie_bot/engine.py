@@ -18,8 +18,8 @@ from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 
 from hikarie_bot import db_data
-from hikarie_bot.constants import BADGE_TYPES_TO_CHECK, KIRIBAN_GENERATION_LIMIT
-from hikarie_bot.db_data.badges import KiribanGenerator
+from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
+from hikarie_bot.db_data.badges import KIRIBANS
 from hikarie_bot.utils import (
     get_current_level_point,
     get_level,
@@ -38,9 +38,7 @@ APPLY_START = {
     for badge_type in db_data.BadgeTypes
     if badge_type.apply_start is not None
 }
-KIRIBAN_BADGES = {
-    kiriban.number: kiriban.id for kiriban in KiribanGenerator().generate_kiriban(KIRIBAN_GENERATION_LIMIT)
-}
+KIRIBAN_BADGES = {kiriban.number: kiriban.id for kiriban in KIRIBANS}
 STRAIGHT_FLASH_LENGTH = 5
 STRAIGHT_FLASH, ROYAL_STRAIGHT_FLASH, ULTRA_ROYAL_STRAIGHT_FLASH = 401, 402, 403
 TAKANAWA_OFFICE_START = datetime(2026, 1, 19)  # noqa: DTZ001  # naive JST like the stored times

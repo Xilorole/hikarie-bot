@@ -159,27 +159,8 @@ class BadgeData:
     badge_type_id: int
 
 
-def generate_kiriban_badges(under: int) -> list[BadgeData]:
-    """Generate kiriban BadgeData dynamically using KiribanGenerator.
-
-    Args:
-        under: Maximum kiriban number to generate (exclusive)
-
-    Returns:
-        List of BadgeData for kiriban badges starting from id=6001
-    """
-    generator = KiribanGenerator()
-    return [
-        BadgeData(
-            id=kiriban.id,
-            message=f"{kiriban.number}番目のお客様",
-            condition=f"{kiriban.number}回目の出社登録をした",
-            level=1,
-            score=kiriban.score,  # Use calculated score based on kiriban type
-            badge_type_id=6,
-        )
-        for kiriban in generator.generate_kiriban(under=under)
-    ]
+# every kiriban below the limit, with badge IDs from 6001 in order
+KIRIBANS = list(KiribanGenerator().generate_kiriban(under=KIRIBAN_GENERATION_LIMIT))
 
 
 # Define the badge types.
@@ -386,8 +367,17 @@ Badges = [
         badge_type_id=5,
     ),
     # BadgeTypeData id=6, name="kiriban", description="特定の出社登録の回数で付与される"
-    # Dynamically generated kiriban badges are inserted here
-    *generate_kiriban_badges(under=KIRIBAN_GENERATION_LIMIT),
+    *(
+        BadgeData(
+            id=kiriban.id,
+            message=f"{kiriban.number}番目のお客様",
+            condition=f"{kiriban.number}回目の出社登録をした",
+            level=1,
+            score=kiriban.score,
+            badge_type_id=6,
+        )
+        for kiriban in KIRIBANS
+    ),
     # BadgeTypeData id=7, name="long_time_no_see",
     #           description="長期間出社登録がない状態で復帰した"  # noqa: ERA001
     BadgeData(

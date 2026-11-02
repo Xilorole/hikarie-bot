@@ -15,7 +15,6 @@ from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     BADGE_TYPES_TO_CHECK,
     CONTEXT_ITEM_MAX,
-    KIRIBAN_GENERATION_LIMIT,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
     TAKEN_6XXX_BADGE_IMAGE_URL,
 )
@@ -25,7 +24,7 @@ from hikarie_bot.constants import (
 from hikarie_bot.constants import (
     NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL,
 )
-from hikarie_bot.db_data.badges import KiribanGenerator
+from hikarie_bot.db_data.badges import KIRIBANS
 from hikarie_bot.models import (
     Achievement,
     Badge,
@@ -327,10 +326,6 @@ class AchievementView(View):
         self.user_id = user_id
         self.jst_datetime = jst_datetime
 
-        # Performance optimization: cache frequently used data
-        self._kiriban_cache = None
-        self._current_arrival_count_cache = None
-
         # 各セクションのブロックを生成して追加
         self.blocks.extend(self.generate_statistics_blocks())
         self.blocks.extend(self.generate_attendance_history_blocks())
@@ -487,23 +482,14 @@ class AchievementView(View):
         """Check if badge is a kiriban badge (6000 series)."""
         return 6000 <= badge_id < 7000  # noqa: PLR2004
 
-    def _get_kiriban_list(self) -> list:
-        """Get cached kiriban list to avoid regeneration."""
-        if self._kiriban_cache is None:
-            generator = KiribanGenerator()
-            self._kiriban_cache = list(generator.generate_kiriban(under=KIRIBAN_GENERATION_LIMIT))
-        return self._kiriban_cache
-
     def _get_next_kiriban_badge_id(self) -> int | None:
         """Get the next kiriban badge ID that should be displayed.
 
         Returns the next unachieved kiriban badge ID if the previous one is achieved,
         or the first kiriban badge ID if none are achieved yet.
         """
-        kiriban_list = self._get_kiriban_list()
-
         # Check from the first kiriban
-        for i, kiriban in enumerate(kiriban_list):
+        for i, kiriban in enumerate(KIRIBANS):
             user_badge = (
                 self.session.query(UserBadge)
                 .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == kiriban.id)
@@ -515,7 +501,7 @@ class AchievementView(View):
                     return kiriban.id
 
                 # Check if previous kiriban is achieved
-                prev_kiriban = kiriban_list[i - 1]
+                prev_kiriban = KIRIBANS[i - 1]
                 prev_user_badge = (
                     self.session.query(UserBadge)
                     .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == prev_kiriban.id)
@@ -553,13 +539,7 @@ class AchievementView(View):
         Returns:
             Tuple of (badge_id, kiriban_count) for the next kiriban, or None if no more
         """
-        kiriban_list = self._get_kiriban_list()
-        kiriban_id_counts = [(kiriban.id, kiriban.number) for kiriban in kiriban_list]
-
-        for badge_id, kiriban_count in kiriban_id_counts:
-            if current_count < kiriban_count:
-                return badge_id, kiriban_count
-        return None
+        return next(((kiriban.id, kiriban.number) for kiriban in KIRIBANS if current_count < kiriban.number), None)
 
     def _generate_kiriban_status_text(self) -> str:
         """Generate kiriban status text showing progress to next kiriban."""
