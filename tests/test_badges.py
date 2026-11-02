@@ -5,6 +5,7 @@ from datetime import date, datetime
 import pytest
 
 from hikarie_bot.db_data import Badges
+from hikarie_bot.db_data.badges import KIRIBANS, kiriban_score
 from hikarie_bot.engine import JST
 from tests.helpers import compute_in_order
 
@@ -347,3 +348,34 @@ def test_badge_rule(types: set[int], arrivals: list[tuple[str, str]], checks: li
         arrival = engine.arrival_of(user, date.fromisoformat(day))
         earned = [badge_id for badge_id in arrival.badge_ids if BADGE_TYPE[badge_id] in types] if arrival else []
         assert earned == expected, f"{user} on {day}"
+
+
+@pytest.mark.parametrize(
+    ("number", "score"),
+    [
+        (10, 4),  # power of ten multiple
+        (11, 4),  # repetitive
+        (121, 5),  # palindrome
+        (123, 7),  # sequential, ascending
+        (4321, 7),  # sequential, descending
+        (100, 6),
+        (1111, 8),  # repetitive, not a palindrome or a power of ten
+        (5000, 8),
+        (1, None),
+        (12, None),
+        (1213, None),
+    ],
+)
+def test_kiriban_score(number: int, score: int | None) -> None:
+    """Kiriban numbers score by their kind, the first matching kind winning."""
+    assert kiriban_score(number) == score
+
+
+def test_kiriban_badges() -> None:
+    """Kiriban badges are the kiribans below 10000, numbered from 6001 in order."""
+    assert len(KIRIBANS) == 244
+    assert [(k.id, k.number, k.score) for k in (KIRIBANS[0], KIRIBANS[22], KIRIBANS[-1])] == [
+        (6001, 10, 4),
+        (6023, 123, 7),
+        (6244, 9999, 8),
+    ]

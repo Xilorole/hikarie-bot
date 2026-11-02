@@ -6,7 +6,6 @@ from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
-from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
 from hikarie_bot.db_data import Badges
 from hikarie_bot.engine import JST, BadgeEngine, compute
 from hikarie_bot.utils import is_jp_bizday
@@ -85,7 +84,7 @@ def test_synthetic_data_triggers_every_badge_type(arrivals: list[tuple[str, date
     """Every rule is exercised, so the equivalence check covers all of them."""
     engine = compute(arrivals)
     earned = {BADGE_TYPE[badge_id] for result in engine.results for badge_id in result.badge_ids}
-    assert earned == set(BADGE_TYPES_TO_CHECK)
+    assert earned == set(BadgeEngine.CHECKERS)
 
 
 def test_engine_matches_the_previous_implementation(arrivals: list[tuple[str, datetime]]) -> None:

@@ -3,11 +3,11 @@ from unittest.mock import patch
 
 from hikarie_bot.engine import JST
 from hikarie_bot.utils import get_level, leveled_up, max_level_reached
-from tests.helpers import compute_in_order
+from tests.helpers import compute_in_order, only_badge_types
 
 
 # only the fastest-arrival and time-window badges
-@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2, 5])
+@only_badge_types(2, 5)
 def test_only_the_first_arrival_of_the_day_scores() -> None:
     """A second arrival on the same day earns nothing."""
     engine = compute_in_order(
@@ -35,7 +35,7 @@ def test_rank_follows_the_time_of_day() -> None:
     ]
 
 
-@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2, 5])
+@only_badge_types(2, 5)
 def test_second_arrived_user_has_lower_point() -> None:
     """The fastest badge goes only to the first arrival of the day."""
     engine = compute_in_order(
@@ -45,7 +45,7 @@ def test_second_arrived_user_has_lower_point() -> None:
     assert {user_id: user.score for user_id, user in engine.users.items()} == {"1st": 7, "2nd": 3}
 
 
-@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2, 5])
+@only_badge_types(2, 5)
 def test_level_up() -> None:
     """Scores accumulate across days and cross the level threshold."""
     engine = compute_in_order(*(("test_user", datetime(2024, 2, day, 7, 0, tzinfo=JST)) for day in range(1, 5)))
@@ -58,7 +58,7 @@ def test_level_up() -> None:
 
 
 # only the fastest-arrival badge, worth 701pt, so three arrivals cross the 1400pt upper limit
-@patch("hikarie_bot.engine.BADGE_TYPES_TO_CHECK", [2])
+@only_badge_types(2)
 @patch.dict("hikarie_bot.engine.BADGE_SCORES", {201: 701})
 def test_reach_max_level() -> None:
     """The score beyond the upper limit is kept and the level stays at max."""
