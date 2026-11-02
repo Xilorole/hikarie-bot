@@ -3,8 +3,9 @@ from typing import Self
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
-from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
+from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
 
 REQUIRED = [
     "output_channel",
@@ -24,7 +25,8 @@ class Settings(BaseSettings):
 
     The env file is DOTENV_PATH (e.g. .env.dev for `slack run`) or the working directory's
     .env; a parent directory's file is never read, and tests (ENV=test) read none.
-    Environment variables win over the file. Outside dev/test every REQUIRED value must be set.
+    Environment variables win over the file. Outside dev/test every REQUIRED value must be set
+    and the database must be a file (an in-memory database loses everything on restart).
     """
 
     model_config = SettingsConfigDict(
@@ -63,6 +65,8 @@ class Settings(BaseSettings):
             self.database_url = self.database_url or "sqlite:///:memory:"
         elif missing := [name for name in REQUIRED if not getattr(self, name)]:
             raise EnvironmentVariableNotFoundError(missing[0].upper())
+        elif make_url(self.database_url).database in {None, "", ":memory:"}:
+            raise InMemoryDatabaseError(self.database_url)
         return self
 
 

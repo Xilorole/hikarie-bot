@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
+from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
 from hikarie_bot.settings import Settings
 
 REQUIRED_SLACK = ["OUTPUT_CHANNEL", "LOG_CHANNEL", "BOT_ID", "V1_BOT_ID", "V2_BOT_ID", "ADMIN"]
@@ -22,6 +22,11 @@ def test_settings_require_database_url_outside_dev_and_test(monkeypatch: pytest.
 
     monkeypatch.setenv("DATABASE_URL", "sqlite:////data/hikarie.db")
     assert Settings(_env_file=None).database_url == "sqlite:////data/hikarie.db"
+
+    for in_memory in ("sqlite:///:memory:", "sqlite://"):
+        monkeypatch.setenv("DATABASE_URL", in_memory)
+        with pytest.raises(InMemoryDatabaseError, match="persistent volume"):
+            Settings(_env_file=None)
 
     monkeypatch.setenv("ENV", "test")
     monkeypatch.delenv("DATABASE_URL")
