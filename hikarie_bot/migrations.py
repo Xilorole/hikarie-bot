@@ -1,0 +1,58 @@
+"""Apply Alembic migrations and prepare the database on startup.
+
+Revision 0000 is the baseline. Databases from before Alembic are not upgraded: the data
+is rebuilt from Slack, so such a database should be removed instead.
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import inspect
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from hikarie_bot.curd import MasterDataSync, sync_badge_master_data
+
+SCRIPT_LOCATION = Path(__file__).parent / "alembic"
+
+
+class UnversionedDatabaseError(RuntimeError):
+    """Raised for a database that has tables but no Alembic version."""
+
+    def __init__(self, url: str) -> None:
+        """Initialize the UnversionedDatabaseError class."""
+        super().__init__(f"{url} predates schema versioning; delete it and rebuild the data from Slack")
+
+
+@dataclass
+class InitResult:
+    """The schema revision before and after startup, and the badge master data sync."""
+
+    revision_before: str | None
+    revision: str
+    master_data: MasterDataSync
+
+
+def upgrade_database(engine: Engine) -> tuple[str | None, str]:
+    """Upgrade the schema to the latest Alembic revision; return the revisions before and after."""
+    with engine.begin() as connection:
+        tables = set(inspect(connection).get_table_names())
+        if tables and "alembic_version" not in tables:
+            raise UnversionedDatabaseError(engine.url.render_as_string(hide_password=True))
+        config = Config()
+        config.set_main_option("script_location", str(SCRIPT_LOCATION))
+        config.attributes["connection"] = connection
+        before = MigrationContext.configure(connection).get_current_revision()
+        command.upgrade(config, "head")
+        return before, ScriptDirectory.from_config(config).get_current_head()
+
+
+def init_database(engine: Engine) -> InitResult:
+    """Bring the schema up to date and synchronize master data from code."""
+    before, after = upgrade_database(engine)
+    with Session(engine) as session:
+        return InitResult(revision_before=before, revision=after, master_data=sync_badge_master_data(session))

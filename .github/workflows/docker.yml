@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, rebuild]
 
 env:
   REGISTRY: ghcr.io
@@ -25,6 +25,11 @@ jobs:
         with:
           dockerfile: Dockerfile
 
+      - name: Validate Kubernetes manifests
+        run: |
+          docker run --rm -v "$PWD/deploy/rancher:/manifests:ro" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary -kubernetes-version 1.30.0 /manifests
+
   build_release:
     runs-on: ubuntu-latest
 
@@ -44,6 +49,8 @@ jobs:
           context: .
           file: ./Dockerfile
           load: true
+          build-args: |
+            APP_REVISION=${{ github.sha }}
           tags: ${{ env.RELEASE_TEST_TAG }}
           cache-from: type=gha,scope=release
           cache-to: type=gha,scope=release,mode=max
@@ -57,17 +64,14 @@ jobs:
           docker run --rm --network none -e ENV=test -e SLACK_BOT_TOKEN=xoxb-test \
             "${{ env.RELEASE_TEST_TAG }}" /opt/.venv/bin/python -m hikarie_bot --help
 
-      - name: Build empty initial-data image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: initial-data
-          load: true
-          tags: user/initial-data:test
-          cache-from: type=gha,scope=release
-
-      - name: Verify offline initialization
+      - name: Verify the image knows its commit
         run: |
-          docker run --rm --network none --entrypoint sh user/initial-data:test -c \
-            '/opt/.venv/bin/python -m hikarie_bot.initial_data && /opt/.venv/bin/python -m hikarie_bot.initial_data && /opt/.venv/bin/python -c "import sqlite3; connection = sqlite3.connect(\"/opt/.db/data.db\"); assert connection.execute(\"SELECT COUNT(*) FROM user\").fetchone() == (0,); assert connection.execute(\"SELECT COUNT(*) FROM guest_arrival_raw\").fetchone() == (0,); assert connection.execute(\"SELECT COUNT(*) FROM badges\").fetchone()[0] > 0"'
+          docker run --rm --network none -e ENV=test --entrypoint /opt/.venv/bin/python \
+            "${{ env.RELEASE_TEST_TAG }}" -c \
+            'from hikarie_bot.startup import current_revision; assert current_revision() == "${{ github.sha }}"[:7], current_revision()'
+
+      - name: Verify offline database migration
+        run: |
+          docker run --rm --network none -e ENV=test -e DATABASE_URL=sqlite:////opt/.db/data.db \
+            --entrypoint /opt/.venv/bin/python "${{ env.RELEASE_TEST_TAG }}" -c \
+            'from sqlalchemy import create_engine, inspect; from hikarie_bot.migrations import init_database; engine = create_engine("sqlite:////opt/.db/data.db"); init_database(engine); init_database(engine); tables = set(inspect(engine).get_table_names()); assert {"alembic_version", "arrival_event", "sync_state", "badges"} <= tables, tables'

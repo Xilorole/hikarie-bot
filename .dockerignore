@@ -3,6 +3,7 @@
 .env.*
 !.env.template
 .db/
+.cache/
 .artifacts/
 .worktrees/
 **/__pycache__/
@@ -15,6 +16,3 @@ build/
 dist/
 *.egg-info/
 notebook/
-initial-data/*
-!initial-data/manifest.json
-!initial-data/snapshot.sqlite.fernet

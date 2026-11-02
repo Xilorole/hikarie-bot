@@ -1,0 +1,60 @@
+# The bot: a single Socket Mode connection with its SQLite database on the PVC.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hikarie-bot
+  labels:
+    app: hikarie-bot
+spec:
+  # one replica only: two pods would split Slack events and share one SQLite file
+  replicas: 1
+  # the EBS volume can be attached to one pod at a time, so stop the old pod first
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hikarie-bot
+  template:
+    metadata:
+      labels:
+        app: hikarie-bot
+    spec:
+      imagePullSecrets:
+        # the registry secret already used to pull ghcr.io/xilorole/hikarie-bot
+        - name: ghcr
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        # makes the volume writable by UID/GID 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: bot
+          # pin the image built from the commit being deployed (Release tags it as sha-<7 chars>)
+          image: ghcr.io/xilorole/hikarie-bot:sha-XXXXXXX
+          envFrom:
+            - secretRef:
+                name: hikarie-bot
+          env:
+            - name: DATABASE_URL
+              value: sqlite:////opt/.db/data.db
+          volumeMounts:
+            - name: data
+              mountPath: /opt/.db
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: hikarie-bot-data
