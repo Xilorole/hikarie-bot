@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from functools import cache
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Dialect, ForeignKey, Integer, String, event, func
@@ -8,7 +9,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapped, Mapper, Session, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
-from .database import BaseSchema, SessionLocal, check_sqlite_location, engine
+from .database import BaseSchema, get_engine
 
 if TYPE_CHECKING:
     from hikarie_bot.migrations import InitResult
@@ -305,27 +306,17 @@ class SyncState(BaseSchema):
         return f"<SyncState(channel_id={self.channel_id}, synced_until={self.synced_until})>"
 
 
-# Dependency
-
-_initialized_engines: dict[int, InitResult] = {}
-
-
+@cache
 def ensure_database() -> InitResult:
     """Migrate the schema and sync master data once per process; return what that first run did."""
-    if id(engine) not in _initialized_engines:
-        from hikarie_bot.migrations import init_database  # noqa: PLC0415 - migrations imports this module
+    from hikarie_bot.migrations import init_database  # noqa: PLC0415 - migrations imports this module
 
-        check_sqlite_location(str(engine.url))
-        _initialized_engines[id(engine)] = init_database(engine)
-    return _initialized_engines[id(engine)]
+    return init_database(get_engine())
 
 
 @contextmanager
 def get_db() -> Generator[Session]:
     """Get the database session, preparing the schema and master data on first use."""
     ensure_database()
-    db = SessionLocal()  # sessionを生成
-    try:
-        yield db
-    finally:
-        db.close()
+    with Session(get_engine(), autoflush=False) as session:
+        yield session

@@ -1,14 +1,12 @@
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine
 
-from hikarie_bot import startup, sync
-from hikarie_bot.migrations import init_database
+from hikarie_bot import startup
+from hikarie_bot.models import ensure_database
+from hikarie_bot.settings import Settings
 from hikarie_bot.startup import StartupReporter, prepare
 
 CHANNEL = "C0OUT"
@@ -50,26 +48,11 @@ class Source:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+def client(app_database: Engine, settings: Settings) -> AsyncMock:
     """Run startup against a fresh database and capture what is posted."""
-    engine = create_engine("sqlite://")
-    initialized: list = []
-
-    def ensure_database() -> Any:  # noqa: ANN401
-        if not initialized:
-            initialized.append(init_database(engine))
-        return initialized[0]
-
-    @contextmanager
-    def get_db() -> Iterator[Session]:
-        with Session(engine) as session:
-            yield session
-
-    monkeypatch.setattr(startup, "ensure_database", ensure_database)
-    monkeypatch.setattr(startup, "get_db", get_db)
-    monkeypatch.setattr(sync, "BOT_ID", BOT)
+    settings.bot_id = BOT
     client = AsyncMock()
-    client.restart = initialized.clear  # a new process initializes the database again
+    client.restart = ensure_database.cache_clear  # a new process initializes the database again
     return client
 
 
@@ -143,11 +126,11 @@ async def test_posting_failure_does_not_stop_startup(client: AsyncMock) -> None:
     assert [step.name for step in reporter.steps] == ["database", "slack sync", "scores"]
 
 
-def test_current_revision_prefers_the_build_argument(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_current_revision_prefers_the_build_argument(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
     """Images report the commit they were built from; a checkout falls back to git."""
-    monkeypatch.setattr(startup, "APP_REVISION", "6709a7d1234567890")
+    settings.app_revision = "6709a7d1234567890"
     assert startup.current_revision() == "6709a7d"
 
-    monkeypatch.setattr(startup, "APP_REVISION", "")
+    settings.app_revision = ""
     monkeypatch.setattr(startup.subprocess, "run", Mock(side_effect=FileNotFoundError("git")))
     assert startup.current_revision() == "unknown"

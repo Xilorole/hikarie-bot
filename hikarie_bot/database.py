@@ -1,22 +1,18 @@
 import os
+from functools import cache
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import StaticPool
 
-from hikarie_bot.exceptions import DatabaseLocationError
-from hikarie_bot.settings import DATABASE_URL
-
-SQLALCHEMY_DATABASE_URL = DATABASE_URL
+from hikarie_bot.exceptions import DatabaseLocationError, InMemoryDatabaseError
+from hikarie_bot.settings import get_settings
 
 
 def configure_sqlite(engine: Engine) -> None:
-    """Use WAL and a busy timeout for file-backed SQLite databases."""
-    url = make_url(str(engine.url))
-    if url.get_backend_name() != "sqlite" or url.database in {None, "", ":memory:"} or "mode=ro" in str(url):
-        return
+    """Use WAL and a busy timeout on a SQLite file."""
 
     @event.listens_for(engine, "connect")
     def _set_pragmas(dbapi_connection, _connection_record) -> None:  # noqa: ANN001
@@ -26,15 +22,11 @@ def configure_sqlite(engine: Engine) -> None:
         cursor.close()
 
 
-def check_sqlite_location(url: str) -> None:
+def check_sqlite_location(path: Path) -> None:
     """Explain why a SQLite file could not be opened, before SQLite says only "unable to open".
 
     Raises DatabaseLocationError naming the directory and the likely fix.
     """
-    parsed = make_url(url)
-    if parsed.get_backend_name() != "sqlite" or parsed.database in {None, "", ":memory:"} or "mode=ro" in url:
-        return
-    path = Path(parsed.database)
     relative = (
         ""
         if path.is_absolute()
@@ -58,14 +50,24 @@ def check_sqlite_location(url: str) -> None:
         raise DatabaseLocationError(msg)
 
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    # an in-memory database (dev/test) lives in one connection, which worker threads must share
-    **({"poolclass": StaticPool} if make_url(SQLALCHEMY_DATABASE_URL).database in {None, "", ":memory:"} else {}),
-)
-configure_sqlite(engine)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+@cache
+def get_engine() -> Engine:
+    """Create the application's SQLite engine from DATABASE_URL on first use.
+
+    dev/test may use an in-memory database; elsewhere it must be a file, which loses nothing on restart.
+    """
+    settings = get_settings()
+    settings.require("database_url")
+    url = make_url(settings.database_url)
+    if url.database in {None, "", ":memory:"}:
+        if not settings.local:
+            raise InMemoryDatabaseError(settings.database_url)
+        # an in-memory database lives in one connection, which worker threads must share
+        return create_engine(url, connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    check_sqlite_location(Path(url.database))
+    engine = create_engine(url, connect_args={"check_same_thread": False})
+    configure_sqlite(engine)
+    return engine
 
 
 class BaseSchema(DeclarativeBase):

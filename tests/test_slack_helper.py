@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 from freezegun import freeze_time
-from pytest_mock import MockerFixture
 
 from hikarie_bot.engine import JST
 from hikarie_bot.slack_helper import DAILY_MESSAGE_TRIGGER, schedule_daily_message, send_daily_message
@@ -23,13 +22,12 @@ def test_daily_message_runs_every_day_at_six(after: datetime, expected: datetime
 
 
 @pytest.mark.asyncio
-async def test_send_daily_message(mocker: MockerFixture) -> None:
-    """The daily question is posted to the output channel."""
-    mocker.patch("hikarie_bot.slack_helper.OUTPUT_CHANNEL", "test_channel")
+async def test_send_daily_message() -> None:
+    """The daily question is posted to the given channel."""
     client = AsyncMock()
 
     with freeze_time("2023-02-13 21:00:00"):  # 2023-02-14 06:00 JST
-        await send_daily_message(client)
+        await send_daily_message(client, "test_channel")
 
     client.chat_postMessage.assert_awaited_once()
     assert client.chat_postMessage.await_args.kwargs["channel"] == "test_channel"
@@ -50,7 +48,7 @@ async def test_not_sending_message_on_days_off(utc: str) -> None:
     client = AsyncMock()
 
     with freeze_time(utc):
-        await send_daily_message(client)
+        await send_daily_message(client, "test_channel")
 
     client.chat_postMessage.assert_not_awaited()
 
@@ -58,9 +56,14 @@ async def test_not_sending_message_on_days_off(utc: str) -> None:
 @pytest.mark.asyncio
 async def test_schedule_daily_message() -> None:
     """The scheduler runs send_daily_message on the daily trigger."""
-    scheduler = schedule_daily_message(AsyncMock())
+    client = AsyncMock()
+    scheduler = schedule_daily_message(client, "test_channel")
     try:
         (job,) = scheduler.get_jobs()
-        assert (job.func, job.trigger) == (send_daily_message, DAILY_MESSAGE_TRIGGER)
+        assert (job.func, job.trigger, job.args) == (
+            send_daily_message,
+            DAILY_MESSAGE_TRIGGER,
+            (client, "test_channel"),
+        )
     finally:
         scheduler.shutdown(wait=False)

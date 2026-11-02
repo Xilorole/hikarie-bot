@@ -35,7 +35,7 @@ from hikarie_bot.models import (
     UserBadge,
     UserInfoRaw,
 )
-from hikarie_bot.settings import BOT_ID
+from hikarie_bot.settings import get_settings
 
 Message = dict[str, Any]
 
@@ -216,7 +216,8 @@ def parse_arrival(message: Message) -> ParsedArrival | None:
     The bot's arrival metadata wins; older posts are read from their text and ts.
     """
     metadata = message.get("metadata") or {}
-    if message.get("bot_id") == BOT_ID and metadata.get("event_type") == ARRIVAL_EVENT_TYPE:
+    from_bot = message.get("bot_id") == get_settings().bot_id
+    if from_bot and metadata.get("event_type") == ARRIVAL_EVENT_TYPE:
         payload = metadata["event_payload"]
         return ParsedArrival(
             user_id=payload["user_id"],
@@ -226,7 +227,7 @@ def parse_arrival(message: Message) -> ParsedArrival | None:
         )
     text = message.get("text") or ""
     posted_at = datetime.fromtimestamp(float(message["ts"]), UTC)
-    if message.get("bot_id") == BOT_ID and (match := CURRENT_ARRIVAL.search(text)):
+    if from_bot and (match := CURRENT_ARRIVAL.search(text)):
         source = "slack_v3"
     elif (
         message.get("subtype") == "bot_message"
@@ -251,7 +252,7 @@ class SyncResult:
 
 async def sync_channel(session: Session, source: SlackSource, channel: str) -> SyncResult:
     """Ingest new arrival events from the channel and advance its sync position."""
-    if not BOT_ID:
+    if not (bot_id := get_settings().bot_id):
         # Without it no current arrival is recognized and the sync would silently store almost nothing.
         msg = "BOT_ID must be set to sync"
         raise ValueError(msg)
@@ -271,7 +272,7 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
         if arrival := parse_arrival(message):
             arrivals.append(arrival)
         has_new_replies = synced_until is None or float(message.get("latest_reply", "0")) > synced_until
-        if message.get("bot_id") == BOT_ID and message.get("reply_count") and has_new_replies:
+        if message.get("bot_id") == bot_id and message.get("reply_count") and has_new_replies:
             result.threads += 1
             replies = (await source.replies(channel, message["ts"]))[1:]
             if len(replies) < message["reply_count"]:

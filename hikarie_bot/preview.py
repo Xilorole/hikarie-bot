@@ -34,7 +34,7 @@ from hikarie_bot.modals import (
     RegistryMessage,
 )
 from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, User
-from hikarie_bot.settings import SLACK_BOT_TOKEN, SLACK_WORKSPACE_ID
+from hikarie_bot.settings import get_settings
 from hikarie_bot.sync import rebuild_derived_tables
 from hikarie_bot.utils import is_jp_bizday
 
@@ -243,10 +243,11 @@ def _read_only_url(database_url: str) -> str:
 
 def resolve_workspace_id(workspace_id: str | None) -> str:
     """Resolve the team ID from the option, the environment, or auth.test (read-only)."""
-    if workspace_id or SLACK_WORKSPACE_ID:
-        return workspace_id or SLACK_WORKSPACE_ID
-    if SLACK_BOT_TOKEN:
-        return WebClient(token=SLACK_BOT_TOKEN).auth_test()["team_id"]
+    settings = get_settings()
+    if workspace_id := workspace_id or settings.slack_workspace_id:
+        return workspace_id
+    if settings.slack_bot_token:
+        return WebClient(token=settings.slack_bot_token).auth_test()["team_id"]
     msg = "Pass --workspace-id, or set SLACK_WORKSPACE_ID or SLACK_BOT_TOKEN"
     raise click.ClickException(msg)
 

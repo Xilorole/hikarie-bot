@@ -10,9 +10,10 @@ from asyncclick.testing import CliRunner
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from hikarie_bot import sync
+from hikarie_bot import __main__ as bot
 from hikarie_bot.migrations import init_database
 from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, SyncState, User
+from hikarie_bot.settings import Settings
 from hikarie_bot.sync import (
     CachedSlackSource,
     LiveSlackSource,
@@ -32,9 +33,9 @@ V2_ERA = datetime(2024, 6, 3, 0, 30, tzinfo=UTC).timestamp()
 
 
 @pytest.fixture(autouse=True)
-def bot_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def bot_id(settings: Settings) -> None:
     """Give the bot an ID (it is empty under ENV=test)."""
-    monkeypatch.setattr(sync, "BOT_ID", BOT)
+    settings.bot_id = BOT
 
 
 @pytest.fixture
@@ -308,9 +309,9 @@ async def test_rebuild_derived_tables_is_repeatable(session: Session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sync_requires_bot_id(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_sync_requires_bot_id(session: Session, settings: Settings) -> None:
     """A sync without the bot ID fails instead of silently storing almost nothing."""
-    monkeypatch.setattr(sync, "BOT_ID", "")
+    settings.bot_id = ""
 
     with pytest.raises(ValueError, match="must be set"):
         await sync_channel(session, channel_with_two_days(), CHANNEL)
@@ -320,9 +321,7 @@ async def test_sync_requires_bot_id(session: Session, monkeypatch: pytest.Monkey
 @pytest.mark.asyncio
 async def test_sync_command_rejects_conflicting_sources(tmp_path: Path) -> None:
     """--from-cache and --record are mutually exclusive."""
-    from hikarie_bot.__main__ import sync as sync_command  # noqa: PLC0415 - imports the Slack app
-
-    result = await CliRunner().invoke(sync_command, ["--from-cache", str(tmp_path), "--record", str(tmp_path)])
+    result = await CliRunner().invoke(bot.sync, ["--from-cache", str(tmp_path), "--record", str(tmp_path)])
 
     assert result.exit_code != 0
     assert "cannot be combined" in result.output

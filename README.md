@@ -29,7 +29,7 @@ The CLI installs the dev app from `manifest.json` and injects its tokens. `scrip
 ### Message previews
 
 ```bash
-ENV=dev SLACK_BOT_TOKEN=xoxb-dummy uv run python -m hikarie_bot preview --workspace-id <team ID>
+uv run python -m hikarie_bot preview --workspace-id <team ID>
 ```
 
 renders every user-facing message from synthetic data and prints Block Kit Builder URLs for that workspace, without
@@ -55,7 +55,7 @@ only what was posted since the last run. The same sync is available as a read-on
 # read from Slack and keep the raw responses for offline use
 uv run python -m hikarie_bot sync --record .cache/slack
 # rebuild a local database from those responses without network access
-ENV=dev DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache .cache/slack
+DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache .cache/slack
 ```
 
 The raw responses contain real user data: never commit or upload them.

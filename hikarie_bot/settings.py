@@ -1,11 +1,11 @@
 import os
+from functools import cache
 from typing import Self
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.engine import make_url
 
-from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
+from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
 
 REQUIRED = [
     "output_channel",
@@ -19,18 +19,13 @@ REQUIRED = [
 
 
 class Settings(BaseSettings):
-    """Application settings from environment variables, then an env file.
+    """Application settings from environment variables, then an env file (see get_settings).
 
-    The env file is DOTENV_PATH (e.g. .env.dev for `slack run`) or the working directory's
-    .env; a parent directory's file is never read, and tests (ENV=test) read none.
-    Environment variables win over the file. Outside dev/test every REQUIRED value must be set
-    and the database must be a file (an in-memory database loses everything on restart).
+    Nothing is required to construct them; a command checks what it needs with require().
+    dev/test fall back to an in-memory database.
     """
 
-    model_config = SettingsConfigDict(
-        env_file=None if os.environ.get("ENV") == "test" else os.environ.get("DOTENV_PATH", ".env"),
-        extra="ignore",
-    )
+    model_config = SettingsConfigDict(extra="ignore")
 
     env: str = ""
 
@@ -58,26 +53,32 @@ class Settings(BaseSettings):
     # the commit the running image was built from (set by the Docker build)
     app_revision: str = ""
 
+    @property
+    def local(self) -> bool:
+        """Tell whether this is a dev or test run, where nothing is required."""
+        return self.env in {"dev", "test"}
+
     @model_validator(mode="after")
-    def _require_production_values(self) -> Self:
-        if self.env in {"dev", "test"}:
+    def _in_memory_database_for_dev_and_test(self) -> Self:
+        if self.local:
             self.database_url = self.database_url or "sqlite:///:memory:"
-        elif missing := [name for name in REQUIRED if not getattr(self, name)]:
-            raise EnvironmentVariableNotFoundError(missing[0].upper())
-        elif make_url(self.database_url).database in {None, "", ":memory:"}:
-            raise InMemoryDatabaseError(self.database_url)
         return self
 
+    def require(self, *names: str) -> None:
+        """Raise for the first named value that is unset, unless this is a dev or test run."""
+        if not self.local and (missing := [name for name in names if not getattr(self, name)]):
+            raise EnvironmentVariableNotFoundError(missing[0].upper())
 
-settings = Settings()
 
-OUTPUT_CHANNEL = settings.output_channel
-LOG_CHANNEL = settings.log_channel
-BOT_ID = settings.bot_id
-ADMIN = settings.admin
-SLACK_WORKSPACE_ID = settings.slack_workspace_id
-SLACK_BOT_TOKEN = settings.slack_bot_token
-SLACK_APP_TOKEN = settings.slack_app_token
-DATABASE_URL = settings.database_url
-LOGURU_LEVEL = settings.loguru_level
-APP_REVISION = settings.app_revision
+def env_file() -> str | None:
+    """Return the env file: DOTENV_PATH (e.g. .env.dev for `slack run`), else ./.env; none in tests.
+
+    A parent directory's file is never read, and environment variables win over the file.
+    """
+    return None if os.environ.get("ENV") == "test" else os.environ.get("DOTENV_PATH", ".env")
+
+
+@cache
+def get_settings() -> Settings:
+    """Read the settings on first use, so importing the package needs no configuration."""
+    return Settings(_env_file=env_file())
