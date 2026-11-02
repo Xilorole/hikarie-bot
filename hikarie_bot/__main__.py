@@ -20,7 +20,7 @@ from hikarie_bot.modals import (
     RegistryMessage,
     ShortcutID,
 )
-from hikarie_bot.models import ensure_database, get_db
+from hikarie_bot.models import get_db
 from hikarie_bot.preview import preview
 from hikarie_bot.settings import (
     ADMIN,
@@ -32,6 +32,7 @@ from hikarie_bot.settings import (
 from hikarie_bot.slack_helper import (
     send_daily_message,
 )
+from hikarie_bot.startup import StartupReporter, prepare
 from hikarie_bot.sync import (
     CachedSlackSource,
     LiveSlackSource,
@@ -61,18 +62,10 @@ async def start(*, dev: bool = False) -> None:
     logger.remove()
     logger.add(sys.stderr, level=log_level)
 
-    await app.client.chat_postMessage(
-        channel=LOG_CHANNEL,
-        text=f"starting application (v{version})",
-    )
-
-    # migrate the schema and sync badge master data before any task touches the database
-    ensure_database()
-
-    # read arrivals posted while the bot was stopped (the whole channel on first start)
-    with get_db() as session:
-        await sync_channel(session, LiveSlackSource(app.client), OUTPUT_CHANNEL)
-        rebuild_derived_tables(session)
+    # migrate, read arrivals posted while the bot was stopped (the whole channel on first start)
+    # and recompute scores before any task touches the database; each step goes to the log channel
+    reporter = StartupReporter(client=app.client, channel=LOG_CHANNEL, version=version)
+    await prepare(reporter, LiveSlackSource(app.client), OUTPUT_CHANNEL)
 
     background_task = set()
 
@@ -94,10 +87,7 @@ async def start(*, dev: bool = False) -> None:
     # makes a strong reference not to GC
     background_task.add(a)
 
-    await app.client.chat_postMessage(
-        channel=LOG_CHANNEL,
-        text=f"application started (v{version})",
-    )
+    await reporter.post(reporter.summary())
 
     handler = AsyncSocketModeHandler(app, SLACK_APP_TOKEN)
     await handler.start_async()

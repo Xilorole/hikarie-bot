@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Dialect, ForeignKey, Integer, String, event, func
 from sqlalchemy.engine import Connection
@@ -8,6 +9,9 @@ from sqlalchemy.orm import Mapped, Mapper, Session, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
 from .database import BaseSchema, SessionLocal, engine
+
+if TYPE_CHECKING:
+    from hikarie_bot.migrations import InitResult
 
 
 # Define the GuestArrivalInfo table
@@ -303,16 +307,16 @@ class SyncState(BaseSchema):
 
 # Dependency
 
-_initialized_engines: set[int] = set()
+_initialized_engines: dict[int, "InitResult"] = {}
 
 
-def ensure_database() -> None:
-    """Migrate the schema and sync master data once per process."""
+def ensure_database() -> "InitResult":
+    """Migrate the schema and sync master data once per process; return what that first run did."""
     if id(engine) not in _initialized_engines:
         from hikarie_bot.migrations import init_database  # migrations imports this module
 
-        init_database(engine)
-        _initialized_engines.add(id(engine))
+        _initialized_engines[id(engine)] = init_database(engine)
+    return _initialized_engines[id(engine)]
 
 
 @contextmanager
