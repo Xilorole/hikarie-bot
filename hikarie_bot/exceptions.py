@@ -33,6 +33,17 @@ class EnvironmentVariableNotFoundError(Exception):
         super().__init__(f"Environment variable not found: {env_var}")
 
 
+class InMemoryDatabaseError(Exception):
+    """Raised when production is configured with an in-memory database."""
+
+    def __init__(self: Self, url: str) -> None:
+        """Initialize the InMemoryDatabaseError class."""
+        super().__init__(
+            f"DATABASE_URL={url} keeps no data across restarts (each start re-reads the whole channel); "
+            "use a file on a persistent volume, e.g. sqlite:////opt/.db/data.db"
+        )
+
+
 class InvalidPointError(Exception):
     """Raised when the point value is invalid."""
 
