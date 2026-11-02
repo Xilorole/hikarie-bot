@@ -10,7 +10,8 @@ square (the corners are transparent).
 
 Naming items after the output directory writes only those icons, e.g. one item from a newer sheet:
 
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-3.png assets/items dice
+    uv run --with pillow --with numpy python scripts/cut_item_icons.py \
+        assets/items/sources/sheet-3.png assets/items dice
 
 A single regenerated item (one item on a white background) replaces one icon instead; it is scaled so
 that the longer side of the item matches the others (about ITEM_LONG_SIDE of the 128 pixels):
