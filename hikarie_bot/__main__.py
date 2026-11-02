@@ -30,9 +30,7 @@ from hikarie_bot.settings import (
     SLACK_BOT_TOKEN,
 )
 from hikarie_bot.slack_components import open_achievement_view
-from hikarie_bot.slack_helper import (
-    send_daily_message,
-)
+from hikarie_bot.slack_helper import schedule_daily_message, send_daily_message
 from hikarie_bot.startup import StartupReporter, current_revision, prepare
 from hikarie_bot.sync import (
     CachedSlackSource,
@@ -68,25 +66,9 @@ async def start(*, dev: bool = False) -> None:
     reporter = StartupReporter(client=app.client, channel=LOG_CHANNEL, revision=current_revision())
     await prepare(reporter, LiveSlackSource(app.client), OUTPUT_CHANNEL)
 
-    background_task = set()
-
-    # get now in JST for now
     if dev:
-        now = get_current_jst_datetime()
-        f = send_daily_message(
-            app=app,
-            at_hour=now.hour,
-            at_minute=now.minute,
-            check_interval=50,
-            force_send=True,
-        )
-    else:
-        f = send_daily_message(app=app)
-
-    a = asyncio.ensure_future(f)
-
-    # makes a strong reference not to GC
-    background_task.add(a)
+        await send_daily_message(app.client)  # post right away to try the buttons
+    schedule_daily_message(app.client)
 
     await reporter.post(reporter.summary())
 

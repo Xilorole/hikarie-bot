@@ -1,136 +1,57 @@
-import asyncio
-import logging
-from contextlib import suppress
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
 from freezegun import freeze_time
-from loguru import logger
 from pytest_mock import MockerFixture
 
-from hikarie_bot.slack_helper import send_daily_message
+from hikarie_bot.engine import JST
+from hikarie_bot.slack_helper import DAILY_MESSAGE_TRIGGER, schedule_daily_message, send_daily_message
 
-logging.basicConfig(level=logging.DEBUG)
+
+@pytest.mark.parametrize(
+    ("after", "expected"),
+    [
+        (datetime(2024, 2, 13, 5, 59, tzinfo=JST), datetime(2024, 2, 13, 6, 0, tzinfo=JST)),  # Tuesday
+        (datetime(2024, 2, 13, 6, 0, 1, tzinfo=JST), datetime(2024, 2, 14, 6, 0, tzinfo=JST)),
+        (datetime(2024, 2, 9, 6, 0, 1, tzinfo=JST), datetime(2024, 2, 12, 6, 0, tzinfo=JST)),  # Friday → Monday
+    ],
+)
+def test_daily_message_runs_on_weekdays_at_six(after: datetime, expected: datetime) -> None:
+    """The job fires once a day at 06:00 JST, Monday to Friday."""
+    assert DAILY_MESSAGE_TRIGGER.get_next_fire_time(None, after) == expected
 
 
 @pytest.mark.asyncio
 async def test_send_daily_message(mocker: MockerFixture) -> None:
-    """Test the daily message sending function."""
+    """The daily question is posted to the output channel."""
     mocker.patch("hikarie_bot.slack_helper.OUTPUT_CHANNEL", "test_channel")
-    mocker.patch("hikarie_bot.slack_helper.BOT_ID", "test_bot_id")
+    client = AsyncMock()
 
-    # Mock the app.client methods
-    mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
-    mock_app.client.chat_postMessage.return_value = None
+    with freeze_time("2023-02-13 21:00:00"):  # 2023-02-14 06:00 JST
+        await send_daily_message(client)
 
-    # Freeze time to a specific datetime
-    with freeze_time("2023-02-14 06:00:00", tz_offset=-9, real_asyncio=True):
-        # Run the function in a background task
-        task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
-        await asyncio.sleep(0.01)
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-        # Assertions
-        mock_app.client.conversations_history.assert_called_once()
-        mock_app.client.chat_postMessage.assert_called_once_with(
-            channel="test_channel",
-            blocks=mock_app.client.chat_postMessage.call_args[1]["blocks"],
-            text=mock_app.client.chat_postMessage.call_args[1]["text"],
-        )
+    client.chat_postMessage.assert_awaited_once()
+    assert client.chat_postMessage.await_args.kwargs["channel"] == "test_channel"
 
 
 @pytest.mark.asyncio
-async def test_not_sending_message_on_holiday(mocker: MockerFixture) -> None:
-    """Test the daily message sending function."""
-    # Mock environment variables
-    mocker.patch("hikarie_bot.slack_helper.OUTPUT_CHANNEL", "test_channel")
-    mocker.patch("hikarie_bot.slack_helper.BOT_ID", "test_bot_id")
+async def test_not_sending_message_on_holiday() -> None:
+    """Nothing is posted on a holiday in Japan."""
+    client = AsyncMock()
 
-    # Mock the app.client methods
-    mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
-    mock_app.client.chat_postMessage.return_value = None
+    with freeze_time("2024-02-11 21:00:00"):  # 2024-02-12 06:00 JST, a substitute holiday
+        await send_daily_message(client)
 
-    # Freeze time to a specific datetime
-    with freeze_time("2024-02-12 06:00:00", tz_offset=-9, real_asyncio=True):
-        # Monday and holiday
-        # Run the function in a background task
-        logger.info("Starting the task")
-        task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
-        logger.info("Task started")
-        # Allow some time for the function to run
-        await asyncio.sleep(0.01)
-        logger.info("Task finished")
-        # Cancel the task to stop the infinite loop
-        task.cancel()
-        logger.info("Task cancelled")
-
-        with suppress(asyncio.CancelledError):
-            await task
-
-        # aseert the conversation history is not called
-        mock_app.client.conversations_history.assert_not_called()
-        mock_app.client.chat_postMessage.assert_not_called()
+    client.chat_postMessage.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_not_sending_message_0559_and_0601(mocker: MockerFixture) -> None:
-    """Test the daily message sending function."""
-    # Mock environment variables
-    mocker.patch("hikarie_bot.slack_helper.OUTPUT_CHANNEL", "test_channel")
-    mocker.patch("hikarie_bot.slack_helper.BOT_ID", "test_bot_id")
-
-    # Mock the app.client methods
-    mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
-    mock_app.client.chat_postMessage.return_value = None
-
-    # Freeze time to a specific datetime
-    with freeze_time("2024-02-13 06:01:00", tz_offset=-9, real_asyncio=True):
-        # Monday and holiday
-        # Run the function in a background task
-        logger.info("Starting the task")
-        task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
-        logger.info("Task started")
-        # Allow some time for the function to run
-        await asyncio.sleep(0.01)
-        logger.info("Task finished")
-        # Cancel the task to stop the infinite loop
-        task.cancel()
-        logger.info("Task cancelled")
-
-        with suppress(asyncio.CancelledError):
-            await task
-
-        # aseert the conversation history is not called
-        mock_app.client.conversations_history.assert_not_called()
-        mock_app.client.chat_postMessage.assert_not_called()
-
-    # 一応再初期化
-    mock_app = AsyncMock()
-    mock_app.client.conversations_history.return_value = {"messages": [{"user": "other_user_id"}]}
-    mock_app.client.chat_postMessage.return_value = None
-
-    # Freeze time to a specific datetime
-    with freeze_time("2024-02-13 05:59:00", tz_offset=-9, real_asyncio=True):
-        # Monday and holiday
-        # Run the function in a background task
-        logger.info("Starting the task")
-        task = asyncio.create_task(send_daily_message(mock_app, check_interval=1))
-        logger.info("Task started")
-        # Allow some time for the function to run
-        await asyncio.sleep(0.01)
-        logger.info("Task finished")
-        # Cancel the task to stop the infinite loop
-        task.cancel()
-        logger.info("Task cancelled")
-
-        with suppress(asyncio.CancelledError):
-            await task
-
-        # aseert the conversation history is not called
-        mock_app.client.conversations_history.assert_not_called()
-        mock_app.client.chat_postMessage.assert_not_called()
+async def test_schedule_daily_message() -> None:
+    """The scheduler runs send_daily_message on the daily trigger."""
+    scheduler = schedule_daily_message(AsyncMock())
+    try:
+        (job,) = scheduler.get_jobs()
+        assert (job.func, job.trigger) == (send_daily_message, DAILY_MESSAGE_TRIGGER)
+    finally:
+        scheduler.shutdown(wait=False)

@@ -1,107 +1,32 @@
-import asyncio
-from datetime import datetime, timedelta, timezone
+"""Post the daily question to the output channel on Japanese business days at 06:00 JST."""
+
+from datetime import datetime
 
 import jpholiday
-from loguru import logger
-from slack_bolt.app.async_app import AsyncApp
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from slack_sdk.web.async_client import AsyncWebClient
 
+from hikarie_bot.engine import JST
 from hikarie_bot.modals import InitialMessage
-from hikarie_bot.settings import BOT_ID, OUTPUT_CHANNEL
+from hikarie_bot.settings import OUTPUT_CHANNEL
+
+# holidays are skipped when the job runs
+DAILY_MESSAGE_TRIGGER = CronTrigger(day_of_week="mon-fri", hour=6, timezone=JST)
 
 
-async def check_bot_has_sent_message(
-    app: AsyncApp, channel_id: str, from_datetime: datetime, to_datetime: datetime
-) -> bool:
-    """Check if the bot has sent a message in the channel.
-
-    Parameters
-    ----------
-    app : AsyncApp
-        The Slack application instance used to interact with the Slack API.
-    channel_id : str
-        The ID of the Slack channel to check.
-    from_datetime : datetime
-        The start datetime to check for messages.
-    to_datetime : datetime
-        The end datetime to check for messages.
-
-    Returns
-    -------
-    bool
-        True if the bot has sent a message, False otherwise.
-
-    """
-    try:
-        messages = await app.client.conversations_history(
-            channel=channel_id,
-            oldest=str(from_datetime.timestamp()),
-            latest=str(to_datetime.timestamp()),
-        )
-        return any(message.get("bot_id") == BOT_ID for message in messages.get("messages", []))
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Error checking conversation history: {e}")
-        return False
+async def send_daily_message(client: AsyncWebClient) -> None:
+    """Post the daily question, unless today is a holiday in Japan."""
+    if jpholiday.is_holiday(datetime.now(JST).date()):
+        return
+    message = InitialMessage()
+    await client.chat_postMessage(channel=OUTPUT_CHANNEL, blocks=message.render(), text=message.to_text())
 
 
-async def send_daily_message(
-    app: AsyncApp,
-    at_hour: int = 6,
-    at_minute: int = 0,
-    check_interval: int = 50,
-    force_send: bool = False,  # noqa: FBT001, FBT002
-) -> None:
-    "Run task every weekday 06:00 JST."
-    # タイムゾーンの生成
-    JST = timezone(timedelta(hours=+9), "JST")  # noqa: N806
-    channel_id = OUTPUT_CHANNEL
-
-    logger.info("Started task")
-    weekday_limit = 5
-
-    while True:
-        # check if the time is 06:00 JST
-        now = datetime.now(JST)
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        logger.debug(f"Current time: {now}")
-        if (
-            now.hour == at_hour
-            and now.minute == at_minute
-            and now.weekday() < weekday_limit
-            and not jpholiday.is_holiday(now.date())
-        ):
-            logger.info("Attempting to fetch messages")
-            # check if the BOT already sent to channel
-            logger.debug(f"Channel ID: {channel_id}")
-            try:
-                if (
-                    await check_bot_has_sent_message(
-                        app=app,
-                        channel_id=channel_id,
-                        from_datetime=day_start,
-                        to_datetime=now,
-                    )
-                    and not force_send
-                ):
-                    logger.info("Message already sent")
-                else:
-                    logger.info("Sending message to channel")
-                    try:
-                        await app.client.chat_postMessage(
-                            channel=OUTPUT_CHANNEL,
-                            blocks=InitialMessage().render(),
-                            text=InitialMessage().to_text(),
-                        )
-                        logger.info("Message sent")
-                    except Exception as e:  # noqa: BLE001
-                        logger.error(f"Error sending message: {e}")
-
-            except Exception as e:  # noqa: BLE001
-                logger.error(f"Unexpected error fetching conversation history: {e}")
-                await asyncio.sleep(check_interval)
-                continue
-
-        else:
-            logger.debug("Conditions not met for sending message")
-        logger.debug("Sleeping for check_interval")
-        await asyncio.sleep(check_interval)
-        logger.debug("Woke up from sleep")
+def schedule_daily_message(client: AsyncWebClient) -> AsyncIOScheduler:
+    """Post the daily question on schedule from now on (call from the running event loop)."""
+    scheduler = AsyncIOScheduler(timezone=JST)
+    # a run held up by a busy event loop still posts within the minute
+    scheduler.add_job(send_daily_message, DAILY_MESSAGE_TRIGGER, args=[client], misfire_grace_time=60)
+    scheduler.start()
+    return scheduler
