@@ -7,6 +7,11 @@ centre of its bounding box is the centre of its square, scaled to 128x128 and cu
 square (the corners are transparent).
 
     uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-2.png assets/items
+
+Naming items after the output directory writes only those icons, e.g. one item from a newer sheet:
+
+    uv run --with pillow --with numpy python scripts/cut_item_icons.py \
+        assets/items/sources/sheet-3.png assets/items dice
 """
 
 import sys
@@ -72,8 +77,8 @@ def rounded_mask() -> Image.Image:
     return mask.resize((ICON_SIZE, ICON_SIZE), Image.Resampling.LANCZOS)
 
 
-def cut(sheet_path: Path, output_dir: Path) -> list[Placement]:
-    """Write one icon per cell as <name>.png and return how each item was moved."""
+def cut(sheet_path: Path, output_dir: Path, only: set[str] | None = None) -> list[Placement]:
+    """Write one icon per cell (or only the named ones) as <name>.png and return how each item was moved."""
     pixels = np.asarray(Image.open(sheet_path).convert("RGB"))
     cell = pixels.shape[0] // GRID
     foreground = pixels.min(axis=2) <= WHITE_THRESHOLD
@@ -89,6 +94,8 @@ def cut(sheet_path: Path, output_dir: Path) -> list[Placement]:
     mask = rounded_mask()
     placements = []
     for index, name in enumerate(CELLS):
+        if only and name not in only:
+            continue
         row, column = divmod(index, GRID)
         mine = np.isin(labels, [label for label, owner in owners.items() if owner == index])
         selected = np.repeat(np.repeat(mine, BLOCK, axis=0), BLOCK, axis=1) & foreground[: cell * GRID, : cell * GRID]
@@ -107,5 +114,5 @@ def cut(sheet_path: Path, output_dir: Path) -> list[Placement]:
 
 
 if __name__ == "__main__":
-    for placement in cut(Path(sys.argv[1]), Path(sys.argv[2])):
+    for placement in cut(Path(sys.argv[1]), Path(sys.argv[2]), set(sys.argv[3:]) or None):
         print(placement)
