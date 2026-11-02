@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from functools import cached_property
 from textwrap import dedent
 
 from loguru import logger
@@ -16,7 +17,6 @@ from hikarie_bot.constants import (
     BADGE_TYPES_TO_CHECK,
     CONTEXT_ITEM_MAX,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
-    TAKEN_6XXX_BADGE_IMAGE_URL,
 )
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL as ARRIVED_IMAGE_URL,
@@ -24,7 +24,7 @@ from hikarie_bot.constants import (
 from hikarie_bot.constants import (
     NOT_ACHIEVED_BADGE_IMAGE_URL as NOT_ARRIVED_IMAGE_URL,
 )
-from hikarie_bot.db_data.badges import KIRIBANS
+from hikarie_bot.db_data.badges import KIRIBANS, Kiriban
 from hikarie_bot.models import (
     Achievement,
     Badge,
@@ -457,22 +457,6 @@ class AchievementView(View):
                 image_url=ACHIEVED_BADGE_IMAGE_URL,
                 alt_text=f"【{badge.message}】{badge.condition} @ {user_badge.initially_acquired_datetime:%Y-%m-%d}",
             )
-        if self._is_kiriban_badge(badge.id):
-            return self._create_kiriban_badge_element(badge)
-        return block_elements.ImageElement(
-            image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
-            alt_text=f"【{badge.message}】???",
-        )
-
-    def _create_kiriban_badge_element(self, badge: Badge) -> block_elements.ImageElement:
-        """Create element for kiriban special badges."""
-        other_user_badge = self.session.query(UserBadge).filter(UserBadge.badge_id == badge.id).first()
-
-        if other_user_badge is not None:
-            return block_elements.ImageElement(
-                image_url=TAKEN_6XXX_BADGE_IMAGE_URL,
-                alt_text=f"【{badge.message}】他のユーザーが獲得済み",
-            )
         return block_elements.ImageElement(
             image_url=NOT_ACHIEVED_BADGE_IMAGE_URL,
             alt_text=f"【{badge.message}】???",
@@ -481,40 +465,6 @@ class AchievementView(View):
     def _is_kiriban_badge(self, badge_id: int) -> bool:
         """Check if badge is a kiriban badge (6000 series)."""
         return 6000 <= badge_id < 7000  # noqa: PLR2004
-
-    def _get_next_kiriban_badge_id(self) -> int | None:
-        """Get the next kiriban badge ID that should be displayed.
-
-        Returns the next unachieved kiriban badge ID if the previous one is achieved,
-        or the first kiriban badge ID if none are achieved yet.
-        """
-        # Check from the first kiriban
-        for i, kiriban in enumerate(KIRIBANS):
-            user_badge = (
-                self.session.query(UserBadge)
-                .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == kiriban.id)
-                .first()
-            )
-
-            if not user_badge:  # This kiriban is not achieved
-                if i == 0:  # First kiriban
-                    return kiriban.id
-
-                # Check if previous kiriban is achieved
-                prev_kiriban = KIRIBANS[i - 1]
-                prev_user_badge = (
-                    self.session.query(UserBadge)
-                    .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == prev_kiriban.id)
-                    .first()
-                )
-
-                if prev_user_badge:  # Previous kiriban is achieved
-                    return kiriban.id
-
-                # If previous kiriban is not achieved, don't show this one
-                return None
-
-        return None  # All kiribans are achieved
 
     def _get_badge_achievement_count(self, badge_id: int) -> int:
         """Get the number of times a user has achieved a specific badge."""
@@ -526,33 +476,22 @@ class AchievementView(View):
         )
         return count_query.count if count_query else 0
 
-    def _get_current_arrival_count(self) -> int:
-        """Get the current total arrival count for all users."""
+    @cached_property
+    def _arrival_count(self) -> int:
+        """Count the arrivals of all users, which kiribans number."""
         return self.session.query(GuestArrivalInfo).count()
 
-    def _get_next_kiriban_info(self, current_count: int) -> tuple[int, int] | None:
-        """Get the next kiriban badge info (badge_id, kiriban_count).
-
-        Args:
-            current_count: Current total arrival count
-
-        Returns:
-            Tuple of (badge_id, kiriban_count) for the next kiriban, or None if no more
-        """
-        return next(((kiriban.id, kiriban.number) for kiriban in KIRIBANS if current_count < kiriban.number), None)
+    @cached_property
+    def _next_kiriban(self) -> Kiriban | None:
+        """Return the next kiriban to be reached, or None beyond the last one."""
+        return next((kiriban for kiriban in KIRIBANS if self._arrival_count < kiriban.number), None)
 
     def _generate_kiriban_status_text(self) -> str:
         """Generate kiriban status text showing progress to next kiriban."""
-        current_count = self._get_current_arrival_count()
-        next_kiriban = self._get_next_kiriban_info(current_count)
-
-        if next_kiriban is None:
+        if self._next_kiriban is None:
             return "現在実装されているキリ番は全て達成可能範囲を超えています。今後の実装をお待ちください。"
-
-        _badge_id, kiriban_count = next_kiriban
-        remaining = kiriban_count - current_count
-
-        return f"次のキリ番まで: あと *{remaining}回* ({kiriban_count}回目)"
+        remaining = self._next_kiriban.number - self._arrival_count
+        return f"次のキリ番まで: あと *{remaining}回* ({self._next_kiriban.number}回目)"
 
     def _create_context_blocks_from_elements(
         self, elements: list[block_elements.ImageElement]
@@ -778,6 +717,7 @@ class AchievementView(View):
             self.session.query(BadgeType).filter(BadgeType.id.in_(BADGE_TYPES_TO_CHECK)).order_by(BadgeType.id).all()
         )
 
+        next_kiriban_id = self._next_kiriban.id if self._next_kiriban else None
         for badge_type in all_badge_types:
             badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
             type_unachieved = []
@@ -789,19 +729,8 @@ class AchievementView(View):
                     .first()
                 )
 
-                if not user_badge:
-                    # キリ番バッジ（6000番台）の特別処理
-                    if self._is_kiriban_badge(badge.id):
-                        # 他のユーザーが獲得済みの場合は表示しない
-                        other_user_badge = self.session.query(UserBadge).filter(UserBadge.badge_id == badge.id).first()
-                        if other_user_badge is not None:
-                            continue
-
-                        # 次に獲得すべきキリ番のみ表示
-                        next_kiriban_id = self._get_next_kiriban_badge_id()
-                        if badge.id != next_kiriban_id:
-                            continue
-
+                # キリ番は全体の出社回数で次に来るものだけを表示
+                if not user_badge and (not self._is_kiriban_badge(badge.id) or badge.id == next_kiriban_id):
                     type_unachieved.append(f"[{badge.id}] {badge.message}")
 
             if type_unachieved:

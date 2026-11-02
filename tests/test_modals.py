@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, NOT_ACHIEVED_BADGE_IMAGE_URL
 from hikarie_bot.curd import initially_insert_badge_data
-from hikarie_bot.engine import UserLevel
+from hikarie_bot.engine import JST, UserLevel
 from hikarie_bot.modals import (
     AchievementView,
     AlreadyRegisteredMessage,
@@ -705,3 +705,20 @@ def test_attendance_data_generation(temp_db: sessionmaker[Session]) -> None:
         # Check that weekdays only are included
         for date_obj in attendance_data:
             assert date_obj.weekday() < 5, f"Should only include weekdays, got {date_obj.strftime('%A')}"
+
+
+@mock.patch("hikarie_bot.modals.BADGE_TYPES_TO_CHECK", [6])
+def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals(temp_db: sessionmaker[Session]) -> None:
+    """Someone without kiribans still sees the next kiriban to be reached by everyone's arrivals."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+    for i in range(12):  # the 10th and 11th arrivals are kiribans, taken by other users
+        record_arrival(session=session, jst_datetime=datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST), user_id=f"user_{i}")
+    record_arrival(session=session, jst_datetime=datetime(2024, 1, 13, 8, 0, 0, tzinfo=JST), user_id="test_user")
+
+    view = AchievementView(session=session, user_id="test_user")
+
+    texts = [block.to_dict().get("text", {}).get("text", "") for block in view.blocks]
+    assert any("[6003] 20番目のお客様" in text for text in texts)  # 13 arrivals so far: 20 is next
+    assert not any("[6001]" in text or "[6002]" in text for text in texts)
+    assert "次のキリ番まで: あと *7回* (20回目)" in texts
