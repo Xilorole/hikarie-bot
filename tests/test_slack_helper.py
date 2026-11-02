@@ -8,37 +8,9 @@ from freezegun import freeze_time
 from loguru import logger
 from pytest_mock import MockerFixture
 
-from hikarie_bot.slack_helper import MessageFilter, send_daily_message
+from hikarie_bot.slack_helper import send_daily_message
 
 logging.basicConfig(level=logging.DEBUG)
-
-
-def test_filter(mocker: MockerFixture) -> None:
-    """Test the message filter."""
-    # temporarily override the environment variables
-    mocker.patch("hikarie_bot.slack_helper.BOT_ID", "test_bot_id")
-    mocker.patch("hikarie_bot.slack_helper.V1_BOT_ID", "test_v1_bot_id")
-
-    message = {
-        "user": "test_user",
-        "bot_id": "test_v1_bot_id",
-        "text": "ヒカリエは正義 :hikarie:¥n本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
-    }
-    assert MessageFilter.run(message) is True
-
-    message = {
-        "user": "TST",
-        "bot_id": "test_v1_bot_id",
-        "text": "<@USRIDTST0123> clicked *出社してる*",
-    }
-    assert MessageFilter.run(message) is False
-
-    message = {
-        "user": "TST",
-        "bot_id": "test_bot_id",
-        "text": "ヒカリエは正義 :hikarie:¥n本日の最速出社申告ユーザ:<@USRIDTST0123> @ 9:00",
-    }
-    assert MessageFilter.run(message) is True
 
 
 @pytest.mark.asyncio

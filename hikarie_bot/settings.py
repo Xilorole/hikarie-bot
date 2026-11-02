@@ -11,8 +11,6 @@ REQUIRED = [
     "output_channel",
     "log_channel",
     "bot_id",
-    "v1_bot_id",
-    "v2_bot_id",
     "admin",
     "slack_bot_token",
     "slack_app_token",
@@ -42,8 +40,6 @@ class Settings(BaseSettings):
 
     # slack.user
     bot_id: str = ""
-    v1_bot_id: str = ""
-    v2_bot_id: str = ""
     admin: str = ""
 
     # slack.workspace
@@ -78,8 +74,6 @@ settings = Settings()
 OUTPUT_CHANNEL = settings.output_channel
 LOG_CHANNEL = settings.log_channel
 BOT_ID = settings.bot_id
-V1_BOT_ID = settings.v1_bot_id
-V2_BOT_ID = settings.v2_bot_id
 ADMIN = settings.admin
 SLACK_WORKSPACE_ID = settings.slack_workspace_id
 SLACK_BOT_TOKEN = settings.slack_bot_token

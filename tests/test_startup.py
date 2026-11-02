@@ -69,8 +69,6 @@ def client(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     monkeypatch.setattr(startup, "get_db", get_db)
     for module in (slack_helper, sync):
         monkeypatch.setattr(module, "BOT_ID", BOT)
-        monkeypatch.setattr(module, "V1_BOT_ID", "B0V1")
-        monkeypatch.setattr(module, "V2_BOT_ID", "B0V2")
     client = AsyncMock()
     client.restart = initialized.clear  # a new process initializes the database again
     return client

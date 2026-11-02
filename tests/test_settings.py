@@ -7,7 +7,7 @@ from hikarie_bot import settings
 from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
 from hikarie_bot.settings import Settings
 
-REQUIRED_SLACK = ["OUTPUT_CHANNEL", "LOG_CHANNEL", "BOT_ID", "V1_BOT_ID", "V2_BOT_ID", "ADMIN"]
+REQUIRED_SLACK = ["OUTPUT_CHANNEL", "LOG_CHANNEL", "BOT_ID", "ADMIN"]
 
 
 def test_settings_require_database_url_outside_dev_and_test(monkeypatch: pytest.MonkeyPatch) -> None:
