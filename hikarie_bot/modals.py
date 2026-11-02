@@ -320,12 +320,16 @@ class AlreadyRegisteredMessage(BaseMessage):
 class AchievementView(View):
     """Class for creating the achievement Slack view."""
 
-    def __init__(self, session: Session, user_id: str) -> None:
-        """Initialize the AchievementView with the user ID."""
+    def __init__(self, session: Session, user_id: str, jst_datetime: datetime | None = None) -> None:
+        """Initialize the AchievementView with the user ID.
+
+        jst_datetime is the "today" of the attendance history (default: now).
+        """
         super().__init__(type="modal", title="Achievements", close="閉じる")
 
         self.session = session
         self.user_id = user_id
+        self.jst_datetime = jst_datetime
 
         # Performance optimization: cache frequently used data
         self._kiriban_cache = None
@@ -645,7 +649,7 @@ class AchievementView(View):
         """
         from hikarie_bot.utils import get_current_jst_datetime
 
-        current_date = get_current_jst_datetime()
+        current_date = self.jst_datetime or get_current_jst_datetime()
         # 時刻を除いて日付のみにする
         current_date = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
