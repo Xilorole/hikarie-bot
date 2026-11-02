@@ -34,7 +34,7 @@ dev = [
     "freezegun",
     "pytest",
     "pytest-xdist",
-    "ruff",
+    "ruff==0.17.3",
     "pyright",
     "pytest-mock",
     "pytest-env",
