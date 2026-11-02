@@ -13,7 +13,7 @@ from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetry
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot._version import version
-from hikarie_bot.curd import insert_arrival_action
+from hikarie_bot.arrivals import attach_slack_ts, record_button_arrival
 from hikarie_bot.modals import (
     ActionID,
     PointGetMessage,
@@ -37,6 +37,7 @@ from hikarie_bot.sync import (
     CachedSlackSource,
     LiveSlackSource,
     RecordingSlackSource,
+    arrival_metadata,
     rebuild_derived_tables,
     sync_channel,
 )
@@ -186,8 +187,9 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         return
 
     with get_db() as session:
-        insert_result = insert_arrival_action(session, now, user_id)
-    if insert_result is False:
+        event = record_button_arrival(session, user_id, now)
+        event_id = event.id if event else None
+    if event_id is None:
         await client.chat_postEphemeral(
             channel=channel_id,
             user=user_id,
@@ -195,26 +197,29 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         )
         return
 
-    # send point get message to thread
-
+    # recompute scores and badges from the events (well under a second), then announce them
     with get_db() as session:
+        rebuild_derived_tables(session)
         point_get_message = PointGetMessage(
             session=session,
             user_id=user_id,
-            jst_datetime=get_current_jst_datetime(),
+            jst_datetime=now,
             initial_arrival=action_id == ActionID.FASTEST_ARRIVAL,
         )
         registry_message = RegistryMessage(
             session=session,
             jst_datetime=now,
         )
-    await client.chat_postMessage(
+    response = await client.chat_postMessage(
         channel=channel_id,
         thread_ts=message_ts,
         text=point_get_message.to_text(),
         blocks=point_get_message.render(),
         reply_broadcast=action_id == ActionID.FASTEST_ARRIVAL,
+        metadata=arrival_metadata(user_id, now),
     )
+    with get_db() as session:
+        attach_slack_ts(session, event_id, response["ts"])
 
     # replace the message with RegistryMessage
     await client.chat_update(

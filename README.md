@@ -260,6 +260,10 @@ On startup the bot reads arrival events from the output channel into the
 posted since the last run (one day of overlap, and only threads with new
 replies). Scores and badges are then recomputed from those events.
 
+A button press is stored the same way (as a `button` event) and the scores are
+recomputed before the bot replies. The reply carries the press time as Slack
+message metadata (`hikarie_arrival`), so rebuilding from Slack restores it exactly.
+
 The same sync is available as a command. It only reads from Slack:
 
 ```bash
