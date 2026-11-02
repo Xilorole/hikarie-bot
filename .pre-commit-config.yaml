@@ -1,23 +1,20 @@
 default_stages: [pre-commit]
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.17.3
+  # ruff runs from the project environment, so pyproject.toml pins its version for CI too
+  - repo: local
     hooks:
     - id: ruff
       name: Ruff check
-      description: "Run 'ruff check' for extremely fast Python linting"
-      args: [--fix]
-      language: python
+      entry: uv run --frozen ruff check --force-exclude --fix
+      language: system
       types_or: [python, pyi]
 
     - id: ruff-format
       name: Ruff format
-      description: "Run 'ruff format' for extremely fast Python formatting"
-      language: python
+      entry: uv run --frozen ruff format --force-exclude
+      language: system
       types_or: [python, pyi]
 
-  - repo: local
-    hooks:
     - id: add-version-file
       name: Add _version.py if modified
       entry: bash -c 'scripts/add_version_file.sh'
