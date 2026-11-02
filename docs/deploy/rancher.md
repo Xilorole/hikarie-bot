@@ -44,7 +44,7 @@ StorageClass が WaitForFirstConsumer の場合、Pod が付くまで `Pending` 
 Storage → Secrets → Create → Opaque:
 
 - Name: `hikarie-bot`
-- キー: `OUTPUT_CHANNEL` `LOG_CHANNEL` `BOT_ID` `V1_BOT_ID` `V2_BOT_ID` `ADMIN` `SLACK_BOT_TOKEN` `SLACK_APP_TOKEN`
+- キー: `OUTPUT_CHANNEL` `LOG_CHANNEL` `BOT_ID` `ADMIN` `SLACK_BOT_TOKEN` `SLACK_APP_TOKEN`
 
 [`secret.example.yaml`](../../deploy/rancher/secret.example.yaml) を手元でコピーして値を入れ、Import YAML で取り込んでもよい
 （値を入れたファイルはコミットしない）。既存ワークロードの環境変数で渡し続ける場合は、このステップは省略できる。

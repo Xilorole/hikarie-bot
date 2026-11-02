@@ -11,6 +11,7 @@ responses, or a recorded cache (offline). Recorded files have the shape
 """
 
 import json
+import re
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -23,7 +24,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
-from hikarie_bot.engine import UserLevel, compute, to_jst_wall_clock
+from hikarie_bot.engine import JST, UserLevel, compute, to_jst_wall_clock
 from hikarie_bot.models import (
     Achievement,
     ArrivalEvent,
@@ -33,14 +34,21 @@ from hikarie_bot.models import (
     UserBadge,
     UserInfoRaw,
 )
-from hikarie_bot.settings import BOT_ID, V1_BOT_ID, V2_BOT_ID
-from hikarie_bot.slack_helper import MessageFilter
+from hikarie_bot.settings import BOT_ID
 
 Message = dict[str, Any]
 
 PAGE_SIZE = 200
 ARRIVAL_EVENT_TYPE = "hikarie_arrival"
 THREAD_OVERLAP = timedelta(days=1)
+
+# Posts without arrival metadata are read from their text. The retired v1/v2 bots posted only the day's
+# fastest arrival; their history is closed, so its time window identifies them without their bot IDs.
+CURRENT_ARRIVAL = re.compile(r"(?:出社登録しました！|本日の最速出社:).*?<@([A-Z0-9]+)>")
+LEGACY_ARRIVAL = re.compile(r"最速出社申告ユーザ：<@([A-Z0-9]+)>")
+V1_START = datetime(2022, 5, 30, tzinfo=JST)  # earlier posts are a trial run
+V2_START = datetime(2023, 11, 1, tzinfo=JST)
+V3_START = datetime(2024, 10, 3, tzinfo=JST)
 
 
 class SlackSource(Protocol):
@@ -215,15 +223,19 @@ def parse_arrival(message: Message) -> ParsedArrival | None:
             source="slack_v3",
             slack_ts=message["ts"],
         )
-    if message.get("subtype") == "channel_join" or not (user_id := MessageFilter.extract_user_id(message)):
+    text = message.get("text") or ""
+    posted_at = datetime.fromtimestamp(float(message["ts"]), UTC)
+    if message.get("bot_id") == BOT_ID and (match := CURRENT_ARRIVAL.search(text)):
+        source = "slack_v3"
+    elif (
+        message.get("subtype") == "bot_message"
+        and V1_START <= posted_at < V3_START
+        and (match := LEGACY_ARRIVAL.search(text))
+    ):
+        source = "slack_v1" if posted_at < V2_START else "slack_v2"
+    else:
         return None
-    source = {V1_BOT_ID: "slack_v1", V2_BOT_ID: "slack_v2", BOT_ID: "slack_v3"}[message["bot_id"]]
-    return ParsedArrival(
-        user_id=user_id,
-        occurred_at=datetime.fromtimestamp(float(message["ts"]), UTC),
-        source=source,
-        slack_ts=message["ts"],
-    )
+    return ParsedArrival(user_id=match.group(1), occurred_at=posted_at, source=source, slack_ts=message["ts"])
 
 
 @dataclass
@@ -238,9 +250,9 @@ class SyncResult:
 
 async def sync_channel(session: Session, source: SlackSource, channel: str) -> SyncResult:
     """Ingest new arrival events from the channel and advance its sync position."""
-    if not (BOT_ID and V1_BOT_ID and V2_BOT_ID):
-        # Without them no message is recognized and the sync would silently store nothing.
-        msg = "BOT_ID, V1_BOT_ID and V2_BOT_ID must be set to sync"
+    if not BOT_ID:
+        # Without it no current arrival is recognized and the sync would silently store almost nothing.
+        msg = "BOT_ID must be set to sync"
         raise ValueError(msg)
     state = session.get(SyncState, channel)
     synced_until = float(state.synced_until) if state else None

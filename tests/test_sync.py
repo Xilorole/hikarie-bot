@@ -24,18 +24,18 @@ from hikarie_bot.sync import (
 )
 
 CHANNEL = "C0TEST"
-BOT, V1, V2 = "B0V3", "B0V1", "B0V2"
+BOT = "B0V3"
 DAY = 86400.0
 T0 = 1_760_000_000.0  # 2025-10-09 (JST morning)
+V1_ERA = datetime(2023, 6, 1, 0, 30, tzinfo=UTC).timestamp()
+V2_ERA = datetime(2024, 6, 3, 0, 30, tzinfo=UTC).timestamp()
 
 
 @pytest.fixture(autouse=True)
-def bot_ids(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Give the three bot generations distinct IDs (they are empty under ENV=test)."""
+def bot_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the bot an ID (it is empty under ENV=test)."""
     for module in (slack_helper, sync):
         monkeypatch.setattr(module, "BOT_ID", BOT)
-        monkeypatch.setattr(module, "V1_BOT_ID", V1)
-        monkeypatch.setattr(module, "V2_BOT_ID", V2)
 
 
 @pytest.fixture
@@ -58,6 +58,16 @@ def daily_post(at: float, replies: list[str] | None = None) -> dict[str, Any]:
     if replies:
         message |= {"thread_ts": ts(at), "reply_count": len(replies), "latest_reply": replies[-1]}
     return message
+
+
+def legacy_post(at: float, user: str) -> dict[str, Any]:
+    """Return a v1/v2 fastest-arrival post."""
+    return {
+        "ts": ts(at),
+        "subtype": "bot_message",
+        "bot_id": "B0LEGACY",
+        "text": f"ヒカリエは正義 :hikarie:\n本日の最速出社申告ユーザ：<@{user}> @ 9:30",
+    }
 
 
 def point_reply(at: float, parent: float, user: str) -> dict[str, Any]:
@@ -103,7 +113,7 @@ def channel_with_two_days() -> FakeSource:
         ts(day1 + 100): [point_reply(day1 + 200, day1 + 100, "U9")],  # not a bot thread: ignored
     }
     history = [
-        {"ts": ts(T0 - 400 * DAY), "bot_id": V1, "text": "<@U3> 最速出社"},
+        legacy_post(V1_ERA, "U3"),
         daily_post(day1, [m["ts"] for m in threads[ts(day1)]]),
         {
             "ts": ts(day1 + 100),
@@ -126,10 +136,20 @@ def test_parse_arrival_reads_only_bot_arrivals() -> None:
     assert arrival is not None
     assert (arrival.user_id, arrival.source, arrival.slack_ts) == ("U1", "slack_v3", ts(T0))
     assert arrival.occurred_at == datetime.fromtimestamp(T0, UTC)
-    assert parse_arrival({"ts": ts(T0), "bot_id": V2, "text": "<@U2> さん"}).source == "slack_v2"
+    assert parse_arrival(legacy_post(V1_ERA, "U2")).source == "slack_v1"
+    assert parse_arrival(legacy_post(V2_ERA, "U2")).source == "slack_v2"
     assert parse_arrival(daily_post(T0)) is None
     assert parse_arrival({"ts": ts(T0), "user": "U1", "text": "<@U2> おはよう"}) is None
     assert parse_arrival({"ts": ts(T0), "bot_id": BOT, "subtype": "channel_join", "text": "<@U4>"}) is None
+
+
+def test_parse_arrival_reads_legacy_posts_only_from_their_era() -> None:
+    """The fastest-arrival text counts only in the v1/v2 era and only from a bot; v1 click notices do not."""
+    assert parse_arrival(legacy_post(T0, "U2")) is None  # a bot posting the old text today
+    assert parse_arrival(legacy_post(V1_ERA - 400 * DAY, "U2")) is None  # the trial run before v1
+    assert parse_arrival(legacy_post(V1_ERA, "U2") | {"subtype": None, "user": "U9"}) is None
+    click = legacy_post(V1_ERA, "U2") | {"text": "ヒカリエに出社してる？ <@U2>さんが出社してるをクリックしました"}
+    assert parse_arrival(click) is None
 
 
 def test_parse_arrival_prefers_the_bots_arrival_metadata() -> None:
@@ -272,9 +292,9 @@ async def test_rebuild_derived_tables_is_repeatable(session: Session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sync_requires_bot_ids(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A sync without bot IDs fails instead of silently storing nothing."""
-    monkeypatch.setattr(sync, "V2_BOT_ID", "")
+async def test_sync_requires_bot_id(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A sync without the bot ID fails instead of silently storing almost nothing."""
+    monkeypatch.setattr(sync, "BOT_ID", "")
 
     with pytest.raises(ValueError, match="must be set"):
         await sync_channel(session, channel_with_two_days(), CHANNEL)
