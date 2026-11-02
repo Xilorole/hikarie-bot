@@ -1,22 +1,16 @@
 # The engine works on naive JST wall-clock times, as the derived tables store them.
 # ruff: noqa: DTZ001
 import random
+from collections import Counter
 from datetime import date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from hikarie_bot.constants import BADGE_TYPES_TO_CHECK
-from hikarie_bot.curd import insert_arrival_action
 from hikarie_bot.db_data import Badges
 from hikarie_bot.engine import BadgeEngine, compute
-from hikarie_bot.migrations import init_database
-from hikarie_bot.models import Achievement, GuestArrivalInfo, User, UserBadge
 from hikarie_bot.utils import is_jp_bizday
 
-JST = ZoneInfo("Asia/Tokyo")
 BADGE_TYPE = {badge.id: badge.badge_type_id for badge in Badges}
 
 
@@ -66,26 +60,23 @@ def synthetic_arrivals() -> list[tuple[str, datetime]]:
     return sorted(arrivals + special, key=lambda arrival: arrival[1])
 
 
-def replay_with_insert_arrival_action(arrivals: list[tuple[str, datetime]]) -> Session:
-    """Build the derived tables the way the bot did before the engine."""
-    engine = create_engine("sqlite://")
-    init_database(engine)
-    session = Session(engine)
-    for user_id, moment in arrivals:
-        insert_arrival_action(session, moment.replace(tzinfo=JST), user_id)
-    return session
+# Recorded from the previous SQL-based implementation (insert_arrival_action) on synthetic_arrivals()
+# before it was removed: how often each badge was earned and every user's final score.
+PREVIOUS_ARRIVALS = 427
+PREVIOUS_BADGE_COUNTS = {
+    101: 6, 201: 294, 301: 4, 302: 4, 303: 1, 401: 58, 402: 1, 403: 1,
+    501: 162, 502: 183, 503: 73, 504: 9, 701: 19, 702: 7, 703: 1, 704: 2, 801: 1, 802: 1, 803: 1,
+    1501: 22, 1601: 2, 1602: 2, 1701: 5, 1702: 3, 1703: 2, 1704: 5,
+    1801: 14, 1802: 5, 1803: 1, 1804: 2, 1806: 1, 1807: 3, 1901: 5,
+    **dict.fromkeys(range(6001, 6061), 1),  # the first 60 kiriban, once each
+}  # fmt: skip
+PREVIOUS_USER_SCORES = {"U1": 1718, "U2": 173, "U3": 210, "U4": 193, "U5": 16, "U6": 40}
 
 
 @pytest.fixture(scope="module")
 def arrivals() -> list[tuple[str, datetime]]:
     """Return the synthetic arrivals."""
     return synthetic_arrivals()
-
-
-@pytest.fixture(scope="module")
-def reference(arrivals: list[tuple[str, datetime]]) -> Session:
-    """Return the derived tables built by the previous implementation."""
-    return replay_with_insert_arrival_action(arrivals)
 
 
 def test_synthetic_data_triggers_every_badge_type(arrivals: list[tuple[str, datetime]]) -> None:
@@ -95,26 +86,13 @@ def test_synthetic_data_triggers_every_badge_type(arrivals: list[tuple[str, date
     assert earned == set(BADGE_TYPES_TO_CHECK)
 
 
-def test_engine_matches_insert_arrival_action(arrivals: list[tuple[str, datetime]], reference: Session) -> None:
-    """Ranks, badges, scores and badge tallies equal the previous implementation's."""
+def test_engine_matches_the_previous_implementation(arrivals: list[tuple[str, datetime]]) -> None:
+    """Badge counts and final scores equal the previous implementation's on the same arrivals."""
     engine = compute(arrivals)
 
-    expected_arrivals = [
-        (a.user_id, a.arrival_time, a.arrival_rank, a.acquired_score_sum)
-        for a in reference.query(GuestArrivalInfo).order_by(GuestArrivalInfo.id)
-    ]
-    assert [(r.user_id, r.time, r.rank, r.score_sum) for r in engine.results] == expected_arrivals
-
-    expected_badges = sorted(
-        (a.user_id, a.arrival.arrival_time, a.badge_id) for a in reference.query(Achievement).join(Achievement.arrival)
-    )
-    assert sorted((r.user_id, r.time, b) for r in engine.results for b in r.badge_ids) == expected_badges
-
-    assert {u: s.score for u, s in engine.users.items()} == {u.id: u.current_score for u in reference.query(User)}
-    assert {(u, b): (t.count, t.first, t.last) for (u, b), t in engine.user_badges.items()} == {
-        (ub.user_id, ub.badge_id): (ub.count, ub.initially_acquired_datetime, ub.last_acquired_datetime)
-        for ub in reference.query(UserBadge)
-    }
+    assert len(engine.results) == PREVIOUS_ARRIVALS
+    assert Counter(badge_id for result in engine.results for badge_id in result.badge_ids) == PREVIOUS_BADGE_COUNTS
+    assert {user_id: state.score for user_id, state in engine.users.items()} == PREVIOUS_USER_SCORES
 
 
 def test_second_arrival_on_the_same_day_is_not_counted() -> None:

@@ -5,7 +5,8 @@ from unittest import mock
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
+from hikarie_bot.curd import initially_insert_badge_data
+from hikarie_bot.engine import UserLevel
 from hikarie_bot.modals import (
     AchievementView,
     AlreadyRegisteredMessage,
@@ -14,7 +15,8 @@ from hikarie_bot.modals import (
     PointGetMessage,
     RegistryMessage,
 )
-from hikarie_bot.models import Badge, User
+from hikarie_bot.models import Badge, GuestArrivalInfo, User
+from tests.helpers import record_arrival
 
 
 def test_initial_message() -> None:
@@ -59,7 +61,7 @@ def test_registry_message(temp_db: sessionmaker[Session]) -> None:
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_1st",
@@ -115,12 +117,12 @@ def test_registry_message_2(temp_db: sessionmaker[Session]) -> None:
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_1st",
     )
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 1, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user_2nd",
@@ -179,7 +181,7 @@ def test_fastest_arrival_message(temp_db: sessionmaker[Session]) -> None:
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 6, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
@@ -206,7 +208,7 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
@@ -257,20 +259,27 @@ def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
     initially_insert_badge_data(session=session)
     jst = zoneinfo.ZoneInfo("Asia/Tokyo")
 
-    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=jst), user_id="test_user")
-    user = session.query(User).filter(User.id == "test_user").one()
-    user.current_score = 1398
-    session.commit()
+    def arrive(day: int, previous_score: int) -> list[dict]:
+        # derived rows as the engine writes them; scores this high need years of arrivals otherwise
+        arrival_time = datetime(2024, 1, day, 7, 0, 0)  # noqa: DTZ001
+        level = UserLevel.of(previous_score, previous_score + 5)
+        session.merge(
+            User(id="test_user", previous_score=previous_score, current_score=previous_score + 5,
+                 update_datetime=arrival_time, **vars(level))
+        )  # fmt: skip
+        session.add(
+            GuestArrivalInfo(user_id="test_user", arrival_time=arrival_time, arrival_rank=1, acquired_score_sum=5)
+        )
+        session.commit()
+        return PointGetMessage(
+            session,
+            user_id="test_user",
+            jst_datetime=datetime(2024, 1, day, 7, 0, 0, tzinfo=jst),
+            initial_arrival=True,
+        ).render()
 
     # 1398 -> 1403: the upper limit is reached by this arrival
-    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst), user_id="test_user")
-    message = PointGetMessage(
-        session,
-        user_id="test_user",
-        jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst),
-        initial_arrival=True,
-    ).render()
-
+    message = arrive(2, 1398)
     assert message[0]["text"]["text"] == (
         "*07:00* 最速出社登録しました！ :hikarie:\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *上限に到達!* :crown: "
     )
@@ -279,14 +288,7 @@ def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
     )
 
     # 1403 -> 1408: already at the upper limit
-    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 3, 7, 0, 0, tzinfo=jst), user_id="test_user")
-    message = PointGetMessage(
-        session,
-        user_id="test_user",
-        jst_datetime=datetime(2024, 1, 3, 7, 0, 0, tzinfo=jst),
-        initial_arrival=True,
-    ).render()
-
+    message = arrive(3, 1403)
     assert message[0]["text"]["text"].endswith("1403 → *1408* (*+5*)")
     assert "つぎのレベルまで: *上限に到達*" in message[2]["elements"][0]["text"]
 
@@ -319,7 +321,7 @@ def test_achievement_view(temp_db: sessionmaker[Session]) -> None:
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
@@ -353,7 +355,7 @@ def test_achievement_message_type_6(temp_db: sessionmaker[Session]) -> None:
     session = temp_db()
     initially_insert_badge_data(session=session)
 
-    insert_arrival_action(
+    record_arrival(
         session=session,
         jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
         user_id="test_user",
@@ -390,7 +392,7 @@ def test_achievement_message_6xxx_taken_logic(temp_db: sessionmaker[Session]) ->
 
     # at least 10 arrivals to get the 6XXX badge
     for i in range(10):
-        insert_arrival_action(
+        record_arrival(
             session=session,
             jst_datetime=datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
             user_id="test_user",
@@ -440,7 +442,7 @@ def test_achievement_view_attendance_history(temp_db: sessionmaker[Session]) -> 
 
     # Insert arrival actions for the attendance dates
     for date_time in attendance_dates:
-        insert_arrival_action(session=session, jst_datetime=date_time, user_id=test_user_id)
+        record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     # Test with current date being a Wednesday in week 10
     test_current_date = base_date + timedelta(weeks=9, days=2)  # Wednesday of week 10
@@ -517,7 +519,7 @@ def test_get_attendance_data_for_past_10_weeks(temp_db: sessionmaker[Session]) -
     ]
 
     for date_time in attendance_dates:
-        insert_arrival_action(session=session, jst_datetime=date_time, user_id=test_user_id)
+        record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     with (
         mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
@@ -561,7 +563,7 @@ def test_create_github_style_display(temp_db: sessionmaker[Session]) -> None:
     ]
 
     for date_time in test_attendance_data:
-        insert_arrival_action(session=session, jst_datetime=date_time, user_id=test_user_id)
+        record_arrival(session=session, jst_datetime=date_time, user_id=test_user_id)
 
     with (
         mock.patch("hikarie_bot.utils.get_current_jst_datetime", return_value=current_date),
@@ -621,7 +623,7 @@ def test_achievement_view_attendance_history_simple(temp_db: sessionmaker[Sessio
 
     # Insert a simple attendance record
     attendance_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz)  # Monday
-    insert_arrival_action(session=session, jst_datetime=attendance_date, user_id=test_user_id)
+    record_arrival(session=session, jst_datetime=attendance_date, user_id=test_user_id)
 
     # Mock current date to be in the same timeframe
     current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)  # Wednesday
@@ -672,7 +674,7 @@ def test_attendance_data_generation(temp_db: sessionmaker[Session]) -> None:
 
     # Create test data
     attendance_date = datetime(2024, 3, 18, 9, 0, 0, tzinfo=tokyo_tz)  # Monday
-    insert_arrival_action(session=session, jst_datetime=attendance_date, user_id=test_user_id)
+    record_arrival(session=session, jst_datetime=attendance_date, user_id=test_user_id)
 
     current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=tokyo_tz)  # Wednesday
 
