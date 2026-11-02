@@ -6,3 +6,6 @@ ACHIEVED_BADGE_IMAGE_URL = "https://gist.github.com/user-attachments/assets/d9bd
 NOT_ACHIEVED_BADGE_IMAGE_URL = "https://gist.github.com/user-attachments/assets/86451acf-82ce-4ec2-b72e-7c6b9f728efb"
 
 CONTEXT_ITEM_MAX = 10
+
+# The item images (assets/items/<item id>.png), served from the public repository's default branch.
+ITEM_IMAGE_BASE_URL = "https://raw.githubusercontent.com/Xilorole/hikarie-bot/main/assets/items"

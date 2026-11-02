@@ -51,6 +51,11 @@ def test_initial_message() -> None:
                     },
                     "type": "button",
                 },
+                {
+                    "action_id": "PICK_ITEM",
+                    "text": {"emoji": True, "text": "今日のアイテム", "type": "plain_text"},
+                    "type": "button",
+                },
             ],
         },
     ]
@@ -85,6 +90,11 @@ def test_registry_message() -> None:
                         "text": "実績を確認",
                         "type": "plain_text",
                     },
+                    "type": "button",
+                },
+                {
+                    "action_id": "PICK_ITEM",
+                    "text": {"emoji": True, "text": "今日のアイテム", "type": "plain_text"},
                     "type": "button",
                 },
             ],
@@ -134,6 +144,11 @@ def test_registry_message_2() -> None:
                         "text": "実績を確認",
                         "type": "plain_text",
                     },
+                    "type": "button",
+                },
+                {
+                    "action_id": "PICK_ITEM",
+                    "text": {"emoji": True, "text": "今日のアイテム", "type": "plain_text"},
                     "type": "button",
                 },
             ],

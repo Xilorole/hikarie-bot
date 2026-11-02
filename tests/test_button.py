@@ -163,4 +163,11 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
 
     assert app.client.token == "xoxb-test"  # noqa: S105
     handlers = {listener.ack_function for listener in app._async_listeners}  # noqa: SLF001
-    assert handlers == {bot.handle_button_click, bot.handle_check_achievement, bot.handle_reboot}
+    assert handlers == {
+        bot.handle_button_click,
+        bot.handle_check_achievement,
+        bot.handle_pick_item,
+        bot.handle_item_submission,
+        bot.handle_item_review,
+        bot.handle_reboot,
+    }

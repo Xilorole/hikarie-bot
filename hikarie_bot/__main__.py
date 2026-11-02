@@ -1,5 +1,6 @@
 # アプリを起動します
 import asyncio
+import json
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,13 +21,20 @@ from hikarie_bot.database import get_db
 from hikarie_bot.engine import ArrivalResult
 from hikarie_bot.modals import (
     ActionID,
+    BlockID,
+    CallbackID,
     ShortcutID,
     achievement_view,
+    item_pick_view,
+    item_picked_message,
+    item_picked_text,
+    item_review_view,
     point_get_message,
     registry_message,
     render,
     to_text,
 )
+from hikarie_bot.picks import PickGate, StoredPick, attach_pick_ts, pick_gate, record_pick
 from hikarie_bot.preview import preview
 from hikarie_bot.settings import REQUIRED, get_settings
 from hikarie_bot.slack_helper import schedule_daily_message, send_daily_message
@@ -36,6 +44,7 @@ from hikarie_bot.sync import (
     LiveSlackSource,
     RecordingSlackSource,
     arrival_metadata,
+    item_pick_metadata,
     sync_channel,
 )
 
@@ -210,6 +219,90 @@ async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: 
     await client.views_open(trigger_id=body["trigger_id"], view=view)
 
 
+ITEM_LOCK = asyncio.Lock()
+
+
+def check_pick(user_id: str, now: datetime) -> PickGate:
+    """Check whether the user may pick an item now."""
+    with get_db() as session:
+        return pick_gate(session, user_id, now)
+
+
+def store_pick(user_id: str, item_id: str, now: datetime) -> PickGate:
+    """Store the pick if the user may pick it now."""
+    with get_db() as session:
+        return record_pick(session, user_id, item_id, now)
+
+
+async def announce_pick(client: AsyncWebClient, channel_id: str, thread_ts: str, pick: StoredPick) -> None:
+    """Post the pick in the daily post's thread with its metadata, and link the post to the pick."""
+    response = await client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        text=item_picked_text(pick.user_id, pick.item),
+        blocks=render(item_picked_message(pick.user_id, pick.item)),
+        metadata=item_pick_metadata(pick.user_id, pick.day, pick.item_id, pick.occurred_at),
+    )
+    with get_db() as session:
+        attach_pick_ts(session, pick.id, response["ts"])
+
+
+async def handle_pick_item(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Open today's item offers to pick from, or to look at once picked or while an item is held."""
+    await ack()
+    user_id = body["user"]["id"]
+    channel_id = body["channel"]["id"]
+    message_ts = body["message"]["ts"]
+    now = datetime.now(JST)
+    if datetime.fromtimestamp(float(message_ts), JST).date() != now.date():
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text="アイテムは今日の投稿から選んでください")
+        return
+
+    async with ITEM_LOCK:
+        gate = await asyncio.to_thread(check_pick, user_id, now)
+        if gate.unannounced is not None:  # stored but its announcement failed: announce it now
+            await announce_pick(client, channel_id, message_ts, gate.unannounced)
+            return
+    if gate.refusal is not None:
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=gate.refusal)
+        return
+    if gate.notice is not None:  # picked today, or holding an item: the offers to look at
+        view = item_review_view(gate.offers, gate.notice, gate.picked_item_id)
+    else:
+        view = item_pick_view(gate.offers, channel_id, message_ts, now.date())
+    logger.info(f"Opening item offers for user {user_id}")
+    await client.views_open(trigger_id=body["trigger_id"], view=view)
+
+
+async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Store the picked item if the user still may pick it, and announce it in the thread."""
+    user_id = body["user"]["id"]
+    view = body["view"]
+    metadata = json.loads(view["private_metadata"])
+    selected = view["state"]["values"][BlockID.ITEM_CHOICE][ActionID.ITEM_CHOICE]["selected_option"]
+    now = datetime.now(JST)
+    if metadata["day"] != now.date().isoformat():
+        await ack(
+            response_action="errors",
+            errors={BlockID.ITEM_CHOICE: "日付が変わりました。今日の投稿から選び直してください"},
+        )
+        return
+
+    # one pick at a time: the gate is checked again here, as the modal may have stayed open
+    async with ITEM_LOCK:
+        gate = await asyncio.to_thread(store_pick, user_id, selected["value"], now)
+        if gate.unannounced is None:
+            await ack(response_action="errors", errors={BlockID.ITEM_CHOICE: gate.refusal})
+            return
+        await ack()
+        await announce_pick(client, metadata["channel"], metadata["thread_ts"], gate.unannounced)
+
+
+async def handle_item_review(ack: AsyncAck) -> None:
+    """Close the read-only item modal: its OK button submits nothing."""
+    await ack()
+
+
 async def handle_reboot(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Handle the reboot shortcut event."""
     await ack()
@@ -236,6 +329,9 @@ def create_app() -> AsyncApp:
     app.action(ActionID.ARRIVED_OFFICE)(handle_button_click)
     app.action(ActionID.FASTEST_ARRIVAL)(handle_button_click)
     app.action(ActionID.CHECK_ACHIEVEMENT)(handle_check_achievement)
+    app.action(ActionID.PICK_ITEM)(handle_pick_item)
+    app.view(CallbackID.ITEM_PICK)(handle_item_submission)
+    app.view(CallbackID.ITEM_REVIEW)(handle_item_review)
     app.shortcut(ShortcutID.REBOOT)(handle_reboot)
     return app
 

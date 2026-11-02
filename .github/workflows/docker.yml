@@ -74,4 +74,4 @@ jobs:
         run: |
           docker run --rm --network none -e ENV=test -e DATABASE_URL=sqlite:////opt/.db/data.db \
             --entrypoint /opt/.venv/bin/python "${{ env.RELEASE_TEST_TAG }}" -c \
-            'from sqlalchemy import create_engine, inspect; from hikarie_bot.migrations import init_database; engine = create_engine("sqlite:////opt/.db/data.db"); init_database(engine); init_database(engine); tables = set(inspect(engine).get_table_names()); assert tables == {"alembic_version", "arrival_event"}, tables'
+            'from sqlalchemy import create_engine, inspect; from hikarie_bot.migrations import init_database; engine = create_engine("sqlite:////opt/.db/data.db"); init_database(engine); init_database(engine); tables = set(inspect(engine).get_table_names()); assert tables == {"alembic_version", "arrival_event", "item_pick_event"}, tables'

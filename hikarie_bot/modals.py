@@ -1,3 +1,5 @@
+import json
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from itertools import batched
 from textwrap import dedent
@@ -18,7 +20,8 @@ from hikarie_bot.constants import (
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
 from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
-from hikarie_bot.engine import ArrivalResult, BadgeEngine, UserBadgeTally
+from hikarie_bot.db_data.items import ID_CARD, ITEM_IMAGE_URLS, ITEMS, ItemData
+from hikarie_bot.engine import ArrivalResult, BadgeEngine, ItemEffect, UserBadgeTally
 from hikarie_bot.utils import (
     get_level,
     leveled_up,
@@ -45,6 +48,8 @@ class ActionID:
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
     CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
+    PICK_ITEM = "PICK_ITEM"
+    ITEM_CHOICE = "ITEM_CHOICE"
 
 
 class BlockID:
@@ -52,6 +57,14 @@ class BlockID:
 
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
+    ITEM_CHOICE = "ITEM_CHOICE"
+
+
+class CallbackID:
+    """Class for storing the callback IDs of the modals that are submitted."""
+
+    ITEM_PICK = "ITEM_PICK"
+    ITEM_REVIEW = "ITEM_REVIEW"
 
 
 class ShortcutID:
@@ -78,6 +91,7 @@ def initial_message() -> list[Block]:
             elements=[
                 block_elements.ButtonElement(text="最速出社した", action_id=ActionID.FASTEST_ARRIVAL, style="primary"),
                 block_elements.ButtonElement(text="実績を確認", action_id=ActionID.CHECK_ACHIEVEMENT),
+                block_elements.ButtonElement(text="今日のアイテム", action_id=ActionID.PICK_ITEM),
             ],
             block_id=BlockID.FASTEST_ARRIVAL,
         ),
@@ -92,15 +106,21 @@ def registry_message(arrivals: list[ArrivalResult]) -> list[Block]:
             elements=[
                 block_elements.ButtonElement(text="出社した", action_id=ActionID.ARRIVED_OFFICE),
                 block_elements.ButtonElement(text="実績を確認", action_id=ActionID.CHECK_ACHIEVEMENT),
+                block_elements.ButtonElement(text="今日のアイテム", action_id=ActionID.PICK_ITEM),
             ],
             block_id=BlockID.ARRIVED_OFFICE,
         ),
         blocks.DividerBlock(),
         blocks.SectionBlock(
             text="本日の出社ユーザー:\n"
-            + "\n".join(f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>" for arrival in arrivals),
+            + "\n".join(f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>{_id_card(arrival)}" for arrival in arrivals),
         ),
     ]
+
+
+def _id_card(arrival: ArrivalResult) -> str:
+    """Return the ID card shown after the user while their ID card item acts."""
+    return f" {ITEMS[ID_CARD].emoji}" if any(effect.item_id == ID_CARD for effect in arrival.item_effects) else ""
 
 
 def point_get_message(arrival: ArrivalResult) -> list[Block]:
@@ -129,7 +149,10 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
 
     is_first = arrival.rank == 1
     badges = [BADGES[badge_id] for badge_id in sorted(arrival.badge_ids)]
-    achievements_text = "\n".join(f" - {badge.message}:*+{badge.score}pt*" for badge in badges)
+    achievements_text = "\n".join(
+        [f" - {badge.message}:*+{badge.score}pt*" for badge in badges]
+        + [f" - {_item_effect_text(effect)}:*+{effect.points}pt*" for effect in arrival.item_effects if effect.points]
+    )
     context = (
         dedent(
             f"""\
@@ -156,6 +179,104 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
     ]
 
 
+def _item_effect_text(effect: ItemEffect) -> str:
+    """Return what gave an item's points: the item, and whose treat it was."""
+    item = ITEMS[effect.item_id]
+    return f"{item.label} (<@{effect.giver}>さんから)" if effect.giver else item.label
+
+
+ITEM_PICK_GUIDE = (
+    "1つだけ獲得できます。効果は次の出社から。持てるアイテムは1つまでで、"
+    "アイテムによる加点は1回の出社につき最大 +3pt です。"
+)
+
+
+def item_pick_view(
+    offered: list[ItemData], channel_id: str, thread_ts: str, day: date, image_urls: Mapping[str, str] = ITEM_IMAGE_URLS
+) -> dict:
+    """Build the modal offering today's items as cards, picked with a radio button and submitted.
+
+    Views are built as dictionaries: slack_sdk has no model of the card block.
+    """
+    return {
+        "type": "modal",
+        "callback_id": CallbackID.ITEM_PICK,
+        "title": _plain("今日のアイテム"),
+        "submit": _plain("獲得"),
+        "close": _plain("やめる"),
+        "private_metadata": json.dumps({"channel": channel_id, "thread_ts": thread_ts, "day": day.isoformat()}),
+        "blocks": [
+            {"type": "section", "text": _mrkdwn(ITEM_PICK_GUIDE)},
+            *(item_card(item, image_urls.get(item.id)) for item in offered),
+            {
+                "type": "input",
+                "block_id": BlockID.ITEM_CHOICE,
+                "label": _plain("獲得するアイテム"),
+                "element": {
+                    "type": "radio_buttons",
+                    "action_id": ActionID.ITEM_CHOICE,
+                    "options": [{"text": _mrkdwn(f"*{item.name}*"), "value": item.id} for item in offered],
+                },
+            },
+        ],
+    }
+
+
+def item_review_view(
+    offered: list[ItemData],
+    notice: str,
+    picked_item_id: str | None = None,
+    image_urls: Mapping[str, str] = ITEM_IMAGE_URLS,
+) -> dict:
+    """Build the read-only modal of today's items: after the pick, or while another item is held.
+
+    Slack shows a submit button anyway, so it reads "OK" and only closes the modal.
+    """
+    return {
+        "type": "modal",
+        "callback_id": CallbackID.ITEM_REVIEW,
+        "title": _plain("今日のアイテム"),
+        "submit": _plain("OK"),
+        "close": _plain("閉じる"),
+        "blocks": [
+            {"type": "section", "text": _mrkdwn(notice)},
+            *(item_card(item, image_urls.get(item.id), picked=item.id == picked_item_id) for item in offered),
+            {"type": "context", "elements": [_mrkdwn("アイテムは1日1つまで。出社した日に選べます。")]},
+        ],
+    }
+
+
+def item_card(item: ItemData, image_url: str | None, *, picked: bool = False) -> dict:
+    """Return an item's card: its image and name, its story as the subtitle and exactly what it does as the body."""
+    card = {
+        "type": "card",
+        "title": _mrkdwn(f"*{item.name}*" + ("  :white_check_mark: 獲得済み" if picked else "")),
+        "subtitle": _mrkdwn(item.flavor),
+        "body": _mrkdwn(f"効果: {item.effect}"),
+    }
+    if image_url:  # an item whose image is not hosted yet has no icon
+        card["icon"] = {"type": "image", "image_url": image_url, "alt_text": item.name}
+    return card
+
+
+def _plain(text: str) -> dict:
+    return {"type": "plain_text", "text": text}
+
+
+def _mrkdwn(text: str) -> dict:
+    return {"type": "mrkdwn", "text": text}
+
+
+def item_picked_text(user_id: str, item: ItemData) -> str:
+    """Return the announcement of a pick, kept small: one line in the thread."""
+    return f"<@{user_id}>さんが {item.label} を獲得しました（{item.effect}）"
+
+
+def item_picked_message(user_id: str, item: ItemData) -> list[Block]:
+    """Build the thread post announcing a pick as one line of small text."""
+    return [blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=item_picked_text(user_id, item))])]
+
+
 def achievement_view(engine: BadgeEngine, user_id: str, jst_datetime: datetime | None = None) -> View:
     """Build the modal with the user's statistics, attendance history and badges.
 
@@ -171,15 +292,15 @@ def achievement_view(engine: BadgeEngine, user_id: str, jst_datetime: datetime |
         title="Achievements",
         close="閉じる",
         blocks=[
-            *statistics_blocks(engine, user_id),
+            *statistics_blocks(engine, user_id, today),
             *attendance_history_blocks(attendance_by_day(engine, user_id, today)),
             *badge_blocks(user_badges, arrival_count, next_kiriban),
         ],
     )
 
 
-def statistics_blocks(engine: BadgeEngine, user_id: str) -> list[Block]:
-    """Build the statistics section: counts, level and the earliest and latest arrival times."""
+def statistics_blocks(engine: BadgeEngine, user_id: str, today: date | None = None) -> list[Block]:
+    """Build the statistics section: counts, level, the earliest and latest arrival times and the held item."""
     user = engine.users.get(user_id)
     arrivals = user.results if user else []
     if not arrivals:
@@ -197,6 +318,10 @@ def statistics_blocks(engine: BadgeEngine, user_id: str) -> list[Block]:
                 f"• *最遅出社*: `{max(times)}`",
             ]
         )
+        held = engine.held_item(user_id, today) if today else None
+        if held is not None:
+            until = f" ({held.last_day:%m/%d}まで)" if held.last_day else " (次の出社で使います)"
+            text += f"\n• *所持アイテム*: {ITEMS[held.pick.item_id].label}{until}"
     return [blocks.HeaderBlock(text="出社統計情報"), blocks.SectionBlock(text=text), blocks.DividerBlock()]
 
 

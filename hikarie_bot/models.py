@@ -1,8 +1,8 @@
-"""The stored data: arrival events."""
+"""The stored data: arrival events and item picks."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
-from sqlalchemy import Dialect, Integer, String
+from sqlalchemy import Date, Dialect, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -53,3 +53,27 @@ class ArrivalEvent(BaseSchema):
     def __repr__(self) -> str:
         """Return the string representation of the ArrivalEvent class."""
         return f"<ArrivalEvent(user_id={self.user_id}, occurred_at={self.occurred_at}, source={self.source})>"
+
+
+class ItemPickEvent(BaseSchema):
+    """Define the ItemPickEvent table.
+
+    A user's pick of an item (db_data/items.py) on a JST day; append-only, at most one per
+    user and day. The engine applies it to the user's later arrivals. slack_ts identifies the
+    thread post announcing it, from which a sync restores it.
+    """
+
+    __tablename__ = "item_pick_event"
+    __table_args__ = (UniqueConstraint("user_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    day: Mapped[date] = mapped_column(Date, nullable=False)  # the JST day of the pick
+    item_id: Mapped[str] = mapped_column(String, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    slack_ts: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    def __repr__(self) -> str:
+        """Return the string representation of the ItemPickEvent class."""
+        return f"<ItemPickEvent(user_id={self.user_id}, day={self.day}, item_id={self.item_id})>"

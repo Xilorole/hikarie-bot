@@ -5,8 +5,12 @@ earlier arrivals, so the whole history is one pass with no SQL. The rules reprod
 previous SQL-based checks (including their quirks); tests/test_engine.py holds that
 implementation's results on synthetic arrivals for comparison.
 
+Item picks (db_data/items.py) are given to the engine before the arrivals; a pick acts on
+the user's arrivals after the day it was picked, so it never changes the arrival it followed.
+
 Nothing computed here is stored: the messages read the engine's results, recomputed from
-arrival_event when needed. Times are aware datetimes in JST, so dates and hours are JST.
+arrival_event and item_pick_event when needed. Times are aware datetimes in JST, so dates and
+hours are JST.
 """
 
 from bisect import bisect_left, bisect_right
@@ -21,7 +25,18 @@ from dateutil.relativedelta import relativedelta
 from hikarie_bot import db_data
 from hikarie_bot.constants import JST
 from hikarie_bot.db_data.badges import KIRIBANS
-from hikarie_bot.utils import list_bizdays
+from hikarie_bot.db_data.items import (
+    ALARM_CLOCK,
+    DASH_SHOES,
+    DICE,
+    ITEM_POINT_CAP,
+    ITEMS,
+    OMAMORI,
+    TREAT,
+    WEEKLY_PASS,
+    dice_roll,
+)
+from hikarie_bot.utils import is_jp_bizday, list_bizdays
 
 BADGE_SCORES = {badge.id: badge.score for badge in db_data.Badges}
 APPLY_START = {
@@ -31,6 +46,78 @@ KIRIBAN_BADGES = {kiriban.number: kiriban.id for kiriban in KIRIBANS}
 STRAIGHT_FLASH_LENGTH = 5
 STRAIGHT_FLASH, ROYAL_STRAIGHT_FLASH, ULTRA_ROYAL_STRAIGHT_FLASH = 401, 402, 403
 TAKANAWA_OFFICE_START = datetime(2026, 1, 19, tzinfo=JST)
+ALARM_CLOCK_HOUR = 9  # an arrival before this hour
+ALARM_CLOCK_POINTS = 3
+DASH_SHOES_POINTS = 2
+WEEKLY_PASS_MAX_USES = 3
+TREAT_RECIPIENTS = 3
+
+
+@dataclass(frozen=True)
+class ItemPick:
+    """A user's pick of an item on a JST day."""
+
+    user_id: str
+    day: date
+    item_id: str
+
+
+@dataclass
+class ItemEffect:
+    """What an item did for an arrival; giver is the user whose treat it was."""
+
+    item_id: str
+    points: int
+    giver: str | None = None
+
+
+@dataclass
+class HeldItem:
+    """A picked item and how far it has been used."""
+
+    pick: ItemPick
+    first_day: date | None = None  # the business days an item with a duration acts on
+    last_day: date | None = None
+    used_on: date | None = None  # the arrival a one-shot item acted on
+    uses: int = 0
+
+    @property
+    def one_shot(self) -> bool:
+        """Whether the item acts on one arrival only."""
+        return self.last_day is None
+
+    def acts_on(self, day: date) -> bool:
+        """Whether the item acts on an arrival on this JST day (one-shot: if it is still unused)."""
+        if self.one_shot:
+            return self.used_on is None and self.pick.day < day
+        return self.first_day <= day <= self.last_day
+
+    def held_on(self, day: date) -> bool:
+        """Whether the user still holds the item on this JST day (after that day's arrival)."""
+        if self.pick.day > day:
+            return False
+        if self.one_shot:
+            return self.used_on is None or self.used_on > day
+        return day <= self.last_day
+
+
+@dataclass
+class Treat:
+    """A treat given on a day: the later arrivals that day get a point each, up to TREAT_RECIPIENTS."""
+
+    giver: str
+    remaining: int = TREAT_RECIPIENTS
+
+
+def next_bizdays(day: date, count: int) -> list[date]:
+    """Return the first `count` business days after a JST day."""
+    days: list[date] = []
+    current = day
+    while len(days) < count:
+        current += timedelta(days=1)
+        if is_jp_bizday(current):
+            days.append(current)
+    return days
 
 
 @dataclass
@@ -45,6 +132,7 @@ class ArrivalResult:
     score_sum: int
     previous_score: int
     current_score: int
+    item_effects: list[ItemEffect] = field(default_factory=list)  # their points are part of score_sum
 
 
 @dataclass
@@ -54,6 +142,8 @@ class UserState:
     times: list[datetime] = field(default_factory=list)
     straight_flash: list[set[int]] = field(default_factory=list)
     results: list[ArrivalResult] = field(default_factory=list)
+    items: list[HeldItem] = field(default_factory=list)  # in pick order
+    forgive_gap: bool = False  # set while an omamori acts on the arrival being checked
 
     @property
     def score(self) -> int:
@@ -84,6 +174,26 @@ class BadgeEngine:
         self.users: dict[str, UserState] = defaultdict(UserState)
         self.results: list[ArrivalResult] = []
         self.user_badges: dict[tuple[str, int], UserBadgeTally] = {}
+        self.treats: dict[date, list[Treat]] = defaultdict(list)
+
+    def pick(self, user_id: str, day: date, item_id: str) -> None:
+        """Give the user an item picked on a JST day; it acts on their arrivals after that day.
+
+        Picks must be given before the arrivals they act on (compute gives them all first).
+        """
+        item = ITEMS.get(item_id)
+        if item is None:  # an item that was removed from the code no longer acts
+            return
+        held = HeldItem(ItemPick(user_id, day, item_id))
+        if item.duration_bizdays is not None:
+            days = next_bizdays(day, item.duration_bizdays)
+            held.first_day, held.last_day = days[0], days[-1]
+        self.users[user_id].items.append(held)
+
+    def held_item(self, user_id: str, day: date) -> HeldItem | None:
+        """Return the item the user holds on a JST day, if any."""
+        user = self.users.get(user_id)
+        return next((held for held in reversed(user.items) if held.held_on(day)), None) if user else None
 
     def add(self, user_id: str, time: datetime) -> ArrivalResult | None:
         """Count an arrival (an aware datetime); returns None if the user already arrived that JST day."""
@@ -100,8 +210,14 @@ class BadgeEngine:
         user.times.append(time)
         self.times.append(time)
 
+        acting = [held for held in user.items if held.acts_on(time.date())]
+        user.forgive_gap = any(held.pick.item_id == OMAMORI for held in acting)
         badge_ids = [badge_id for checker in self.CHECKERS.values() for badge_id in checker(self, user_id, time)]
-        score_sum = sum(BADGE_SCORES[badge_id] for badge_id in badge_ids)
+        user.forgive_gap = False
+        item_effects = self._item_effects(user_id, time, rank, acting)
+        score_sum = sum(BADGE_SCORES[badge_id] for badge_id in badge_ids) + sum(
+            effect.points for effect in item_effects
+        )
         previous_score = user.score
 
         for badge_id in badge_ids:
@@ -121,11 +237,50 @@ class BadgeEngine:
             score_sum=score_sum,
             previous_score=previous_score,
             current_score=previous_score + score_sum,
+            item_effects=item_effects,
         )
         self.results.append(result)
         user.results.append(result)
         day.append(result)
         return result
+
+    def _item_effects(self, user_id: str, time: datetime, rank: int, acting: list[HeldItem]) -> list[ItemEffect]:
+        """Apply the user's acting items and the day's treats; one-shot items are used up."""
+        day = time.date()
+        effects: list[ItemEffect] = []
+        for held in acting:
+            if held.one_shot:
+                held.used_on = day
+            effects.append(ItemEffect(held.pick.item_id, self._item_points(user_id, time, rank, held)))
+            if held.pick.item_id == TREAT:
+                self.treats[day].append(Treat(giver=user_id))
+        for treat in self.treats.get(day, []):
+            if treat.giver != user_id and treat.remaining > 0:
+                treat.remaining -= 1
+                effects.append(ItemEffect(TREAT, 1, giver=treat.giver))
+        # the cap keeps items from outgrowing the badges: later effects lose their points first
+        budget = ITEM_POINT_CAP
+        for effect in effects:
+            effect.points = min(effect.points, budget)
+            budget -= effect.points
+        return effects
+
+    def _item_points(self, user_id: str, time: datetime, rank: int, held: HeldItem) -> int:
+        """Return the points an item gives this arrival (before the cap)."""
+        item_id = held.pick.item_id
+        if item_id == ALARM_CLOCK and time.hour < ALARM_CLOCK_HOUR:
+            return ALARM_CLOCK_POINTS
+        if item_id == DASH_SHOES and rank == 1:
+            return DASH_SHOES_POINTS
+        if item_id == DICE:
+            return dice_roll(user_id, time.date())
+        if item_id == WEEKLY_PASS and held.uses < WEEKLY_PASS_MAX_USES:
+            times = self.users[user_id].times
+            previous_bizday = list_bizdays(self._start_of_day(time) - timedelta(days=1), 1)
+            if len(times) >= 2 and [times[-2].date()] == previous_bizday:  # noqa: PLR2004
+                held.uses += 1
+                return 1
+        return 0
 
     def arrivals_on(self, day: date) -> list[ArrivalResult]:
         """Return the arrivals on a JST day, in time order."""
@@ -168,7 +323,8 @@ class BadgeEngine:
             return []
         # the last five business days within two weeks; fewer (a long holiday) means no streak
         bizdays = list_bizdays(self._start_of_day(time), STRAIGHT_FLASH_LENGTH)
-        if bizdays != [arrival.date() for arrival in recent]:
+        dates = [arrival.date() for arrival in recent]
+        if bizdays != dates and not (user.forgive_gap and self._one_gap(time, dates)):
             return []
         # A badge earned within the previous four arrivals is not awarded again.
         recently_achieved = set().union(*user.straight_flash[-(STRAIGHT_FLASH_LENGTH - 1) :])
@@ -183,6 +339,11 @@ class BadgeEngine:
             ):
                 badges.append(ULTRA_ROYAL_STRAIGHT_FLASH)
         return badges
+
+    def _one_gap(self, time: datetime, dates: list[date]) -> bool:
+        """Whether the dates are the last six business days but one (an omamori forgives the missing one)."""
+        bizdays = list_bizdays(self._start_of_day(time), STRAIGHT_FLASH_LENGTH + 1)
+        return len(bizdays) == STRAIGHT_FLASH_LENGTH + 1 and dates[0] == bizdays[0] and set(dates) < set(bizdays)
 
     def _time_window(self, _user_id: str, time: datetime) -> list[int]:
         for start, end, badge_id in ((6, 7, 504), (7, 9, 501), (9, 11, 502), (11, 18, 503)):
@@ -284,9 +445,11 @@ class BadgeEngine:
     }
 
 
-def compute(arrivals: Iterable[tuple[str, datetime]]) -> BadgeEngine:
-    """Run the engine over (user_id, aware time) pairs in time order."""
+def compute(arrivals: Iterable[tuple[str, datetime]], picks: Iterable[ItemPick] = ()) -> BadgeEngine:
+    """Run the engine over (user_id, aware time) pairs in time order, with the item picks."""
     engine = BadgeEngine()
+    for pick in sorted(picks, key=lambda pick: pick.day):
+        engine.pick(pick.user_id, pick.day, pick.item_id)
     for user_id, time in arrivals:
         engine.add(user_id, time)
     return engine

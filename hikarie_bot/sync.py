@@ -1,10 +1,10 @@
-"""Read arrival events from the Slack channel into arrival_event.
+"""Read arrival events (and item picks) from the Slack channel into arrival_event (and item_pick_event).
 
 A sync always reads the whole channel: every top-level message and every bot thread. The bot stores
 an arrival before it posts it, so a running database never lacks an arrival that Slack has; startup
 syncs only into an empty database (first start, or a lost volume), and the ``sync`` command is the
 manual full read (e.g. after restoring an older backup). Events are keyed by the Slack message ts, so
-syncing is idempotent.
+syncing is idempotent. Item picks are read from the metadata of their thread posts the same way.
 
 Slack data comes from a SlackSource: the live API, the API while recording raw
 responses, or a recorded cache (offline). Recorded files have the shape
@@ -15,7 +15,7 @@ import json
 import re
 from collections.abc import AsyncIterator, Awaitable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -27,13 +27,14 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from hikarie_bot.constants import JST
-from hikarie_bot.models import ArrivalEvent
+from hikarie_bot.models import ArrivalEvent, ItemPickEvent
 from hikarie_bot.settings import get_settings
 
 Message = dict[str, Any]
 
 PAGE_SIZE = 200
 ARRIVAL_EVENT_TYPE = "hikarie_arrival"
+ITEM_PICK_EVENT_TYPE = "hikarie_item_pick"
 
 # Posts without arrival metadata are read from their text. The retired v1/v2 bots posted only the day's
 # fastest arrival; their history is closed, so its time window identifies them without their bot IDs.
@@ -224,12 +225,52 @@ def parse_arrival(message: Message) -> ParsedArrival | None:
 
 
 @dataclass
+class ParsedPick:
+    """An item pick read from a Slack message."""
+
+    user_id: str
+    day: date
+    item_id: str
+    occurred_at: datetime
+    slack_ts: str
+
+
+def item_pick_metadata(user_id: str, day: date, item_id: str, occurred_at: datetime) -> dict[str, Any]:
+    """Return the Slack message metadata the bot attaches to an item pick's thread post."""
+    return {
+        "event_type": ITEM_PICK_EVENT_TYPE,
+        "event_payload": {
+            "user_id": user_id,
+            "day": day.isoformat(),
+            "item_id": item_id,
+            "occurred_at": occurred_at.astimezone(UTC).isoformat(),
+        },
+    }
+
+
+def parse_item_pick(message: Message) -> ParsedPick | None:
+    """Return the item pick a bot message records, if any (only its metadata counts)."""
+    metadata = message.get("metadata") or {}
+    if message.get("bot_id") != get_settings().bot_id or metadata.get("event_type") != ITEM_PICK_EVENT_TYPE:
+        return None
+    payload = metadata["event_payload"]
+    return ParsedPick(
+        user_id=payload["user_id"],
+        day=date.fromisoformat(payload["day"]),
+        item_id=payload["item_id"],
+        occurred_at=datetime.fromisoformat(payload["occurred_at"]),
+        slack_ts=message["ts"],
+    )
+
+
+@dataclass
 class SyncResult:
     """What one sync read and stored."""
 
     messages: int = 0
     threads: int = 0
     inserted: int = 0
+    picks_inserted: int = 0
 
 
 async def sync_channel(session: Session, source: SlackSource, channel: str) -> SyncResult:
@@ -242,6 +283,7 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
 
     result = SyncResult()
     arrivals: list[ParsedArrival] = []
+    picks: list[ParsedPick] = []
     async for message in source.history(channel):
         result.messages += 1
         if arrival := parse_arrival(message):
@@ -257,6 +299,7 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
                     message["reply_count"],
                 )
             arrivals += [arrival for reply in replies if (arrival := parse_arrival(reply))]
+            picks += [pick for reply in replies if (pick := parse_item_pick(reply))]
 
     if arrivals:
         statement = insert(ArrivalEvent).on_conflict_do_nothing(index_elements=["slack_ts"])
@@ -275,6 +318,30 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
         before = session.scalar(count) or 0
         session.execute(statement, rows)
         result.inserted = (session.scalar(count) or 0) - before
+    if picks:
+        result.picks_inserted = _store_picks(session, picks)
     session.commit()
     logger.info("Synced {}: {}", channel, result)
     return result
+
+
+def _store_picks(session: Session, picks: list[ParsedPick]) -> int:
+    """Store the picks that are not stored yet (by Slack ts, or by user and day); return how many were new."""
+    # a conflict on either unique key (slack_ts, or user_id and day) skips the row
+    statement = insert(ItemPickEvent).on_conflict_do_nothing()
+    recorded_at = datetime.now(UTC)
+    rows = [
+        {
+            "user_id": pick.user_id,
+            "day": pick.day,
+            "item_id": pick.item_id,
+            "occurred_at": pick.occurred_at,
+            "slack_ts": pick.slack_ts,
+            "recorded_at": recorded_at,
+        }
+        for pick in picks
+    ]
+    count = select(func.count()).select_from(ItemPickEvent)
+    before = session.scalar(count) or 0
+    session.execute(statement, rows)
+    return (session.scalar(count) or 0) - before
