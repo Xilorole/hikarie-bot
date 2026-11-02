@@ -18,12 +18,14 @@ from time import perf_counter
 from loguru import logger
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.database import ensure_database, get_db
+from hikarie_bot.engine import BadgeEngine
 from hikarie_bot.exceptions import DatabaseLocationError, InMemoryDatabaseError
 from hikarie_bot.migrations import InitResult, UnversionedDatabaseError
-from hikarie_bot.models import ArrivalEvent
+from hikarie_bot.models import ArrivalEvent, ItemPickEvent
 from hikarie_bot.settings import get_settings
 from hikarie_bot.sync import SlackSource, SyncResult, sync_channel
 
@@ -116,7 +118,19 @@ def describe_database(result: InitResult) -> str:
 
 def describe_sync(result: SyncResult) -> str:
     """Describe what a Slack sync read and stored."""
-    return f"whole channel · {result.messages} messages · {result.threads} threads · {result.inserted} new events"
+    return (
+        f"whole channel · {result.messages} messages · {result.threads} threads · {result.inserted} new events"
+        f" · {result.picks_inserted} new item picks"
+    )
+
+
+def describe_items(session: Session, engine: BadgeEngine) -> str:
+    """Describe the item picks and the share of all points that items gave (to watch for inflation)."""
+    picks = session.scalar(select(func.count()).select_from(ItemPickEvent)) or 0
+    total = sum(result.score_sum for result in engine.results)
+    from_items = sum(effect.points for result in engine.results for effect in result.item_effects)
+    share = 100 * from_items / total if total else 0
+    return f"{picks} item picks · items {share:.1f}% of points"
 
 
 async def prepare(reporter: StartupReporter, source: SlackSource, channel: str) -> None:
@@ -148,4 +162,5 @@ async def prepare(reporter: StartupReporter, source: SlackSource, channel: str) 
             badges = sum(len(result.badge_ids) for result in engine.results)
             step.text = (
                 f"{events} events → {len(engine.results)} arrivals · {len(engine.users)} users · {badges} badges earned"
+                f" · {describe_items(session, engine)}"
             )

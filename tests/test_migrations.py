@@ -32,7 +32,7 @@ def test_upgrade_creates_schema_matching_models(tmp_path: Path) -> None:
 
     with engine.connect() as connection:
         assert compare_metadata(MigrationContext.configure(connection), BaseSchema.metadata) == []
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0002",)]
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0003",)]
         assert connection.execute(text("PRAGMA journal_mode")).scalar() == "wal"
     engine.dispose()
 
@@ -49,7 +49,7 @@ def test_upgrade_rejects_database_from_before_alembic(tmp_path: Path) -> None:
 
 
 def test_upgrade_from_0000_drops_unused_tables_and_keeps_events(tmp_path: Path) -> None:
-    """Revisions 0001 and 0002 remove the computed and unused tables, and leave the events alone."""
+    """Revisions 0001 and 0002 remove the computed and unused tables, and leave the events alone (0003 adds picks)."""
     engine = _file_engine(tmp_path / "data.db")
     config = Config()
     config.set_main_option("script_location", str(SCRIPT_LOCATION))
@@ -65,7 +65,7 @@ def test_upgrade_from_0000_drops_unused_tables_and_keeps_events(tmp_path: Path) 
 
     assert init_database(engine).revision_before == "0000"
 
-    assert set(inspect(engine).get_table_names()) == {"alembic_version", "arrival_event"}
+    assert set(inspect(engine).get_table_names()) == {"alembic_version", "arrival_event", "item_pick_event"}
     with Session(engine) as session:
         assert session.query(ArrivalEvent).one().user_id == "U1"
     engine.dispose()
@@ -86,6 +86,26 @@ def test_0002_drops_sync_state_and_downgrade_recreates_it_empty(tmp_path: Path) 
         assert "sync_state" not in inspect(connection).get_table_names()
         command.downgrade(config, "0001")
         assert connection.execute(text("SELECT count(*) FROM sync_state")).scalar() == 0
+    engine.dispose()
+
+
+def test_0003_adds_item_picks_one_per_user_and_day_and_downgrade_drops_them(tmp_path: Path) -> None:
+    """Revision 0003 adds item_pick_event with one pick per user and day; downgrading drops it."""
+    engine = _file_engine(tmp_path / "data.db")
+    config = Config()
+    config.set_main_option("script_location", str(SCRIPT_LOCATION))
+    pick = text(
+        "INSERT INTO item_pick_event (user_id, day, item_id, occurred_at, recorded_at) "
+        "VALUES ('U1', '2026-11-02', 'dice', '2026-11-02T00:00:00.000000+00:00', '2026-11-02T00:00:00.000000+00:00')"
+    )
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0003")
+        connection.execute(pick)
+        with pytest.raises(IntegrityError):
+            connection.execute(pick)
+        command.downgrade(config, "0002")
+        assert "item_pick_event" not in inspect(connection).get_table_names()
     engine.dispose()
 
 
@@ -127,4 +147,4 @@ def test_read_only_open_of_wal_database(tmp_path: Path) -> None:
     engine.dispose()
 
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0002",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003",)

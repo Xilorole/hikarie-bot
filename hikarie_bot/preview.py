@@ -24,8 +24,17 @@ from sqlalchemy.orm import Session
 
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import JST
+from hikarie_bot.db_data.items import offers
 from hikarie_bot.engine import BadgeEngine
-from hikarie_bot.modals import achievement_view, initial_message, point_get_message, registry_message, render
+from hikarie_bot.modals import (
+    achievement_view,
+    initial_message,
+    item_pick_view,
+    item_picked_message,
+    point_get_message,
+    registry_message,
+    render,
+)
 from hikarie_bot.settings import get_settings
 from hikarie_bot.utils import is_jp_bizday, leveled_up
 
@@ -79,6 +88,28 @@ def _registry(context: PreviewContext) -> dict[str, Any]:
     return {"blocks": render(registry_message(context.engine.arrivals_on(context.reference.date())))}
 
 
+def _point_get_item(context: PreviewContext) -> dict[str, Any] | None:
+    arrival = next(
+        (
+            arrival
+            for arrival in context.engine.arrivals_on(context.reference.date())
+            if any(effect.points for effect in arrival.item_effects)
+        ),
+        None,
+    )
+    return None if arrival is None else {"blocks": render(point_get_message(arrival))}
+
+
+def _item_pick(context: PreviewContext) -> dict[str, Any]:
+    day = context.reference.date()
+    return item_pick_view(offers(context.user_id, day), "C0PREVIEW", "0000000000.000000", day).to_dict()
+
+
+def _item_picked(context: PreviewContext) -> dict[str, Any]:
+    item = offers(context.user_id, context.reference.date())[0]
+    return {"blocks": render(item_picked_message(context.user_id, item))}
+
+
 def _achievement(context: PreviewContext) -> dict[str, Any]:
     return achievement_view(context.engine, context.user_id, jst_datetime=context.reference).to_dict()
 
@@ -101,7 +132,10 @@ PREVIEWS = [
         "レベルアップ時のポイント獲得メッセージ",
         lambda context: _point_get(context, context.level_up_user_id),
     ),
+    Preview("point_get_item", "アイテム効果つきのポイント獲得メッセージ", _point_get_item),
     Preview("achievement_view", "実績確認モーダル", _achievement),
+    Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
+    Preview("item_picked_message", "アイテム獲得をスレッドに知らせるメッセージ", _item_picked),
 ]
 PREVIEW_NAMES = [preview.name for preview in PREVIEWS]
 
@@ -123,6 +157,10 @@ def build_synthetic_context() -> PreviewContext:
         ]
         for user_id, arrival in sorted(arrivals, key=lambda item: item[1]):
             engine.add(user_id, datetime.combine(day.date(), arrival, tzinfo=JST))
+        # everyone who arrived picks the first item offered, unless they still hold one
+        for user_id, _ in arrivals:
+            if engine.held_item(user_id, day.date()) is None:
+                engine.pick(user_id, day.date(), offers(user_id, day.date())[0].id)
         level_up = engine.arrival_of(LEVEL_UP_USER, day.date())
         level_up_day = level_up is not None and leveled_up(level_up.previous_score, level_up.current_score)
         if index + 1 >= SYNTHETIC_MIN_DAYS and level_up_day and len(arrivals) >= 3:  # noqa: PLR2004

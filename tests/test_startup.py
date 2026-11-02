@@ -71,9 +71,11 @@ async def test_first_start_reports_each_step_without_personal_data(client: Async
     texts = posted(client)
     assert len(texts) == 6  # one message per section
     assert texts[0] == "starting application (rev abc1234)"
-    assert texts[1].startswith("*database*: schema 0002 (migrated from empty) (")
+    assert texts[1].startswith("*database*: schema 0003 (migrated from empty) (")
     assert texts[2].startswith("first start: reading the whole channel")
-    assert texts[3].startswith("*slack sync*: whole channel · 1 messages · 1 threads · 2 new events (")
+    assert texts[3].startswith(
+        "*slack sync*: whole channel · 1 messages · 1 threads · 2 new events · 0 new item picks ("
+    )
     assert texts[4].startswith("*scores*: 2 events → 2 arrivals · 2 users · ")
     assert texts[5].startswith(":white_check_mark: application started (rev abc1234) in ")
     assert not any(user in text for text in texts for user in SECRET_USERS)
@@ -93,7 +95,7 @@ async def test_restart_skips_the_sync_and_reports_only_a_count(client: AsyncMock
 
     texts = posted(client)
     assert not any(text.startswith("first start") for text in texts)
-    assert texts[1].startswith("*database*: schema 0002 (up to date)")
+    assert texts[1].startswith("*database*: schema 0003 (up to date)")
     assert texts[2].startswith("*slack sync*: skipped (2 events stored) (")
     assert texts[3].startswith("*scores*: 2 events → 2 arrivals")
     assert not any(user in text for text in texts for user in SECRET_USERS)

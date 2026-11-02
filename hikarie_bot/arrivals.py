@@ -1,4 +1,4 @@
-"""Record arrivals as events and compute ranks, badges and scores from them."""
+"""Record arrivals as events and compute ranks, badges and scores from them (and the item picks)."""
 
 from datetime import datetime, timedelta
 
@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hikarie_bot.constants import JST
-from hikarie_bot.engine import BadgeEngine, compute
-from hikarie_bot.models import ArrivalEvent
+from hikarie_bot.engine import BadgeEngine, ItemPick, compute
+from hikarie_bot.models import ArrivalEvent, ItemPickEvent
 
 
 def record_button_arrival(session: Session, user_id: str, pressed_at: datetime) -> ArrivalEvent | None:
@@ -41,8 +41,19 @@ def attach_slack_ts(session: Session, event_id: int, slack_ts: str) -> None:
 
 
 def compute_arrivals(session: Session) -> BadgeEngine:
-    """Compute ranks, badges and scores from every stored arrival event (the first of each user's day counts)."""
+    """Compute ranks, badges and scores from every stored arrival event (the first of each user's day counts).
+
+    The stored item picks act on the arrivals after their day.
+    """
+    picks = [
+        ItemPick(user_id, day, item_id)
+        for user_id, day, item_id in session.execute(
+            select(ItemPickEvent.user_id, ItemPickEvent.day, ItemPickEvent.item_id).order_by(
+                ItemPickEvent.day, ItemPickEvent.id
+            )
+        ).tuples()
+    ]
     events = session.execute(
         select(ArrivalEvent.user_id, ArrivalEvent.occurred_at).order_by(ArrivalEvent.occurred_at, ArrivalEvent.id)
     )
-    return compute(events.tuples())
+    return compute(events.tuples(), picks)
