@@ -27,7 +27,7 @@ ICON_SIZE = 128
 CORNER_RADIUS = 20
 BLOCK = 4  # pieces are found on a grid of BLOCK x BLOCK pixels, which is fast and ignores single stray pixels
 WHITE_THRESHOLD = 235  # a pixel whose channels are all above this is background
-MAX_FILL = 0.8  # an item larger than this share of its square is scaled down, leaving at least 10% white each side
+MAX_FILL = 0.85  # an item larger than this share of its square is scaled down, leaving at least 7.5% white each side
 
 # the items of the sheet, left to right and top to bottom; those not in db_data/items.py are spares
 CELLS = [
