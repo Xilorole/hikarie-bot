@@ -3,9 +3,6 @@ from datetime import date, datetime, timedelta
 from textwrap import dedent
 from unittest import mock
 
-from sqlalchemy.orm import Session, sessionmaker
-
-from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, NOT_ACHIEVED_BADGE_IMAGE_URL
 from hikarie_bot.db_data import Badges
 from hikarie_bot.engine import JST, ArrivalResult
@@ -15,7 +12,6 @@ from hikarie_bot.modals import (
     PointGetMessage,
     RegistryMessage,
 )
-from hikarie_bot.models import ArrivalEvent
 from tests.helpers import compute_in_order
 
 
@@ -584,16 +580,13 @@ def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals() -> None:
     assert "次のキリ番まで: あと *7回* (20回目)" in texts
 
 
-def test_registry_message_lists_arrivals_by_time(temp_db: sessionmaker[Session]) -> None:
-    """The list follows the arrival times, whatever order the events were stored in."""
-    session = temp_db()
-    for user_id, minute in (("U_late", 30), ("U_early", 10)):
-        session.add(
-            ArrivalEvent(user_id=user_id, occurred_at=datetime(2024, 1, 1, 9, minute, tzinfo=JST), source="button")
-        )
-    session.flush()
+def test_registry_message_lists_arrivals_by_time() -> None:
+    """The list follows the arrival times, whatever order the arrivals were given in."""
+    engine = compute_in_order(
+        ("U_late", datetime(2024, 1, 1, 9, 30, tzinfo=JST)), ("U_early", datetime(2024, 1, 1, 9, 10, tzinfo=JST))
+    )
 
-    message = RegistryMessage(compute_arrivals(session).arrivals_on(date(2024, 1, 1)))
+    message = RegistryMessage(engine.arrivals_on(date(2024, 1, 1)))
 
     assert message.render()[-1]["text"]["text"].splitlines()[1:] == ["*09:10* : <@U_early>", "*09:30* : <@U_late>"]
 
