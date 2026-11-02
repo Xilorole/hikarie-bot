@@ -13,7 +13,7 @@ responses, or a recorded cache (offline). Recorded files have the shape
 
 import json
 import re
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Awaitable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,6 +21,7 @@ from typing import Any, Protocol
 
 from loguru import logger
 from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
@@ -56,6 +57,16 @@ class SlackSource(Protocol):
         ...
 
 
+async def _pages(request: Awaitable[AsyncSlackResponse]) -> AsyncIterator[tuple[dict, dict]]:
+    """Yield (request params, response body) for each page, following next_cursor.
+
+    The SDK follows the cursor through the client, so its retry handlers (rate limits) apply to every
+    page. It reuses one response object and updates its request params in place, so they are copied.
+    """
+    async for page in await request:
+        yield dict(page.req_args["params"]), page.data
+
+
 class LiveSlackSource:
     """Read from the Slack Web API. Rate limits are left to the client's retry handlers."""
 
@@ -63,33 +74,19 @@ class LiveSlackSource:
         """Initialize the LiveSlackSource class."""
         self.client = client
 
-    async def history_pages(self, channel: str, oldest: str | None) -> AsyncIterator[tuple[dict, dict]]:
+    def history_pages(self, channel: str, oldest: str | None) -> AsyncIterator[tuple[dict, dict]]:
         """Yield (request params, response body) for each history page."""
-        cursor = None
-        while True:
-            params: dict[str, Any] = {"channel": channel, "limit": PAGE_SIZE, "include_all_metadata": True}
-            if oldest:
-                params["oldest"] = oldest
-            if cursor:
-                params["cursor"] = cursor
-            body = (await self.client.conversations_history(**params)).data
-            yield params, body
-            cursor = body.get("response_metadata", {}).get("next_cursor")
-            if not body.get("has_more") or not cursor:
-                return
+        return _pages(
+            self.client.conversations_history(
+                channel=channel, oldest=oldest, limit=PAGE_SIZE, include_all_metadata=True
+            )
+        )
 
-    async def reply_pages(self, channel: str, ts: str) -> AsyncIterator[tuple[dict, dict]]:
+    def reply_pages(self, channel: str, ts: str) -> AsyncIterator[tuple[dict, dict]]:
         """Yield (request params, response body) for each page of a thread."""
-        cursor = None
-        while True:
-            params: dict[str, Any] = {"channel": channel, "ts": ts, "limit": PAGE_SIZE, "include_all_metadata": True}
-            if cursor:
-                params["cursor"] = cursor
-            body = (await self.client.conversations_replies(**params)).data
-            yield params, body
-            cursor = body.get("response_metadata", {}).get("next_cursor")
-            if not body.get("has_more") or not cursor:
-                return
+        return _pages(
+            self.client.conversations_replies(channel=channel, ts=ts, limit=PAGE_SIZE, include_all_metadata=True)
+        )
 
     async def history(self, channel: str, oldest: str | None) -> AsyncIterator[Message]:
         """Yield top-level messages with ts >= oldest."""
