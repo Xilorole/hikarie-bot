@@ -1,14 +1,12 @@
 import asyncio
 import re
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 import jpholiday
 from loguru import logger
 from slack_bolt.app.async_app import AsyncApp
-from sqlalchemy.orm import Session
 
-from hikarie_bot.modals import InitialMessage, WeeklyMessage
+from hikarie_bot.modals import InitialMessage
 from hikarie_bot.settings import BOT_ID, OUTPUT_CHANNEL, V1_BOT_ID, V2_BOT_ID
 
 
@@ -247,75 +245,6 @@ async def send_daily_message(
                 await asyncio.sleep(check_interval)
                 continue
 
-        else:
-            logger.debug("Conditions not met for sending message")
-        logger.debug("Sleeping for check_interval")
-        await asyncio.sleep(check_interval)
-        logger.debug("Woke up from sleep")
-
-
-async def send_weekly_message(  # noqa: PLR0913
-    app: AsyncApp,
-    session: Session,
-    at_hour: int = 6,
-    at_minute: int = 0,
-    check_interval: int = 50,
-    weekday: int = 0,
-    force_send: bool = False,  # noqa: FBT001, FBT002
-) -> None:
-    """Run task every Monday 06:00 JST.
-
-    Parameters
-    ----------
-    app : AsyncApp
-        The Slack application instance used to interact with the Slack API.
-    session : Session
-        The SQLAlchemy session used to interact with the database.
-    at_hour : int, optional
-        The hour of the day to send the message (default is 6).
-    at_minute : int, optional
-        The minute of the hour to send the message (default is 0).
-    check_interval : int, optional
-        The interval in seconds to check the time (default is 60).
-    weekday : int, optional
-        The day of the week to send the message (default is 0, which is Monday).
-    force_send : bool, optional
-        Whether to force send the message even if it has already been sent (default is False).
-
-    """
-    # タイムゾーンの生成
-    JST = ZoneInfo("Asia/Tokyo")  # noqa: N806
-    channel_id = OUTPUT_CHANNEL
-
-    logger.info("Started task")
-    while True:
-        # check if the time is 06:00 JST
-        now = datetime.now(JST)
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        logger.debug(f"Current time: {now}")
-        logger.debug(f"{now.hour} == {at_hour} and {now.minute} == {at_minute} and {now.weekday()} == {weekday}")
-        if now.hour == at_hour and now.minute == at_minute and now.weekday() == weekday:
-            logger.info("Attempting to fetch weekly summary message")
-            message = WeeklyMessage(session=session, report_date=now)
-            if (
-                await check_bot_has_sent_message(
-                    app=app,
-                    channel_id=channel_id,
-                    from_datetime=day_start,
-                    to_datetime=now,
-                )
-                and not force_send
-            ):
-                logger.info("Weekly summary message already sent")
-            else:
-                logger.info("Sending weekly summary message to channel")
-                logger.debug(f"Channel ID: {channel_id}")
-                logger.debug(f"Message: {message.render()}")
-                await app.client.chat_postMessage(
-                    channel=OUTPUT_CHANNEL,
-                    blocks=message.render(),
-                    text="weekly message",  # to_text()関数はなんだか処理が重すぎるみたい
-                )
         else:
             logger.debug("Conditions not met for sending message")
         logger.debug("Sleeping for check_interval")

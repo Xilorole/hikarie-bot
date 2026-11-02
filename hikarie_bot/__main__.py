@@ -31,7 +31,6 @@ from hikarie_bot.settings import (
 )
 from hikarie_bot.slack_helper import (
     send_daily_message,
-    send_weekly_message,
 )
 from hikarie_bot.sync import (
     CachedSlackSource,
@@ -94,28 +93,6 @@ async def start(*, dev: bool = False) -> None:
 
     # makes a strong reference not to GC
     background_task.add(a)
-
-    with get_db() as session:
-        # get now in JST for now
-        if dev:
-            now = get_current_jst_datetime()
-            f = send_weekly_message(
-                app=app,
-                session=session,
-                at_hour=now.hour,
-                at_minute=now.minute,
-                check_interval=50,
-                weekday=0,
-                force_send=True,
-            )
-        else:
-            f = send_weekly_message(
-                app=app,
-                session=session,
-            )
-
-        b = asyncio.ensure_future(f)
-    background_task.add(b)
 
     await app.client.chat_postMessage(
         channel=LOG_CHANNEL,

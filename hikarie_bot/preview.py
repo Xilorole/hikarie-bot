@@ -32,7 +32,6 @@ from hikarie_bot.modals import (
     InitialMessage,
     PointGetMessage,
     RegistryMessage,
-    WeeklyMessage,
 )
 from hikarie_bot.models import GuestArrivalInfo, User
 from hikarie_bot.settings import SLACK_BOT_TOKEN, SLACK_WORKSPACE_ID
@@ -124,12 +123,6 @@ def _fastest_arrival(context: PreviewContext) -> dict[str, Any] | None:
     return {"blocks": message.render()}
 
 
-def _weekly(context: PreviewContext) -> dict[str, Any]:
-    # The weekly report covers the seven days before report_date; end it on the reference day.
-    report_date = (context.reference + timedelta(days=1)).replace(hour=6, minute=0)
-    return {"blocks": WeeklyMessage(session=context.session, report_date=report_date).render()}
-
-
 def _achievement(context: PreviewContext) -> dict[str, Any]:
     return AchievementView(session=context.session, user_id=context.user_id, jst_datetime=context.reference).to_dict()
 
@@ -154,7 +147,6 @@ PREVIEWS = [
     ),
     Preview("already_registered", "出社登録済みメッセージ", _already_registered),
     Preview("fastest_arrival", "最速出社メッセージ", _fastest_arrival),
-    Preview("weekly_message", "週次レポート", _weekly),
     Preview("achievement_view", "実績確認モーダル", _achievement),
 ]
 PREVIEW_NAMES = [preview.name for preview in PREVIEWS]
