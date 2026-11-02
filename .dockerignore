@@ -3,6 +3,7 @@
 .env.*
 !.env.template
 .db/
+.cache/
 .artifacts/
 .worktrees/
 **/__pycache__/
