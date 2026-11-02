@@ -240,7 +240,8 @@ class PointGetMessage(BaseMessage):
         # calculate the experience rate
         experience_rate = int(100 * current_level_point / point_range)
         experience_add_up_rate = int(100 * score_addup / point_range)
-        digits = (experience_rate + 10 - 1) // 10
+        # show at least one cell: a bar of spaces only renders as an empty inline code in Slack
+        digits = max(1, (experience_rate + 10 - 1) // 10)
         point_rate_text = "█" * digits + " " * (10 - digits)
 
         # the level does not go beyond the upper limit
