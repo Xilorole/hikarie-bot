@@ -99,7 +99,7 @@
 
 1. **出社イベント（生データ）だけを正として永続化する。** バッジ・スコア・ランク・レベルはすべて「イベント列＋コード上の規則」から計算する派生物とし、保存されたものを正としない。
 2. **派生物は起動時にメモリ上で一括計算する。** 1 パス O(N) の純粋な計算に置き換え、数千件なら 1 秒未満を目標にする。規則を変えたらデプロイするだけで全履歴に反映される。
-3. **永続化は Rancher の PVC 上の SQLite。** Slack からの全件取り込みは初回（と PVC 喪失時）だけ。以降の起動は差分同期のみ。
+3. **永続化は Rancher の PVC 上の SQLite。** Slack からの全件取り込みは初回（と PVC 喪失時）だけ。以降の起動は Slack を読まない。
 4. **データはネットに置かない。** データイメージ・暗号化スナップショットは作らない。手元では named volume と、Slack 応答の生キャッシュを使う。
 5. **マスタはコードを正とする。** DB に置く場合も起動時に毎回同期する。
 
@@ -116,15 +116,10 @@ arrival_event                       -- 出社の事実（追記のみ）
   slack_ts      TEXT    UNIQUE      -- 根拠となる Slack メッセージの ts（ボタン経由で投稿前なら NULL）
   recorded_at   TEXT    NOT NULL
 
-sync_state                          -- Slack 同期の位置
-  channel_id    TEXT PK
-  synced_until  TEXT    NOT NULL    -- ここまでの親メッセージは取り込み済み（Slack ts）
-  updated_at    TEXT    NOT NULL
-
 alembic_version                     -- Alembic のリビジョン（0000 が基準）
 ```
 
-- 同じ人の同じ日（JST）に複数のイベントがあっても許容し、**計算時に最初の 1 件を採用**する。これで「ボタンで記録 → その後の差分同期で同じ投稿を再取得」も、`slack_ts` の一意制約と合わせて冪等になる。
+- 同じ人の同じ日（JST）に複数のイベントがあっても許容し、**計算時に最初の 1 件を採用**する。これで「ボタンで記録 → その後の同期で同じ投稿を再取得」も、`slack_ts` の一意制約と合わせて冪等になる。
 - ボタン経由: 押下時にイベントを記録（`occurred_at` = 押下時刻）→ スレッドに投稿 → 投稿の ts を `slack_ts` に書き戻す。
 
 ### 4.2 派生データ
@@ -155,9 +150,12 @@ alembic_version                     -- Alembic のリビジョン（0000 が基�
 | 場面 | 処理 | 呼び出し回数の目安 |
 |---|---|---|
 | 初回（PVC が空） | 全件取り込み。`conversations.history`（limit 200）全ページ ＋ v3 の親ごとに `conversations.replies` | 約 540 回・約 13 分（初回のみ） |
-| 通常の起動 | `synced_until` の 1 日前から `conversations.history` を取得し、`latest_reply` が `synced_until` より新しい親だけ `replies` を取得 | 数回（1 日あたり親 1 件・返信平均 3 件） |
+| 通常の起動（`arrival_event` が空でない） | 読まない（ログチャンネルには件数だけ報告） | 0 |
 | 稼働中 | ボタン押下でイベントを記録（Slack への再問い合わせなし） | 0 |
+| 古いバックアップの復元後 | 手動で `python -m hikarie_bot sync`（全件取り込み。冪等） | 約 540 回・約 13 分 |
 
+- ボタン押下は「記録 → 投稿 → ts の書き戻し」の順で、本番は 1 レプリカ（`Recreate`）・1 PVC なので、Slack にあって DB に無い出社は生じない。そのため差分同期（位置の `sync_state`、1 日の重なり読み）は持たず、リビジョン 0002 で `sync_state` を削除した。
+- 同期は常にチャンネル全体を読む。返信が `reply_count` に満たないスレッドは警告を出す（再実行で補える）。
 - 取り込みは `slack_ts` で重複排除するので、何度実行しても同じ結果になる。
 - レート制限は `slack_sdk` の `RateLimitErrorRetryHandler` に任せ、固定の `sleep(1)` は外す。
 - スレッド投稿に Slack のメッセージ metadata（`event_type: hikarie_arrival`、押下時刻と user_id）を付ける（§10-2）。追加のスコープ不要で、履歴からの再構築でも押下時刻を正確に復元できる（§2.4-10 の解消）。metadata の無い過去の投稿は、従来どおり投稿の ts を出社時刻とする。
@@ -167,10 +165,9 @@ alembic_version                     -- Alembic のリビジョン（0000 が基�
 ### 7.1 起動シーケンス
 
 1. DB を開き、Alembic でスキーマを最新リビジョンに上げる（SQLite は WAL モード）。リビジョン 0000 より前の形式の DB は引き継がず、起動を止める（データは Slack から作り直す）。
-2. `arrival_event` が空なら全件取り込み（初回のみ）。
-3. 差分同期。
-4. 計算エンジンで一括計算し、結果を報告する（保存はしない）。
-5. Socket Mode 接続、日次タスク開始。
+2. `arrival_event` が空のときだけ Slack から全件取り込み（初回と PVC 喪失時）。空でなければ読まず、`slack sync: skipped (N events stored)` と件数だけ報告する。
+3. 計算エンジンで一括計算し、結果を報告する（保存はしない）。
+4. Socket Mode 接続、日次タスク開始。
 
 通常の再起動は 10 秒未満を目標にする。
 
@@ -199,7 +196,7 @@ alembic_version                     -- Alembic のリビジョン（0000 が基�
 | 対象 | 理由 |
 |---|---|
 | `hikarie-bot-initial-data` イメージ、`initial_data.py`、Fernet 暗号化、`cryptography` 依存、関連する CI ジョブと compose サービス | データをネットに置かない方針のため不要。public の空パッケージは削除する（§10-5）。release workflow が push するたびに作り直されるため、**CI ジョブを撤去してから**削除する |
-| 起動時の全件取り込み（`initially_create_db`）と `--skip-db-create` | 初回の全件取り込み＋差分同期に置き換え |
+| 起動時の全件取り込み（`initially_create_db`）と `--skip-db-create` | DB が空のときだけの全件取り込みに置き換え |
 | `GuestArrivalRaw` | `arrival_event` に置き換え |
 | 派生テーブル群と `Badge` / `BadgeType`（実施済み、0001） | 計算結果を直接使う形に移行 |
 
@@ -225,3 +222,4 @@ alembic_version                     -- Alembic のリビジョン（0000 が基�
 | 3 | 手元確認用に開発用の Slack アプリ（またはワークスペース）を用意できるか | 用意できる（`slack run`、#109） |
 | 4 | Rancher のワークロード設定で `fsGroup` と `Recreate` を指定できるか | おそらく可能。デプロイ時に確認し、できない場合は initContainer で権限を調整する |
 | 5 | public の `hikarie-bot-initial-data` パッケージを削除してよいか | 削除する（CI ジョブ撤去後） |
+| 6（2026-11-02） | 差分同期（`sync_state`・1 日の重なり読み・`latest_reply` の絞り込み）を続けるか | 廃止する。出社は記録してから投稿するので Slack だけが持つ出社は無く、起動時の差分読みは何も拾わない。起動時は DB が空のときだけ全件を読み、古いバックアップの復元後は手動で `sync`（全件・冪等）を実行する。`sync_state` はリビジョン 0002 で削除 |

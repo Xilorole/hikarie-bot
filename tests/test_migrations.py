@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from hikarie_bot.database import BaseSchema, configure_sqlite
 from hikarie_bot.migrations import SCRIPT_LOCATION, UnversionedDatabaseError, init_database, upgrade_database
-from hikarie_bot.models import ArrivalEvent, SyncState
+from hikarie_bot.models import ArrivalEvent
 
 JST = timezone(timedelta(hours=9))
 
@@ -33,7 +33,7 @@ def test_upgrade_creates_schema_matching_models(tmp_path: Path) -> None:
 
     with engine.connect() as connection:
         assert compare_metadata(MigrationContext.configure(connection), BaseSchema.metadata) == []
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0001",)]
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0002",)]
         assert connection.execute(text("PRAGMA journal_mode")).scalar() == "wal"
     engine.dispose()
 
@@ -49,8 +49,8 @@ def test_upgrade_rejects_database_from_before_alembic(tmp_path: Path) -> None:
     engine.dispose()
 
 
-def test_upgrade_from_0000_drops_derived_tables_and_keeps_events(tmp_path: Path) -> None:
-    """Revision 0001 removes the tables that are now computed, and leaves the events alone."""
+def test_upgrade_from_0000_drops_unused_tables_and_keeps_events(tmp_path: Path) -> None:
+    """Revisions 0001 and 0002 remove the computed and unused tables, and leave the events alone."""
     engine = _file_engine(tmp_path / "data.db")
     config = Config()
     config.set_main_option("script_location", str(SCRIPT_LOCATION))
@@ -66,9 +66,27 @@ def test_upgrade_from_0000_drops_derived_tables_and_keeps_events(tmp_path: Path)
 
     assert init_database(engine).revision_before == "0000"
 
-    assert set(inspect(engine).get_table_names()) == {"alembic_version", "arrival_event", "sync_state"}
+    assert set(inspect(engine).get_table_names()) == {"alembic_version", "arrival_event"}
     with Session(engine) as session:
         assert session.query(ArrivalEvent).one().user_id == "U1"
+    engine.dispose()
+
+
+def test_0002_drops_sync_state_and_downgrade_recreates_it_empty(tmp_path: Path) -> None:
+    """Revision 0002 drops the sync position; downgrading brings the table back empty."""
+    engine = _file_engine(tmp_path / "data.db")
+    config = Config()
+    config.set_main_option("script_location", str(SCRIPT_LOCATION))
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0001")
+        connection.execute(
+            text("INSERT INTO sync_state VALUES ('C1', '1.1', '2026-11-02T00:00:00.000000+00:00')"),
+        )
+        command.upgrade(config, "0002")
+        assert "sync_state" not in inspect(connection).get_table_names()
+        command.downgrade(config, "0001")
+        assert connection.execute(text("SELECT count(*) FROM sync_state")).scalar() == 0
     engine.dispose()
 
 
@@ -85,14 +103,12 @@ def test_arrival_event_stores_utc_and_rejects_naive_datetimes() -> None:
                 ArrivalEvent(user_id="U2", occurred_at=occurred_at, source="button"),
             ]
         )
-        session.add(SyncState(channel_id="C1", synced_until="1.1"))
         session.commit()
         session.expire_all()
 
         stored = session.query(ArrivalEvent).first()
         assert stored.occurred_at == occurred_at
         assert stored.occurred_at.tzinfo == UTC
-        assert session.query(SyncState).one().updated_at.tzinfo == UTC
 
         session.add(ArrivalEvent(user_id="U3", occurred_at=occurred_at, source="slack_v3", slack_ts="1.1"))
         with pytest.raises(IntegrityError):
@@ -112,4 +128,4 @@ def test_read_only_open_of_wal_database(tmp_path: Path) -> None:
     engine.dispose()
 
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0001",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0002",)

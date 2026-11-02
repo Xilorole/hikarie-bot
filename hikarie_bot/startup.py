@@ -3,7 +3,7 @@
 Each step is posted as its own message when it finishes, so a slow step (the first full
 read of the channel) shows how far startup has got.
 
-The report carries only counts, durations, schema revisions and sync positions: never
+The report carries only counts, durations and schema revisions: never
 user IDs, names or message text. A failed step reports its name and exception type;
 the exception message (which may contain data) stays in the process log.
 """
@@ -12,7 +12,6 @@ import subprocess
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 
@@ -21,10 +20,9 @@ from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import func, select
 
 from hikarie_bot.arrivals import compute_arrivals
-from hikarie_bot.engine import JST
 from hikarie_bot.exceptions import DatabaseLocationError, InMemoryDatabaseError
 from hikarie_bot.migrations import InitResult, UnversionedDatabaseError
-from hikarie_bot.models import ArrivalEvent, SyncState, ensure_database, get_db
+from hikarie_bot.models import ArrivalEvent, ensure_database, get_db
 from hikarie_bot.settings import get_settings
 from hikarie_bot.sync import SlackSource, SyncResult, sync_channel
 
@@ -115,31 +113,33 @@ def describe_database(result: InitResult) -> str:
     return f"schema {result.revision} (migrated from {result.revision_before or 'empty'})"
 
 
-def format_ts(ts: str) -> str:
-    """Format a Slack ts as JST minutes."""
-    return datetime.fromtimestamp(float(ts), UTC).astimezone(JST).strftime("%Y-%m-%d %H:%M JST")
-
-
 def describe_sync(result: SyncResult) -> str:
     """Describe what a Slack sync read and stored."""
-    scope = "whole channel" if result.since is None else f"since {format_ts(result.since)}"
-    return f"{scope} · {result.messages} messages · {result.threads} threads · {result.inserted} new events"
+    return f"whole channel · {result.messages} messages · {result.threads} threads · {result.inserted} new events"
 
 
 async def prepare(reporter: StartupReporter, source: SlackSource, channel: str) -> None:
-    """Migrate, sync from Slack and compute scores once (a check before answering), reporting each step."""
+    """Migrate, read Slack into an empty database and compute scores once (a check), reporting each step.
+
+    Live arrivals are stored before they are posted, so Slack never holds one the database lacks; only an
+    empty database (first start, or a lost volume) needs the channel read.
+    """
     await reporter.post(f"starting application (rev {reporter.revision})")
 
     async with reporter.step("database") as step:
         step.text = describe_database(ensure_database())
 
     with get_db() as session:
-        if session.get(SyncState, channel) is None:
+        stored = session.scalar(select(func.count()).select_from(ArrivalEvent)) or 0
+        if stored:
+            async with reporter.step("slack sync") as step:
+                step.text = f"skipped ({stored} events stored)"
+        else:
             await reporter.post(
                 "first start: reading the whole channel from Slack (about 10 minutes before the bot answers)"
             )
-        async with reporter.step("slack sync") as step:
-            step.text = describe_sync(await sync_channel(session, source, channel))
+            async with reporter.step("slack sync") as step:
+                step.text = describe_sync(await sync_channel(session, source, channel))
 
         async with reporter.step("scores") as step:
             engine = compute_arrivals(session)

@@ -26,7 +26,6 @@ class Source:
             "text": "ヒカリエに出社してる？",
             "thread_ts": f"{T0:.6f}",
             "reply_count": 2,
-            "latest_reply": f"{T0 + 120:.6f}",
         }
         self.thread = [
             {
@@ -37,10 +36,9 @@ class Source:
             for i, user in enumerate(SECRET_USERS)
         ]
 
-    async def history(self, channel: str, oldest: str | None):  # noqa: ANN201
+    async def history(self, channel: str):  # noqa: ANN201
         """Yield the daily post."""
-        if oldest is None or float(self.parent["ts"]) >= float(oldest):
-            yield self.parent
+        yield self.parent
 
     async def replies(self, channel: str, ts: str) -> list[dict[str, Any]]:
         """Return the thread."""
@@ -73,7 +71,7 @@ async def test_first_start_reports_each_step_without_personal_data(client: Async
     texts = posted(client)
     assert len(texts) == 6  # one message per section
     assert texts[0] == "starting application (rev abc1234)"
-    assert texts[1].startswith("*database*: schema 0001 (migrated from empty) (")
+    assert texts[1].startswith("*database*: schema 0002 (migrated from empty) (")
     assert texts[2].startswith("first start: reading the whole channel")
     assert texts[3].startswith("*slack sync*: whole channel · 1 messages · 1 threads · 2 new events (")
     assert texts[4].startswith("*scores*: 2 events → 2 arrivals · 2 users · ")
@@ -82,19 +80,23 @@ async def test_first_start_reports_each_step_without_personal_data(client: Async
 
 
 @pytest.mark.asyncio
-async def test_restart_reports_the_catch_up(client: AsyncMock) -> None:
-    """A restart has no full-read notice and reports where the catch-up started."""
+async def test_restart_skips_the_sync_and_reports_only_a_count(client: AsyncMock) -> None:
+    """With events stored there is no full-read notice and Slack is not read."""
     await prepare(StartupReporter(client=client, channel="C0LOG", revision="abc1234"), Source(), CHANNEL)
     client.chat_postMessage.reset_mock()
     client.restart()
+    source = Source()
+    source.history = Mock(side_effect=AssertionError("Slack must not be read"))
     reporter = StartupReporter(client=client, channel="C0LOG", revision="abc1234")
 
-    await prepare(reporter, Source(), CHANNEL)
+    await prepare(reporter, source, CHANNEL)
 
     texts = posted(client)
     assert not any(text.startswith("first start") for text in texts)
-    assert texts[1].startswith("*database*: schema 0001 (up to date)")
-    assert texts[2].startswith("*slack sync*: since 2025-10-08 17:55 JST · 1 messages · 0 threads · 0 new events")
+    assert texts[1].startswith("*database*: schema 0002 (up to date)")
+    assert texts[2].startswith("*slack sync*: skipped (2 events stored) (")
+    assert texts[3].startswith("*scores*: 2 events → 2 arrivals")
+    assert not any(user in text for text in texts for user in SECRET_USERS)
 
 
 @pytest.mark.asyncio

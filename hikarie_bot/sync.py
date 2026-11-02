@@ -1,10 +1,10 @@
 """Read arrival events from the Slack channel into arrival_event.
 
-The first run reads the whole channel. Later runs read top-level messages from one day
-before the stored position (the newest ts seen; thread replies arrive within the same
-day) and fetch only the bot threads whose latest reply is newer than that position. A thread whose
-replies were not all read (e.g. missing from a recorded cache) holds the position back, so it is read
-again next time. Events are keyed by the Slack message ts, so syncing is idempotent.
+A sync always reads the whole channel: every top-level message and every bot thread. The bot stores
+an arrival before it posts it, so a running database never lacks an arrival that Slack has; startup
+syncs only into an empty database (first start, or a lost volume), and the ``sync`` command is the
+manual full read (e.g. after restoring an older backup). Events are keyed by the Slack message ts, so
+syncing is idempotent.
 
 Slack data comes from a SlackSource: the live API, the API while recording raw
 responses, or a recorded cache (offline). Recorded files have the shape
@@ -15,7 +15,7 @@ import json
 import re
 from collections.abc import AsyncIterator, Awaitable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -27,14 +27,13 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from hikarie_bot.engine import JST
-from hikarie_bot.models import ArrivalEvent, SyncState
+from hikarie_bot.models import ArrivalEvent
 from hikarie_bot.settings import get_settings
 
 Message = dict[str, Any]
 
 PAGE_SIZE = 200
 ARRIVAL_EVENT_TYPE = "hikarie_arrival"
-THREAD_OVERLAP = timedelta(days=1)
 
 # Posts without arrival metadata are read from their text. The retired v1/v2 bots posted only the day's
 # fastest arrival; their history is closed, so its time window identifies them without their bot IDs.
@@ -48,8 +47,8 @@ V3_START = datetime(2024, 10, 3, tzinfo=JST)
 class SlackSource(Protocol):
     """Where channel messages come from."""
 
-    def history(self, channel: str, oldest: str | None) -> AsyncIterator[Message]:
-        """Yield top-level messages with ts >= oldest (all when None)."""
+    def history(self, channel: str) -> AsyncIterator[Message]:
+        """Yield every top-level message."""
         ...
 
     async def replies(self, channel: str, ts: str) -> list[Message]:
@@ -74,13 +73,9 @@ class LiveSlackSource:
         """Initialize the LiveSlackSource class."""
         self.client = client
 
-    def history_pages(self, channel: str, oldest: str | None) -> AsyncIterator[tuple[dict, dict]]:
+    def history_pages(self, channel: str) -> AsyncIterator[tuple[dict, dict]]:
         """Yield (request params, response body) for each history page."""
-        return _pages(
-            self.client.conversations_history(
-                channel=channel, oldest=oldest, limit=PAGE_SIZE, include_all_metadata=True
-            )
-        )
+        return _pages(self.client.conversations_history(channel=channel, limit=PAGE_SIZE, include_all_metadata=True))
 
     def reply_pages(self, channel: str, ts: str) -> AsyncIterator[tuple[dict, dict]]:
         """Yield (request params, response body) for each page of a thread."""
@@ -88,9 +83,9 @@ class LiveSlackSource:
             self.client.conversations_replies(channel=channel, ts=ts, limit=PAGE_SIZE, include_all_metadata=True)
         )
 
-    async def history(self, channel: str, oldest: str | None) -> AsyncIterator[Message]:
-        """Yield top-level messages with ts >= oldest."""
-        async for _, body in self.history_pages(channel, oldest):
+    async def history(self, channel: str) -> AsyncIterator[Message]:
+        """Yield every top-level message."""
+        async for _, body in self.history_pages(channel):
             for message in body.get("messages", []):
                 yield message
 
@@ -119,11 +114,11 @@ class RecordingSlackSource(LiveSlackSource):
         temporary.write_text(json.dumps(record, ensure_ascii=False))
         temporary.rename(path)
 
-    async def history(self, channel: str, oldest: str | None) -> AsyncIterator[Message]:
+    async def history(self, channel: str) -> AsyncIterator[Message]:
         """Yield top-level messages and record each page."""
         directory = self.cache_dir / channel / "conversations.history"
         number = 0
-        async for params, body in self.history_pages(channel, oldest):
+        async for params, body in self.history_pages(channel):
             number += 1
             self._save(directory / f"page-{self.run}-{number:04d}.json", "conversations.history", params, body)
             for message in body.get("messages", []):
@@ -157,15 +152,14 @@ class CachedSlackSource:
         records = [json.loads(path.read_text()) for path in paths]
         return sorted(records, key=lambda record: record["fetched_at"])
 
-    async def history(self, channel: str, oldest: str | None) -> AsyncIterator[Message]:
-        """Yield recorded top-level messages with ts >= oldest, newest first like the API."""
+    async def history(self, channel: str) -> AsyncIterator[Message]:
+        """Yield recorded top-level messages, newest first like the API."""
         pages = (self.cache_dir / channel / "conversations.history").glob("page-*.json")
         messages = {
             message["ts"]: message for record in self._records(pages) for message in record["response"]["messages"]
         }
         for ts in sorted(messages, key=float, reverse=True):
-            if oldest is None or float(ts) >= float(oldest):
-                yield messages[ts]
+            yield messages[ts]
 
     async def replies(self, channel: str, ts: str) -> list[Message]:
         """Return a recorded thread, or an empty list if it was never recorded."""
@@ -236,45 +230,33 @@ class SyncResult:
     messages: int = 0
     threads: int = 0
     inserted: int = 0
-    since: str | None = None  # the oldest ts read; None for a full read of the channel
 
 
 async def sync_channel(session: Session, source: SlackSource, channel: str) -> SyncResult:
-    """Ingest new arrival events from the channel and advance its sync position."""
+    """Read the whole channel and store the arrival events that are not stored yet."""
     if not (bot_id := get_settings().bot_id):
         # Without it no current arrival is recognized and the sync would silently store almost nothing.
         msg = "BOT_ID must be set to sync"
         raise ValueError(msg)
-    state = session.get(SyncState, channel)
-    synced_until = float(state.synced_until) if state else None
-    oldest = None if synced_until is None else str(synced_until - THREAD_OVERLAP.total_seconds())
-    logger.info("Syncing {} from {}", channel, oldest or "the beginning")
+    logger.info("Syncing {}", channel)
 
-    result = SyncResult(since=oldest)
+    result = SyncResult()
     arrivals: list[ParsedArrival] = []
-    # The position is the newest ts seen, replies included, so unchanged threads are skipped next time.
-    seen = [state.synced_until] if state else []
-    unread_threads: list[str] = []
-    async for message in source.history(channel, oldest):
+    async for message in source.history(channel):
         result.messages += 1
-        seen.append(message["ts"])
         if arrival := parse_arrival(message):
             arrivals.append(arrival)
-        has_new_replies = synced_until is None or float(message.get("latest_reply", "0")) > synced_until
-        if message.get("bot_id") == bot_id and message.get("reply_count") and has_new_replies:
+        if message.get("bot_id") == bot_id and message.get("reply_count"):
             result.threads += 1
             replies = (await source.replies(channel, message["ts"]))[1:]
             if len(replies) < message["reply_count"]:
                 logger.warning(
-                    "Thread {} returned {}/{} replies; reading it again next time",
+                    "Thread {} returned {}/{} replies; run the sync again to read the rest",
                     message["ts"],
                     len(replies),
                     message["reply_count"],
                 )
-                unread_threads.append(message["ts"])
-            seen += [reply["ts"] for reply in replies]
             arrivals += [arrival for reply in replies if (arrival := parse_arrival(reply))]
-    latest_ts = min(unread_threads, key=float) if unread_threads else max(seen, key=float, default=None)
 
     if arrivals:
         statement = insert(ArrivalEvent).on_conflict_do_nothing(index_elements=["slack_ts"])
@@ -293,8 +275,6 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
         before = session.scalar(count) or 0
         session.execute(statement, rows)
         result.inserted = (session.scalar(count) or 0) - before
-    if latest_ts is not None:
-        session.merge(SyncState(channel_id=channel, synced_until=latest_ts, updated_at=datetime.now(UTC)))
     session.commit()
     logger.info("Synced {}: {}", channel, result)
     return result
