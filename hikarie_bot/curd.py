@@ -17,7 +17,6 @@ from .models import (
     Badge,
     BadgeType,
     GuestArrivalInfo,
-    GuestArrivalRaw,
     User,
     UserBadge,
     UserInfoRaw,
@@ -173,8 +172,6 @@ def insert_arrival_action(session: Session, jst_datetime: datetime, user_id: str
 
     """
     logger.info(f"inserting action; date: {jst_datetime}, user_id: {user_id}")
-    session.add(GuestArrivalRaw(arrival_time=jst_datetime, user_id=user_id))
-    session.commit()
     start_of_day = jst_datetime.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = start_of_day + timedelta(days=1)
 

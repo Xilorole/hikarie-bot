@@ -23,12 +23,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
-from hikarie_bot.curd import insert_arrival_action
+from hikarie_bot.engine import UserLevel, compute, to_jst_wall_clock
 from hikarie_bot.models import (
     Achievement,
     ArrivalEvent,
     GuestArrivalInfo,
-    GuestArrivalRaw,
     SyncState,
     User,
     UserBadge,
@@ -36,7 +35,6 @@ from hikarie_bot.models import (
 )
 from hikarie_bot.settings import BOT_ID, V1_BOT_ID, V2_BOT_ID
 from hikarie_bot.slack_helper import MessageFilter
-from hikarie_bot.utils import unix_timestamp_to_jst
 
 Message = dict[str, Any]
 
@@ -264,20 +262,69 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
     return result
 
 
-DERIVED_TABLES = [Achievement, UserBadge, UserInfoRaw, GuestArrivalInfo, GuestArrivalRaw, User]
+DERIVED_TABLES = [Achievement, UserBadge, UserInfoRaw, GuestArrivalInfo, User]
 
 
 def rebuild_derived_tables(session: Session) -> int:
-    """Recompute scores and badges from arrival_event, replacing the derived tables.
+    """Recompute ranks, badges and scores from arrival_event, replacing the derived tables.
 
-    Interim: replays events through insert_arrival_action until the in-memory engine
-    (design phase 3) replaces it. Returns the number of events replayed.
+    Returns the number of counted arrivals (the first of each user's day).
     """
+    events = session.execute(
+        select(ArrivalEvent.user_id, ArrivalEvent.occurred_at).order_by(ArrivalEvent.occurred_at, ArrivalEvent.id)
+    ).all()
+    engine = compute((user_id, to_jst_wall_clock(occurred_at)) for user_id, occurred_at in events)
+
+    # Core inserts skip the ORM hooks that copy user_id into user_info_raw_id, so set it here.
+    arrivals, achievements, snapshots, users = [], [], [], {}
+    for result in engine.results:
+        level = vars(UserLevel.of(result.previous_score, result.current_score))
+        scores = {"current_score": result.current_score, "previous_score": result.previous_score}
+        arrivals.append(
+            {
+                "id": result.id,
+                "user_id": result.user_id,
+                "user_info_raw_id": result.user_id,
+                "arrival_time": result.time,
+                "arrival_rank": result.rank,
+                "acquired_score_sum": result.score_sum,
+            }
+        )
+        achievements += [
+            {
+                "user_id": result.user_id,
+                "user_info_raw_id": result.user_id,
+                "arrival_id": result.id,
+                "badge_id": badge_id,
+                "achieved_time": result.time,
+            }
+            for badge_id in result.badge_ids
+        ]
+        snapshots.append({"user_id": result.user_id, "update_datetime": result.time, **scores, **level})
+        users[result.user_id] = {"id": result.user_id, "update_datetime": result.time, **scores, **level}
+    user_badges = [
+        {
+            "user_id": user_id,
+            "user_info_raw_id": user_id,
+            "badge_id": badge_id,
+            "initially_acquired_datetime": tally.first,
+            "last_acquired_datetime": tally.last,
+            "count": tally.count,
+        }
+        for (user_id, badge_id), tally in engine.user_badges.items()
+    ]
+
     for model in DERIVED_TABLES:
         session.execute(delete(model))
+    for model, rows in (
+        (User, list(users.values())),
+        (GuestArrivalInfo, arrivals),
+        (Achievement, achievements),
+        (UserInfoRaw, snapshots),
+        (UserBadge, user_badges),
+    ):
+        if rows:
+            session.execute(insert(model), rows)
     session.commit()
-    events = session.query(ArrivalEvent).order_by(ArrivalEvent.occurred_at, ArrivalEvent.id).all()
-    for event in events:
-        insert_arrival_action(session, unix_timestamp_to_jst(event.occurred_at.timestamp()), event.user_id)
-    logger.info("Rebuilt derived tables from {} events", len(events))
-    return len(events)
+    logger.info("Rebuilt derived tables from {} events ({} counted arrivals)", len(events), len(engine.results))
+    return len(engine.results)
