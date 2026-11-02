@@ -13,11 +13,6 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "github.copilot.chat.commitMessageGeneration.instructions": [
-        {
-            "file": ".vscode/.copilot-commit-message-instructions.md"
-        }
-    ],
     "git.requireGitUserConfig": true,
     "github.gitAuthentication": true,
     "python.analysis.autoImportCompletions": true,
