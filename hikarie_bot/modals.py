@@ -138,6 +138,7 @@ class RegistryMessage(BaseMessage):
             session.query(GuestArrivalInfo)
             .filter(GuestArrivalInfo.arrival_time >= start_of_day)
             .filter(GuestArrivalInfo.arrival_time <= jst_datetime)
+            .order_by(GuestArrivalInfo.arrival_time)
             .all()
         )
 
