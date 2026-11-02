@@ -423,11 +423,7 @@ class AchievementView(View):
         # 6xx番台（キリ番バッジ）の場合は取得済みのみ表示
         if badge_type.id == KIRIBAN_BADGE_TYPE_ID:
             for badge in badges:
-                user_badge = (
-                    self.session.query(UserBadge)
-                    .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge.id)
-                    .one_or_none()
-                )
+                user_badge = self._user_badges.get(badge.id)
                 if user_badge:
                     element = block_elements.ImageElement(
                         image_url=ACHIEVED_BADGE_IMAGE_URL,
@@ -446,11 +442,7 @@ class AchievementView(View):
 
     def _create_badge_element(self, badge: Badge) -> block_elements.ImageElement:
         """Create a single badge element based on user's badge status."""
-        user_badge = (
-            self.session.query(UserBadge)
-            .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge.id)
-            .one_or_none()
-        )
+        user_badge = self._user_badges.get(badge.id)
 
         if user_badge:
             return block_elements.ImageElement(
@@ -462,19 +454,13 @@ class AchievementView(View):
             alt_text=f"【{badge.message}】???",
         )
 
-    def _is_kiriban_badge(self, badge_id: int) -> bool:
-        """Check if badge is a kiriban badge (6000 series)."""
-        return 6000 <= badge_id < 7000  # noqa: PLR2004
-
-    def _get_badge_achievement_count(self, badge_id: int) -> int:
-        """Get the number of times a user has achieved a specific badge."""
-        count_query = (
-            self.session.query(UserBadge)
-            .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge_id)
-            .order_by(UserBadge.last_acquired_datetime.desc())
-            .one_or_none()
-        )
-        return count_query.count if count_query else 0
+    @cached_property
+    def _user_badges(self) -> dict[int, UserBadge]:
+        """Return the user's badges by badge ID, read once for the whole view."""
+        return {
+            user_badge.badge_id: user_badge
+            for user_badge in self.session.query(UserBadge).filter(UserBadge.user_id == self.user_id)
+        }
 
     @cached_property
     def _arrival_count(self) -> int:
@@ -661,8 +647,7 @@ class AchievementView(View):
         rich_text_elements = []
 
         for user_badge, badge in achieved_user_badges:
-            # 獲得回数を取得
-            achievement_count = self._get_badge_achievement_count(badge.id)
+            achievement_count = user_badge.count
 
             # トップレベル: ID、タイトル、獲得日
             initial_date = user_badge.initially_acquired_datetime.strftime("%Y-%m-%d")
@@ -720,18 +705,13 @@ class AchievementView(View):
         next_kiriban_id = self._next_kiriban.id if self._next_kiriban else None
         for badge_type in all_badge_types:
             badges = self.session.query(Badge).filter(Badge.badge_type_id == badge_type.id).all()
-            type_unachieved = []
-
-            for badge in badges:
-                user_badge = (
-                    self.session.query(UserBadge)
-                    .filter(UserBadge.user_id == self.user_id, UserBadge.badge_id == badge.id)
-                    .first()
-                )
-
-                # キリ番は全体の出社回数で次に来るものだけを表示
-                if not user_badge and (not self._is_kiriban_badge(badge.id) or badge.id == next_kiriban_id):
-                    type_unachieved.append(f"[{badge.id}] {badge.message}")
+            # キリ番は全体の出社回数で次に来るものだけを表示
+            type_unachieved = [
+                f"[{badge.id}] {badge.message}"
+                for badge in badges
+                if badge.id not in self._user_badges
+                and (badge_type.id != KIRIBAN_BADGE_TYPE_ID or badge.id == next_kiriban_id)
+            ]
 
             if type_unachieved:
                 unachieved_badges_text += f"*{badge_type.id}系*\n"
