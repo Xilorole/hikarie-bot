@@ -39,7 +39,7 @@ RUN groupadd --gid 10001 bot && \
 
 COPY --from=builder /opt/.venv /opt/.venv
 
-USER bot
+USER 10001:10001
 
 FROM runtime AS initial-data
 
