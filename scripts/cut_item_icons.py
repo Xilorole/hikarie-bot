@@ -11,7 +11,8 @@ square (the corners are transparent).
 A single regenerated item (one item on a white background) replaces one icon instead; it is scaled so
 that the longer side of the item matches the others (about ITEM_LONG_SIDE of the 128 pixels):
 
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py --single dice assets/items/sources/dice-2.png assets/items
+    uv run --with pillow --with numpy python scripts/cut_item_icons.py \
+        --single dice assets/items/sources/dice-2.png assets/items
 """
 
 import sys
