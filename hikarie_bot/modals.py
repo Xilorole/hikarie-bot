@@ -73,7 +73,7 @@ def to_text(message: list[Block]) -> str:
 def initial_message() -> list[Block]:
     """Build the daily question with its buttons."""
     return [
-        blocks.SectionBlock(text="ヒカリエに出社してる？"),
+        blocks.SectionBlock(text="高輪に出社してる？"),
         blocks.ActionsBlock(
             elements=[
                 block_elements.ButtonElement(text="最速出社した", action_id=ActionID.FASTEST_ARRIVAL, style="primary"),
@@ -87,7 +87,7 @@ def initial_message() -> list[Block]:
 def registry_message(arrivals: list[ArrivalResult]) -> list[Block]:
     """Build the question with its buttons and the day's arrivals in time order."""
     return [
-        blocks.SectionBlock(text="ヒカリエに出社してる？"),
+        blocks.SectionBlock(text="高輪に出社してる？"),
         blocks.ActionsBlock(
             elements=[
                 block_elements.ButtonElement(text="出社した", action_id=ActionID.ARRIVED_OFFICE),
@@ -97,7 +97,7 @@ def registry_message(arrivals: list[ArrivalResult]) -> list[Block]:
         ),
         blocks.DividerBlock(),
         blocks.SectionBlock(
-            text="本日の出社ユーザー :hikarie: :\n"
+            text="本日の出社ユーザー:\n"
             + "\n".join(f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>" for arrival in arrivals),
         ),
     ]
@@ -145,7 +145,7 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
     return [
         blocks.SectionBlock(
             text=f"*{arrival.time:%H:%M}* "
-            f"{'最速' if is_first else ''}出社登録しました！{' :hikarie:' if is_first else ''}"
+            f"{'最速' if is_first else ''}出社登録しました！"
             f"\n<@{arrival.user_id}>さんのポイント "
             f"{arrival.previous_score} → *{arrival.current_score}* "
             f"(*+{arrival.score_sum}*){level_up_text}"

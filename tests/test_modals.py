@@ -22,11 +22,11 @@ from tests.helpers import compute_in_order, only_badge_types
 def test_initial_message() -> None:
     """Test the initial message."""
     message = initial_message()
-    assert to_text(message) == "ヒカリエに出社してる？"
+    assert to_text(message) == "高輪に出社してる？"
     assert render(message) == [
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},
+            "text": {"type": "mrkdwn", "text": "高輪に出社してる？"},
         },
         {
             "type": "actions",
@@ -63,7 +63,7 @@ def test_registry_message() -> None:
     assert render(message) == [
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},
+            "text": {"type": "mrkdwn", "text": "高輪に出社してる？"},
         },
         {
             "type": "actions",
@@ -94,7 +94,7 @@ def test_registry_message() -> None:
         },
         {
             "text": {
-                "text": "本日の出社ユーザー :hikarie: :\n*06:00* : <@test_user_1st>",
+                "text": "本日の出社ユーザー:\n*06:00* : <@test_user_1st>",
                 "type": "mrkdwn",
             },
             "type": "section",
@@ -112,7 +112,7 @@ def test_registry_message_2() -> None:
     assert render(message) == [
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "ヒカリエに出社してる？"},
+            "text": {"type": "mrkdwn", "text": "高輪に出社してる？"},
         },
         {
             "type": "actions",
@@ -144,7 +144,7 @@ def test_registry_message_2() -> None:
         {
             "text": {
                 "text": dedent("""\
-                        本日の出社ユーザー :hikarie: :
+                        本日の出社ユーザー:
                         *06:00* : <@test_user_1st>
                         *06:01* : <@test_user_2nd>"""),
                 "type": "mrkdwn",
@@ -164,7 +164,7 @@ def test_point_get_message() -> None:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*07:00* 最速出社登録しました！ :hikarie:\n<@test_user>さんのポイント 0 → *7* (*+7*)",
+                "text": "*07:00* 最速出社登録しました！\n<@test_user>さんのポイント 0 → *7* (*+7*)",
             },
         },
         {
@@ -214,7 +214,7 @@ def test_point_get_message_max_level() -> None:
     # 1398 -> 1403: the upper limit is reached by this arrival
     message = point_get_after(2, 1398)
     assert message[0]["text"]["text"] == (
-        "*07:00* 最速出社登録しました！ :hikarie:\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *上限に到達!* :crown: "
+        "*07:00* 最速出社登録しました！\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *上限に到達!* :crown: "
     )
     assert message[2]["elements"][0]["text"].startswith(
         "かたがき: *でんせつのかいしゃいん* (lv12)\nつぎのレベルまで: *上限に到達*\nしんこうど: `██████████` | *100%*\n"
