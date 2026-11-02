@@ -21,10 +21,13 @@ from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import func, select
 
 from hikarie_bot.engine import JST
-from hikarie_bot.migrations import InitResult
+from hikarie_bot.exceptions import DatabaseLocationError
+from hikarie_bot.migrations import InitResult, UnversionedDatabaseError
 from hikarie_bot.models import Achievement, ArrivalEvent, SyncState, User, ensure_database, get_db
 from hikarie_bot.settings import APP_REVISION
 from hikarie_bot.sync import SlackSource, SyncResult, rebuild_derived_tables, sync_channel
+
+PUBLIC_ERRORS = (DatabaseLocationError, UnversionedDatabaseError)
 
 
 def current_revision() -> str:
@@ -88,9 +91,11 @@ class StartupReporter:
         try:
             yield detail
         except Exception as error:
+            # configuration errors explain themselves without data; others may carry data in the message
+            reason = str(error) if isinstance(error, PUBLIC_ERRORS) else "details in the process log"
             await self.post(
                 f":warning: startup failed at *{name}* after {perf_counter() - started:.1f}s: "
-                f"`{type(error).__name__}` (details in the process log)"
+                f"`{type(error).__name__}` ({reason})"
             )
             raise
         step = Step(name, detail.text, perf_counter() - started)

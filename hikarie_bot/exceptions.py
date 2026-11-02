@@ -9,6 +9,13 @@ class EnvironmentVariableNotFoundError(Exception):
         super().__init__(f"Environment variable not found: {env_var}")
 
 
+class DatabaseLocationError(Exception):
+    """Raised when the SQLite file cannot be created or written where DATABASE_URL points.
+
+    The message describes only paths and permissions, so it may be shown in Slack.
+    """
+
+
 class InMemoryDatabaseError(Exception):
     """Raised when production is configured with an in-memory database."""
 
