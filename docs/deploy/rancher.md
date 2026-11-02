@@ -100,8 +100,22 @@ bot は `rebooting...` と返してプロセスを終了し、Kubernetes がコ�
 
 ## ロールバック
 
-Image を以前のタグに戻すだけでよい。以前のイメージは `DATABASE_URL` を読まずメモリ上の DB で動き、起動時に全履歴を読み直す（従来どおり）。
-PVC のデータには触れないので、再度新しいイメージに戻せばそのまま使える。
+戻し先のイメージによって手順が違う。
+
+- **PVC を使う前のイメージ**（`DATABASE_URL` を読まない）: Image のタグを戻すだけでよい。メモリ上の DB で動き、起動時に全履歴を読み直す。PVC のデータには触れない。
+- **PVC を使うが、スキーマが新しいイメージより古いイメージ**（例: リビジョン 0001 を含まないイメージ）: タグを戻すだけだと、起動時のマイグレーションが
+  `Can't locate revision identified by '0001'` で止まる（データは変わらないので、タグを元に戻せば復旧する）。
+  先に、**動いている新しいイメージで** DB を戻し先のリビジョン（0001 より前なら `0000`）まで downgrade してから、タグを変える。
+  イメージには `alembic.ini` が無いので、Python から実行する:
+
+  ```bash
+  kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -c "from alembic import command; from alembic.config import Config; from hikarie_bot.migrations import SCRIPT_LOCATION; config = Config(); config.set_main_option('script_location', str(SCRIPT_LOCATION)); command.downgrade(config, '0000')"
+  ```
+
+  0001 の downgrade は、削除した派生テーブルとバッジ定義のテーブルを空で作り直す（`arrival_event` と `sync_state` はそのまま）。
+  戻し先のイメージは起動時にバッジ定義を入れ直し、スコアを計算し直して埋める。
+  downgrade の後は再起動（reboot ショートカットを含む）をせずに、すぐタグを変える。新しいイメージのまま再起動すると、また 0001 に上がる。
+- 新しいイメージへ戻すときは、タグを変えるだけでよい（起動時に最新のリビジョンまで上がる）。
 
 ## バックアップと復旧
 
