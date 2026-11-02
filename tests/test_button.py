@@ -129,6 +129,24 @@ async def test_press_again_retries_an_arrival_that_was_not_announced(
     assert datetime.fromisoformat(metadata["event_payload"]["occurred_at"]) == PRESSED
 
 
+@pytest.mark.asyncio
+async def test_registry_update_happens_while_the_lock_is_held(database: Engine) -> None:
+    """The daily post is rewritten before the next press may compute its list, so updates stay in order."""
+    client = AsyncMock()
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
+    held: list[bool] = []
+
+    async def record_lock(**_: object) -> None:
+        held.append(bot.ARRIVAL_LOCK.locked())
+
+    client.chat_update.side_effect = record_lock
+
+    await bot.handle_button_click(AsyncMock(), click("U1"), client)
+
+    assert held == [True]
+    assert not bot.ARRIVAL_LOCK.locked()
+
+
 def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
     """Only creating the app needs the token: importing the bot does not."""
     settings.slack_bot_token = "xoxb-test"  # noqa: S105
