@@ -291,7 +291,7 @@ class UserLevel:
     current_level_point: int
 
     @classmethod
-    def of(cls, previous_score: int, current_score: int) -> "UserLevel":
+    def of(cls, previous_score: int, current_score: int) -> UserLevel:
         """Compute the level fields for a score change."""
         return cls(
             level=get_level(current_score),

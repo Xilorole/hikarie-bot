@@ -46,7 +46,7 @@ def current_revision() -> str:
             check=True,
             timeout=5,
         ).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return "unknown"
 
 

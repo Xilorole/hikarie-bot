@@ -118,7 +118,7 @@ class KiribanGenerator:
             return "power_of_ten"
         return None
 
-    def generate_kiriban(self, under: int) -> Generator[Kiriban, None, None]:
+    def generate_kiriban(self, under: int) -> Generator[Kiriban]:
         """Generate kiriban instances up to a specified limit.
 
         Args:
