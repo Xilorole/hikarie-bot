@@ -13,9 +13,6 @@ from slack_bolt.context.ack.async_ack import AsyncAck
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot._version import version
-
-# Import and add the build_modals command
-from hikarie_bot.build_modals import build_modals
 from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
 from hikarie_bot.modals import (
     ActionID,
@@ -24,6 +21,7 @@ from hikarie_bot.modals import (
     ShortcutID,
 )
 from hikarie_bot.models import get_db
+from hikarie_bot.preview import preview
 from hikarie_bot.settings import (
     ADMIN,
     LOG_CHANNEL,
@@ -254,7 +252,9 @@ async def handle_reboot(ack: AsyncAck, body: dict[str, Any]) -> None:
         )
 
 
-cli.add_command(build_modals)
+cli.add_command(preview)
+# Kept for existing usage; renders the same previews.
+cli.add_command(preview, name="build-modals")
 
 
 if __name__ == "__main__":
