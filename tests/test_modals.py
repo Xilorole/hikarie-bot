@@ -253,6 +253,46 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
+def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
+    """Test the point get message says the upper limit is reached."""
+    session = temp_db()
+    initially_insert_badge_data(session=session)
+    jst = zoneinfo.ZoneInfo("Asia/Tokyo")
+
+    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=jst), user_id="test_user")
+    user = session.query(User).filter(User.id == "test_user").one()
+    user.current_score = 1398
+    session.commit()
+
+    # 1398 -> 1403: the upper limit is reached by this arrival
+    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst), user_id="test_user")
+    message = PointGetMessage(
+        session,
+        user_id="test_user",
+        jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst),
+        initial_arrival=True,
+    ).render()
+
+    assert message[0]["text"]["text"] == (
+        "*07:00* 最速出社登録しました！ :hikarie:\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *上限に到達!* :crown: "
+    )
+    assert message[2]["elements"][0]["text"].startswith(
+        "かたがき: *でんせつのかいしゃいん* (lv12)\nつぎのレベルまで: *上限に到達*\nしんこうど: `██████████` | *100%*\n"
+    )
+
+    # 1403 -> 1408: already at the upper limit
+    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 3, 7, 0, 0, tzinfo=jst), user_id="test_user")
+    message = PointGetMessage(
+        session,
+        user_id="test_user",
+        jst_datetime=datetime(2024, 1, 3, 7, 0, 0, tzinfo=jst),
+        initial_arrival=True,
+    ).render()
+
+    assert message[0]["text"]["text"].endswith("1403 → *1408* (*+5*)")
+    assert "つぎのレベルまで: *上限に到達*" in message[2]["elements"][0]["text"]
+
+
 def test_already_registered_message(temp_db: sessionmaker[Session]) -> None:
     """Test the already registered message."""
     session = temp_db()
