@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import Engine
 
 from hikarie_bot import startup
-from hikarie_bot.models import ensure_database
+from hikarie_bot.database import ensure_database
 from hikarie_bot.settings import Settings
 from hikarie_bot.startup import StartupReporter, prepare
 

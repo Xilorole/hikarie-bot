@@ -1,27 +1,35 @@
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
-from zoneinfo import ZoneInfo
 
 import pytest
+from freezegun import freeze_time
+from freezegun.api import FrozenDateTimeFactory
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from hikarie_bot import __main__ as bot
 from hikarie_bot.arrivals import compute_arrivals
+from hikarie_bot.constants import JST
 from hikarie_bot.modals import ActionID
 from hikarie_bot.models import ArrivalEvent
 from hikarie_bot.settings import Settings
 from hikarie_bot.sync import parse_arrival
 
-JST = ZoneInfo("Asia/Tokyo")
 DAILY_POST = datetime(2025, 6, 2, 6, 0, tzinfo=JST)
 PRESSED = datetime(2025, 6, 2, 9, 10, 30, 123456, tzinfo=JST)
 
 
 @pytest.fixture
-def database(app_database: Engine, settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Engine:
-    """Give the handler a fresh database and freeze its clock."""
-    monkeypatch.setattr(bot, "get_current_jst_datetime", lambda: PRESSED)
+def clock() -> Iterator[FrozenDateTimeFactory]:
+    """Freeze the clock at the time of the press; move it with move_to."""
+    with freeze_time(PRESSED) as frozen:
+        yield frozen
+
+
+@pytest.fixture
+def database(app_database: Engine, settings: Settings, clock: FrozenDateTimeFactory) -> Engine:
+    """Give the handler a fresh database and a frozen clock."""
     settings.bot_id = "B0BOT"
     return app_database
 
@@ -78,9 +86,9 @@ async def test_second_press_on_the_same_day_is_rejected(database: Engine) -> Non
 
 
 @pytest.mark.asyncio
-async def test_press_outside_the_window_is_rejected(database: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_press_outside_the_window_is_rejected(database: Engine, clock: FrozenDateTimeFactory) -> None:
     """Presses after 18:00 of the post's day are not recorded."""
-    monkeypatch.setattr(bot, "get_current_jst_datetime", lambda: DAILY_POST.replace(hour=18, minute=30))
+    clock.move_to(DAILY_POST.replace(hour=18, minute=30))
     client = AsyncMock()
 
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
@@ -91,13 +99,13 @@ async def test_press_outside_the_window_is_rejected(database: Engine, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, clock: FrozenDateTimeFactory) -> None:
     """A second press on the not yet replaced fastest button is announced as a normal arrival."""
     client = AsyncMock()
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
     await bot.handle_button_click(AsyncMock(), click("U1", ActionID.FASTEST_ARRIVAL), client)
 
-    monkeypatch.setattr(bot, "get_current_jst_datetime", lambda: PRESSED.replace(second=31))
+    clock.move_to(PRESSED.replace(second=31))
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000200"}
     await bot.handle_button_click(AsyncMock(), click("U2", ActionID.FASTEST_ARRIVAL), client)
 
@@ -108,7 +116,7 @@ async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, monk
 
 @pytest.mark.asyncio
 async def test_press_again_retries_an_arrival_that_was_not_announced(
-    database: Engine, monkeypatch: pytest.MonkeyPatch
+    database: Engine, clock: FrozenDateTimeFactory
 ) -> None:
     """If the announcement fails, the arrival stays and the next press announces it at its first time."""
     client = AsyncMock()
@@ -116,7 +124,7 @@ async def test_press_again_retries_an_arrival_that_was_not_announced(
     with pytest.raises(RuntimeError):
         await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
-    monkeypatch.setattr(bot, "get_current_jst_datetime", lambda: PRESSED.replace(minute=20))
+    clock.move_to(PRESSED.replace(minute=20))
     client.chat_postMessage.side_effect = None
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
     await bot.handle_button_click(AsyncMock(), click("U1"), client)

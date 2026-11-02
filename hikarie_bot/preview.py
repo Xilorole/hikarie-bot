@@ -23,7 +23,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from hikarie_bot.arrivals import compute_arrivals
-from hikarie_bot.engine import JST, BadgeEngine
+from hikarie_bot.constants import JST
+from hikarie_bot.engine import BadgeEngine
 from hikarie_bot.modals import achievement_view, initial_message, point_get_message, registry_message, render
 from hikarie_bot.settings import get_settings
 from hikarie_bot.utils import is_jp_bizday, leveled_up

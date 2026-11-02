@@ -15,15 +15,13 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import ClassVar, Self
-from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
 
 from hikarie_bot import db_data
+from hikarie_bot.constants import JST
 from hikarie_bot.db_data.badges import KIRIBANS
 from hikarie_bot.utils import list_bizdays
-
-JST = ZoneInfo("Asia/Tokyo")
 
 BADGE_SCORES = {badge.id: badge.score for badge in db_data.Badges}
 APPLY_START = {

@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from hikarie_bot.engine import JST, BadgeEngine, compute
+from hikarie_bot.constants import JST
+from hikarie_bot.engine import BadgeEngine, compute
 from hikarie_bot.models import ArrivalEvent
 
 

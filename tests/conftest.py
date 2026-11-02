@@ -4,8 +4,7 @@ import pytest
 from loguru import logger
 from sqlalchemy import Engine
 
-from hikarie_bot.database import get_engine
-from hikarie_bot.models import ensure_database
+from hikarie_bot.database import ensure_database, get_engine
 from hikarie_bot.settings import Settings, get_settings
 
 # Disable loguru logging during tests for better performance

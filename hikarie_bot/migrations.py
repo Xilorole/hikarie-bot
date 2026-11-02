@@ -33,7 +33,7 @@ class InitResult:
     revision: str
 
 
-def upgrade_database(engine: Engine) -> tuple[str | None, str]:
+def init_database(engine: Engine) -> InitResult:
     """Upgrade the schema to the latest Alembic revision; return the revisions before and after."""
     with engine.begin() as connection:
         tables = set(inspect(connection).get_table_names())
@@ -44,9 +44,4 @@ def upgrade_database(engine: Engine) -> tuple[str | None, str]:
         config.attributes["connection"] = connection
         before = MigrationContext.configure(connection).get_current_revision()
         command.upgrade(config, "head")
-        return before, ScriptDirectory.from_config(config).get_current_head()
-
-
-def init_database(engine: Engine) -> InitResult:
-    """Bring the schema up to date."""
-    return InitResult(*upgrade_database(engine))
+        return InitResult(before, ScriptDirectory.from_config(config).get_current_head())

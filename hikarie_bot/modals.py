@@ -14,12 +14,12 @@ from hikarie_bot import db_data
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     CONTEXT_ITEM_MAX,
+    JST,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
 from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
 from hikarie_bot.engine import ArrivalResult, BadgeEngine, UserBadgeTally
 from hikarie_bot.utils import (
-    get_current_jst_datetime,
     get_level,
     leveled_up,
     max_level_reached,
@@ -161,7 +161,7 @@ def achievement_view(engine: BadgeEngine, user_id: str, jst_datetime: datetime |
 
     jst_datetime is the "today" of the attendance history (default: now).
     """
-    today = (jst_datetime or get_current_jst_datetime()).date()
+    today = (jst_datetime or datetime.now(JST)).date()
     user_badges = {badge_id: tally for (owner, badge_id), tally in engine.user_badges.items() if owner == user_id}
     # kiribans number the arrivals of all users
     arrival_count = len(engine.results)

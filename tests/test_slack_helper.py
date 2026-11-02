@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from freezegun import freeze_time
 
-from hikarie_bot.engine import JST
+from hikarie_bot.constants import JST
 from hikarie_bot.slack_helper import DAILY_MESSAGE_TRIGGER, schedule_daily_message, send_daily_message
 
 

@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,11 +11,10 @@ from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
+from hikarie_bot.constants import JST
 from hikarie_bot.database import BaseSchema, configure_sqlite
-from hikarie_bot.migrations import SCRIPT_LOCATION, UnversionedDatabaseError, init_database, upgrade_database
+from hikarie_bot.migrations import SCRIPT_LOCATION, UnversionedDatabaseError, init_database
 from hikarie_bot.models import ArrivalEvent
-
-JST = timezone(timedelta(hours=9))
 
 
 def _file_engine(path: Path) -> Engine:
@@ -28,8 +27,8 @@ def test_upgrade_creates_schema_matching_models(tmp_path: Path) -> None:
     """Migrations produce exactly the models' schema, and rerunning is a no-op."""
     engine = _file_engine(tmp_path / "data.db")
 
-    upgrade_database(engine)
-    upgrade_database(engine)
+    init_database(engine)
+    init_database(engine)
 
     with engine.connect() as connection:
         assert compare_metadata(MigrationContext.configure(connection), BaseSchema.metadata) == []
@@ -44,7 +43,7 @@ def test_upgrade_rejects_database_from_before_alembic(tmp_path: Path) -> None:
     BaseSchema.metadata.create_all(engine)
 
     with pytest.raises(UnversionedDatabaseError, match="rebuild the data from Slack"):
-        upgrade_database(engine)
+        init_database(engine)
     assert "alembic_version" not in inspect(engine).get_table_names()
     engine.dispose()
 
@@ -93,7 +92,7 @@ def test_0002_drops_sync_state_and_downgrade_recreates_it_empty(tmp_path: Path) 
 def test_arrival_event_stores_utc_and_rejects_naive_datetimes() -> None:
     """Event times round-trip as aware UTC, and slack_ts is unique when present."""
     engine = create_engine("sqlite://")
-    upgrade_database(engine)
+    init_database(engine)
     with Session(engine) as session:
         occurred_at = datetime(2026, 11, 2, 9, 0, tzinfo=JST)
         session.add_all(

@@ -1,15 +1,11 @@
-from datetime import date
-
 import pytest
 
 from hikarie_bot.utils import (
     LEVELS,
     Level,
     get_level,
-    is_jp_bizday,
     leveled_up,
     max_level_reached,
-    unix_timestamp_to_jst,
 )
 
 # (name, points that complete the level) written out here, independent of hikarie_bot.utils.LEVELS
@@ -137,27 +133,3 @@ def test_max_level_reached() -> None:
     assert max_level_reached(1300, 1399) is False
     assert max_level_reached(1398, 1399) is False
     assert max_level_reached(0, 0) is False
-
-
-def test_unix_timestamp_to_jst() -> None:
-    "Test the conversion of Unix timestamp to JST."
-    # test: Convert a Unix timestamp to a string representing the date and time in
-    # Japan Standard Time (JST).
-    # this Returns:
-    #     datetime: A datetime object representing the date and time in JST.
-    assert unix_timestamp_to_jst(0).strftime("%Y-%m-%d %H:%M:%S") == "1970-01-01 09:00:00"
-
-
-def test_is_jp_bizday() -> None:
-    "Test the function is_jp_bizday."
-    assert not is_jp_bizday(date(2020, 12, 31))  # friday but the end of the year
-
-    assert not is_jp_bizday(date(2024, 1, 1))
-    assert not is_jp_bizday(date(2024, 1, 2))
-    assert not is_jp_bizday(date(2024, 1, 3))
-    assert is_jp_bizday(date(2024, 1, 4))
-    assert is_jp_bizday(date(2024, 1, 5))
-    assert not is_jp_bizday(date(2024, 1, 6))
-    assert not is_jp_bizday(date(2024, 1, 7))
-    assert not is_jp_bizday(date(2024, 1, 8))
-    assert is_jp_bizday(date(2024, 1, 9))

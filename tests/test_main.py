@@ -6,7 +6,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from hikarie_bot import __main__ as bot
-from hikarie_bot.engine import JST
+from hikarie_bot.constants import JST
 from hikarie_bot.models import ArrivalEvent
 
 

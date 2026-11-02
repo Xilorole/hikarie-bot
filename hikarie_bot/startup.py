@@ -20,9 +20,10 @@ from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import func, select
 
 from hikarie_bot.arrivals import compute_arrivals
+from hikarie_bot.database import ensure_database, get_db
 from hikarie_bot.exceptions import DatabaseLocationError, InMemoryDatabaseError
 from hikarie_bot.migrations import InitResult, UnversionedDatabaseError
-from hikarie_bot.models import ArrivalEvent, ensure_database, get_db
+from hikarie_bot.models import ArrivalEvent
 from hikarie_bot.settings import get_settings
 from hikarie_bot.sync import SlackSource, SyncResult, sync_channel
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from unittest.mock import patch
 
-from hikarie_bot.engine import JST
+from hikarie_bot.constants import JST
 from hikarie_bot.utils import get_level, leveled_up, max_level_reached
 from tests.helpers import compute_in_order, only_badge_types
 

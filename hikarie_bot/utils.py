@@ -1,6 +1,6 @@
 from bisect import bisect_right
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 import jpholiday
 
@@ -74,31 +74,6 @@ def max_level_reached(previous_point: int, current_point: int) -> bool:
     return not get_level(previous_point).is_max and get_level(current_point).is_max
 
 
-def unix_timestamp_to_jst(unix_timestamp: float) -> datetime:
-    """Convert a Unix timestamp to a string representing the date and time in Japan Standard Time (JST).
-
-    Args:
-    ----
-        unix_timestamp (float): The Unix timestamp to convert.
-
-    Returns:
-    -------
-        datetime: A datetime object representing the date and time in JST.
-
-    """
-    # Convert to a timezone-aware datetime object in UTC
-    utc_time = datetime.fromtimestamp(float(unix_timestamp), UTC)
-
-    # Convert to JST
-    return utc_time.astimezone(timezone(timedelta(hours=9)))
-
-
-def get_current_jst_datetime() -> datetime:
-    "Get the current time in JST."
-    tz_jst = timezone(timedelta(hours=+9), "JST")
-    return datetime.now(tz_jst)
-
-
 def is_jp_bizday(day: date) -> bool:
     "Check if the given day is a business day in Japan."
     return not (
@@ -109,9 +84,11 @@ def is_jp_bizday(day: date) -> bool:
     )
 
 
-# list all workdays within the last 5 arrivals
-def list_bizdays(start_of_day: datetime, length: int) -> list[datetime]:
-    """List all workdays within the last 5 arrivals including the current day."""
+def list_bizdays(start_of_day: datetime, length: int) -> list[date]:
+    """List the last `length` business days up to and including the day of start_of_day, newest first.
+
+    Fewer are returned if the last 14 days hold fewer.
+    """
     current_date: date = start_of_day.date()
     valid_bizdays = []
     for i in range(14):

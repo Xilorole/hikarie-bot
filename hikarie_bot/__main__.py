@@ -15,7 +15,9 @@ from slack_sdk.models.views import View
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot.arrivals import attach_slack_ts, compute_arrivals, record_button_arrival
-from hikarie_bot.engine import JST, ArrivalResult
+from hikarie_bot.constants import JST
+from hikarie_bot.database import get_db
+from hikarie_bot.engine import ArrivalResult
 from hikarie_bot.modals import (
     ActionID,
     ShortcutID,
@@ -25,7 +27,6 @@ from hikarie_bot.modals import (
     render,
     to_text,
 )
-from hikarie_bot.models import get_db
 from hikarie_bot.preview import preview
 from hikarie_bot.settings import REQUIRED, get_settings
 from hikarie_bot.slack_helper import schedule_daily_message, send_daily_message
@@ -37,7 +38,6 @@ from hikarie_bot.sync import (
     arrival_metadata,
     sync_channel,
 )
-from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
 
 
 def create_client() -> AsyncWebClient:
@@ -53,7 +53,7 @@ def cli() -> None:
 
 
 @cli.command()
-@click.option("--dev", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
+@click.option("--dev", is_flag=True, help="Log at DEBUG and post the daily message right away.")
 async def start(*, dev: bool = False) -> None:
     """Run the app."""
     log_level = "DEBUG" if dev else "INFO"  # Default log level
@@ -144,10 +144,10 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
     channel_id = body["channel"]["id"]
     action_id = body["actions"][0]["action_id"]
     message_ts = body["message"]["ts"]
-    jst_message_datetime = unix_timestamp_to_jst(float(message_ts))
+    jst_message_datetime = datetime.fromtimestamp(float(message_ts), JST)
 
     logger.debug(f"user_id: {user_id}, action_id: {action_id}, jst_message_datetime: {jst_message_datetime}")
-    now = get_current_jst_datetime()
+    now = datetime.now(JST)
 
     # replace the message datetime at 6AM
     jst_message_datetime_at6 = jst_message_datetime.replace(hour=6, minute=0, second=0, microsecond=0)
