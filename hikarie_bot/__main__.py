@@ -1,6 +1,7 @@
 # アプリを起動します
 import sys
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import asyncclick as click
@@ -8,6 +9,7 @@ from loguru import logger
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.context.ack.async_ack import AsyncAck
+from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot._version import version
@@ -23,53 +25,26 @@ from hikarie_bot.preview import preview
 from hikarie_bot.settings import (
     ADMIN,
     LOG_CHANNEL,
+    OUTPUT_CHANNEL,
     SLACK_APP_TOKEN,
     SLACK_BOT_TOKEN,
 )
 from hikarie_bot.slack_helper import (
-    MessageFilter,
-    get_messages,
-    retrieve_thread_messages,
     send_daily_message,
     send_weekly_message,
+)
+from hikarie_bot.sync import (
+    CachedSlackSource,
+    LiveSlackSource,
+    RecordingSlackSource,
+    rebuild_derived_tables,
+    sync_channel,
 )
 from hikarie_bot.utils import get_current_jst_datetime, unix_timestamp_to_jst
 
 app = AsyncApp(token=SLACK_BOT_TOKEN)
-
-
-async def initially_create_db(app: AsyncApp) -> None:
-    """Asynchronously initializes the database by fetching and processing messages from a Slack channel.
-
-    This function retrieves the message history from a specified Slack channel, including threaded messages,
-    and processes them to filter and insert relevant data into the database.
-
-    Args:
-    ----
-        app (AsyncApp): The Slack application instance used to interact with the Slack API.
-
-    Returns:
-    -------
-        None
-    Raises:
-        SlackApiError: If there is an error with the Slack API request.
-        asyncio.TimeoutError: If the request to the Slack API times out.
-
-    """
-    messages = await get_messages(app=app)
-
-    # get the threading messages
-    thread_messages = []
-    for message in messages:
-        thread_messages += await retrieve_thread_messages(app=app, message=message)
-
-    messages += thread_messages
-
-    with get_db() as session:
-        for message in sorted(messages, key=lambda x: x["ts"]):
-            if (user_id := MessageFilter.extract_user_id(message)) and message.get("subtype") != "channel_join":
-                jst_message_datetime = unix_timestamp_to_jst(float(message["ts"]))
-                insert_arrival_action(session, jst_message_datetime, user_id)
+# Wait out Slack rate limits (e.g. the first full sync) instead of failing.
+app.client.retry_handlers.append(AsyncRateLimitErrorRetryHandler(max_retry_count=10))
 
 
 @click.group()
@@ -79,8 +54,7 @@ def cli() -> None:
 
 @cli.command()
 @click.option("--dev", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
-@click.option("--skip-db-create", is_flag=True, help="Set LOGURU_LEVEL to INFO for development.")
-async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
+async def start(*, dev: bool = False) -> None:
     """Run the app."""
     log_level = "DEBUG" if dev else "INFO"  # Default log level
     # Configure loguru logger
@@ -94,6 +68,11 @@ async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
 
     # migrate the schema and sync badge master data before any task touches the database
     ensure_database()
+
+    # read arrivals posted while the bot was stopped (the whole channel on first start)
+    with get_db() as session:
+        await sync_channel(session, LiveSlackSource(app.client), OUTPUT_CHANNEL)
+        rebuild_derived_tables(session)
 
     background_task = set()
 
@@ -137,8 +116,6 @@ async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
         b = asyncio.ensure_future(f)
     background_task.add(b)
 
-    if not skip_db_create:
-        await initially_create_db(app)
     await app.client.chat_postMessage(
         channel=LOG_CHANNEL,
         text=f"application started (v{version})",
@@ -146,6 +123,38 @@ async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
 
     handler = AsyncSocketModeHandler(app, SLACK_APP_TOKEN)
     await handler.start_async()
+
+
+@cli.command()
+@click.option(
+    "--from-cache",
+    "cache_dir",
+    type=click.Path(path_type=Path, exists=True, file_okay=False),
+    help="Read recorded Slack responses from this directory instead of Slack (offline).",
+)
+@click.option(
+    "--record",
+    "record_dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    help="Also save the raw Slack responses into this directory.",
+)
+@click.option("--rebuild/--no-rebuild", default=True, show_default=True, help="Recompute scores and badges afterwards.")
+async def sync(cache_dir: Path | None, record_dir: Path | None, *, rebuild: bool) -> None:
+    """Read arrival events from the channel into the database (read-only on Slack)."""
+    if cache_dir and record_dir:
+        msg = "--from-cache and --record cannot be combined"
+        raise click.UsageError(msg)
+    if cache_dir:
+        source = CachedSlackSource(cache_dir)
+    elif record_dir:
+        source = RecordingSlackSource(app.client, record_dir)
+    else:
+        source = LiveSlackSource(app.client)
+    with get_db() as session:
+        result = await sync_channel(session, source, OUTPUT_CHANNEL)
+        click.echo(f"synced: {result}")
+        if rebuild:
+            click.echo(f"rebuilt from {rebuild_derived_tables(session)} events")
 
 
 @app.action(ActionID.ARRIVED_OFFICE)

@@ -252,3 +252,21 @@ at the latest revision and autogenerate:
 ```bash
 ENV=dev DATABASE_URL=sqlite:///.db/data.db uv run alembic revision --autogenerate -m "describe the change"
 ```
+
+### Syncing from Slack
+
+On startup the bot reads arrival events from the output channel into the
+`arrival_event` table: the whole channel the first time, then only what was
+posted since the last run (one day of overlap, and only threads with new
+replies). Scores and badges are then recomputed from those events.
+
+The same sync is available as a command. It only reads from Slack:
+
+```bash
+# read from Slack and keep the raw responses (gitignored) for offline use
+uv run python -m hikarie_bot sync --record .cache/slack
+# rebuild a local database from those responses without network access
+ENV=dev DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache .cache/slack
+```
+
+The raw responses contain real user data: never commit or upload them.

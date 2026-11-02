@@ -322,7 +322,7 @@ class ArrivalEvent(BaseSchema):
 class SyncState(BaseSchema):
     """Define the SyncState table.
 
-    How far a Slack channel has been read: parent messages up to synced_until are ingested.
+    How far a Slack channel has been read: the newest message ts seen, thread replies included.
     """
 
     __tablename__ = "sync_state"
