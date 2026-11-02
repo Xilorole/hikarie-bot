@@ -26,10 +26,11 @@ uv run alembic upgrade head && uv run alembic revision --autogenerate --rev-id <
 
 ## Running
 
-- Settings are read at import. Outside `ENV=dev` / `ENV=test` every name in `settings.REQUIRED` must be set and the DB must be a file; pytest sets `ENV=test` itself.
-- `python -m hikarie_bot` also needs `SLACK_BOT_TOKEN` at import; any `xoxb-` string works for offline commands:
-  - `ENV=dev SLACK_BOT_TOKEN=xoxb-dummy uv run python -m hikarie_bot preview --workspace-id T0000`: message mocks from synthetic data (without `--workspace-id` it calls `auth.test`).
-  - `... sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and a file `DATABASE_URL`).
+- Importing the package needs no configuration: settings (`settings.get_settings()`), the engine (`database.get_engine()`) and the Slack app (`__main__.create_app()`) are created on first use. Read settings where they are used instead of copying them into module constants.
+- `start` checks `settings.REQUIRED` (skipped under `ENV=dev` / `ENV=test`); a database must be a file outside dev/test. pytest sets `ENV=test`; the `settings` fixture gives each test fresh settings to assign to, and `app_database` a fresh database behind `get_db`.
+- Offline commands need no Slack token:
+  - `uv run python -m hikarie_bot preview --workspace-id T0000`: message mocks from synthetic data (without `--workspace-id` it calls `auth.test`).
+  - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and `OUTPUT_CHANNEL`).
 - Never run the bot locally with the production app's tokens: Socket Mode would take button presses away from production. Use `slack run` (dev app, `.env.dev`).
 - CI runs `uv run pytest -n auto`, `uv run ruff check .` and `uv run ruff format --check .`. pyright is installed but not enforced and has existing errors.
 - Regenerate `uv.lock` with the uv version pinned in the `Dockerfile` (`uvx --from uv==<version> uv lock`).

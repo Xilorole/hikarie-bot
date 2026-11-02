@@ -8,6 +8,7 @@ from sqlalchemy.engine import Connection
 
 from hikarie_bot.database import BaseSchema
 from hikarie_bot.models import UTCDateTime
+from hikarie_bot.settings import get_settings
 
 
 def _render_item(type_: str, obj: Any, _autogen_context: Any) -> str | bool:  # noqa: ANN401
@@ -31,7 +32,5 @@ def _run(connection: Connection) -> None:
 if (shared := context.config.attributes.get("connection")) is not None:
     _run(shared)
 else:
-    from hikarie_bot.settings import DATABASE_URL
-
-    with create_engine(DATABASE_URL).connect() as connection:
+    with create_engine(get_settings().database_url).connect() as connection:
         _run(connection)

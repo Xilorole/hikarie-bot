@@ -1,11 +1,9 @@
-import importlib
 from pathlib import Path
 
 import pytest
 
-from hikarie_bot import settings
 from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
-from hikarie_bot.settings import Settings
+from hikarie_bot.settings import REQUIRED, Settings, env_file
 
 REQUIRED_SLACK = ["OUTPUT_CHANNEL", "LOG_CHANNEL", "BOT_ID", "ADMIN"]
 
@@ -20,15 +18,15 @@ def test_settings_require_database_url_outside_dev_and_test(monkeypatch: pytest.
     monkeypatch.setenv("ENV", "production")
 
     with pytest.raises(EnvironmentVariableNotFoundError, match="DATABASE_URL"):
-        Settings(_env_file=None)
+        Settings(_env_file=None).require(*REQUIRED)
 
     monkeypatch.setenv("DATABASE_URL", "sqlite:////data/hikarie.db")
-    assert Settings(_env_file=None).database_url == "sqlite:////data/hikarie.db"
+    Settings(_env_file=None).require(*REQUIRED)
 
     for in_memory in ("sqlite:///:memory:", "sqlite://"):
         monkeypatch.setenv("DATABASE_URL", in_memory)
         with pytest.raises(InMemoryDatabaseError, match="persistent volume"):
-            Settings(_env_file=None)
+            Settings(_env_file=None).require("database_url")
 
     monkeypatch.setenv("ENV", "test")
     monkeypatch.delenv("DATABASE_URL")
@@ -41,8 +39,10 @@ def test_settings_reject_missing_slack_values_in_production(monkeypatch: pytest.
     for name in REQUIRED_SLACK:
         monkeypatch.delenv(name, raising=False)
 
+    loaded = Settings(_env_file=None)  # reading the settings requires nothing
+
     with pytest.raises(EnvironmentVariableNotFoundError, match="OUTPUT_CHANNEL"):
-        Settings(_env_file=None)
+        loaded.require(*REQUIRED)
 
 
 def test_environment_wins_over_env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,17 +62,15 @@ def test_environment_wins_over_env_file(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_env_file_is_dotenv_path_or_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Outside tests the env file is DOTENV_PATH, else ./.env; never a parent directory's."""
+    assert env_file() is None  # ENV=test
+
     monkeypatch.setenv("ENV", "dev")
     monkeypatch.setenv("DOTENV_PATH", ".env.dev")
-    assert importlib.reload(settings).Settings.model_config["env_file"] == ".env.dev"
+    assert env_file() == ".env.dev"
 
     monkeypatch.delenv("DOTENV_PATH")
     (tmp_path / ".env").write_text("OUTPUT_CHANNEL=C_PARENT\n")
     (tmp_path / "child").mkdir()
     monkeypatch.chdir(tmp_path / "child")
-    reloaded = importlib.reload(settings)
-    assert reloaded.Settings.model_config["env_file"] == ".env"
-    assert reloaded.Settings().output_channel == ""  # the parent's .env is not read
-
-    monkeypatch.setenv("ENV", "test")
-    importlib.reload(settings)
+    assert env_file() == ".env"
+    assert Settings(_env_file=env_file()).output_channel == ""  # the parent's .env is not read

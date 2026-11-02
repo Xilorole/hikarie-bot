@@ -1,18 +1,15 @@
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
 from hikarie_bot import __main__ as bot
-from hikarie_bot.migrations import init_database
 from hikarie_bot.modals import ActionID
 from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, User
+from hikarie_bot.settings import Settings
 from hikarie_bot.sync import parse_arrival
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -21,21 +18,11 @@ PRESSED = datetime(2025, 6, 2, 9, 10, 30, 123456, tzinfo=JST)
 
 
 @pytest.fixture
-def database(monkeypatch: pytest.MonkeyPatch) -> Engine:
-    """Point the handler at a fresh database and freeze its clock."""
-    # one shared connection: the handler works on the database in a worker thread
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    init_database(engine)
-
-    @contextmanager
-    def get_db() -> Iterator[Session]:
-        with Session(engine) as session:
-            yield session
-
-    monkeypatch.setattr(bot, "get_db", get_db)
+def database(app_database: Engine, settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Engine:
+    """Give the handler a fresh database and freeze its clock."""
     monkeypatch.setattr(bot, "get_current_jst_datetime", lambda: PRESSED)
-    monkeypatch.setattr("hikarie_bot.sync.BOT_ID", "B0BOT")
-    return engine
+    settings.bot_id = "B0BOT"
+    return app_database
 
 
 def click(user_id: str, action_id: str = ActionID.ARRIVED_OFFICE) -> dict:
@@ -139,3 +126,14 @@ async def test_press_again_retries_an_arrival_that_was_not_announced(
         assert (event.occurred_at, event.slack_ts) == (PRESSED, "1748822999.000100")
     metadata = client.chat_postMessage.await_args.kwargs["metadata"]
     assert datetime.fromisoformat(metadata["event_payload"]["occurred_at"]) == PRESSED
+
+
+def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
+    """Only creating the app needs the token: importing the bot does not."""
+    settings.slack_bot_token = "xoxb-test"  # noqa: S105
+
+    app = bot.create_app()
+
+    assert app.client.token == "xoxb-test"  # noqa: S105
+    handlers = {listener.ack_function for listener in app._async_listeners}  # noqa: SLF001
+    assert handlers == {bot.handle_button_click, bot.handle_check_achievement, bot.handle_reboot}

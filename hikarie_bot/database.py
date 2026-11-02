@@ -1,15 +1,14 @@
 import os
+from functools import cache
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import StaticPool
 
 from hikarie_bot.exceptions import DatabaseLocationError
-from hikarie_bot.settings import DATABASE_URL
-
-SQLALCHEMY_DATABASE_URL = DATABASE_URL
+from hikarie_bot.settings import get_settings
 
 
 def configure_sqlite(engine: Engine) -> None:
@@ -58,14 +57,21 @@ def check_sqlite_location(url: str) -> None:
         raise DatabaseLocationError(msg)
 
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    # an in-memory database (dev/test) lives in one connection, which worker threads must share
-    **({"poolclass": StaticPool} if make_url(SQLALCHEMY_DATABASE_URL).database in {None, "", ":memory:"} else {}),
-)
-configure_sqlite(engine)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+@cache
+def get_engine() -> Engine:
+    """Create the application's engine from DATABASE_URL on first use."""
+    settings = get_settings()
+    settings.require("database_url")
+    url = settings.database_url
+    check_sqlite_location(url)
+    engine = create_engine(
+        url,
+        connect_args={"check_same_thread": False},
+        # an in-memory database (dev/test) lives in one connection, which worker threads must share
+        **({"poolclass": StaticPool} if make_url(url).database in {None, "", ":memory:"} else {}),
+    )
+    configure_sqlite(engine)
+    return engine
 
 
 class BaseSchema(DeclarativeBase):

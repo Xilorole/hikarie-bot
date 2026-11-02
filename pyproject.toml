@@ -60,8 +60,6 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.pytest_env]
 ENV = "test"
-# Dummy token so the Slack app can be constructed; tests never call Slack.
-SLACK_BOT_TOKEN = "xoxb-test-not-a-real-token"
 
 [tool.uv]
 default-groups = ["core", "dev"]
