@@ -253,33 +253,35 @@ def test_point_get_message(temp_db: sessionmaker[Session]) -> None:
     ]
 
 
+def point_get_after(session: Session, day: int, previous_score: int) -> list[dict]:
+    """Render the point message for a +5pt arrival on 2024-01-<day>, starting from previous_score.
+
+    The derived rows are written as the engine would; reaching arbitrary scores through
+    arrivals would take years of them.
+    """
+    arrival_time = datetime(2024, 1, day, 7, 0, 0)  # noqa: DTZ001
+    level = UserLevel.of(previous_score, previous_score + 5)
+    session.merge(
+        User(id="test_user", previous_score=previous_score, current_score=previous_score + 5,
+             update_datetime=arrival_time, **vars(level))
+    )  # fmt: skip
+    session.add(GuestArrivalInfo(user_id="test_user", arrival_time=arrival_time, arrival_rank=1, acquired_score_sum=5))
+    session.commit()
+    return PointGetMessage(
+        session,
+        user_id="test_user",
+        jst_datetime=arrival_time.replace(tzinfo=zoneinfo.ZoneInfo("Asia/Tokyo")),
+        initial_arrival=True,
+    ).render()
+
+
 def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
     """Test the point get message says the upper limit is reached."""
     session = temp_db()
     initially_insert_badge_data(session=session)
-    jst = zoneinfo.ZoneInfo("Asia/Tokyo")
-
-    def arrive(day: int, previous_score: int) -> list[dict]:
-        # derived rows as the engine writes them; scores this high need years of arrivals otherwise
-        arrival_time = datetime(2024, 1, day, 7, 0, 0)  # noqa: DTZ001
-        level = UserLevel.of(previous_score, previous_score + 5)
-        session.merge(
-            User(id="test_user", previous_score=previous_score, current_score=previous_score + 5,
-                 update_datetime=arrival_time, **vars(level))
-        )  # fmt: skip
-        session.add(
-            GuestArrivalInfo(user_id="test_user", arrival_time=arrival_time, arrival_rank=1, acquired_score_sum=5)
-        )
-        session.commit()
-        return PointGetMessage(
-            session,
-            user_id="test_user",
-            jst_datetime=datetime(2024, 1, day, 7, 0, 0, tzinfo=jst),
-            initial_arrival=True,
-        ).render()
 
     # 1398 -> 1403: the upper limit is reached by this arrival
-    message = arrive(2, 1398)
+    message = point_get_after(session, 2, 1398)
     assert message[0]["text"]["text"] == (
         "*07:00* 最速出社登録しました！ :hikarie:\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *上限に到達!* :crown: "
     )
@@ -288,7 +290,7 @@ def test_point_get_message_max_level(temp_db: sessionmaker[Session]) -> None:
     )
 
     # 1403 -> 1408: already at the upper limit
-    message = arrive(3, 1403)
+    message = point_get_after(session, 3, 1403)
     assert message[0]["text"]["text"].endswith("1403 → *1408* (*+5*)")
     assert "つぎのレベルまで: *上限に到達*" in message[2]["elements"][0]["text"]
 
@@ -297,21 +299,9 @@ def test_point_get_message_zero_progress(temp_db: sessionmaker[Session]) -> None
     """Test the progress bar shows at least one cell when the progress is 0%."""
     session = temp_db()
     initially_insert_badge_data(session=session)
-    jst = zoneinfo.ZoneInfo("Asia/Tokyo")
-
-    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 1, 7, 0, 0, tzinfo=jst), user_id="test_user")
-    user = session.query(User).filter(User.id == "test_user").one()
-    user.current_score = 15
-    session.commit()
 
     # 15 -> 20: exactly at the start of lv2
-    insert_arrival_action(session=session, jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst), user_id="test_user")
-    message = PointGetMessage(
-        session,
-        user_id="test_user",
-        jst_datetime=datetime(2024, 1, 2, 7, 0, 0, tzinfo=jst),
-        initial_arrival=True,
-    ).render()
+    message = point_get_after(session, 2, 15)
 
     assert message[0]["text"]["text"].endswith("15 → *20* (*+5*) *LvUP!* :star2: ")
     assert "しんこうど: `█         ` | *  0%* (*+22%*)\n" in message[2]["elements"][0]["text"]
