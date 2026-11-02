@@ -160,8 +160,10 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         )
         return
 
-    # One press at a time, until it is announced: a second press retries an arrival only if it was not
-    # announced. The database work and the computation run off the event loop.
+    # One press at a time, until it is announced and the daily post is updated: a second press retries an
+    # arrival only if it was not announced, and the updates must land in the order the lists were computed,
+    # or a delayed one would overwrite a later list. The database work and the computation run off the
+    # event loop.
     async with ARRIVAL_LOCK:
         registration = await asyncio.to_thread(register_arrival, user_id, now)
         if registration is None:
@@ -183,13 +185,13 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         with get_db() as session:
             attach_slack_ts(session, registration.event_id, response["ts"])
 
-    # replace the message with RegistryMessage
-    await client.chat_update(
-        channel=channel_id,
-        ts=message_ts,
-        text=registration.registry.to_text(),
-        blocks=registration.registry.render(),
-    )
+        # replace the message with RegistryMessage
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=registration.registry.to_text(),
+            blocks=registration.registry.render(),
+        )
 
 
 def build_achievement_view(user_id: str) -> AchievementView:
