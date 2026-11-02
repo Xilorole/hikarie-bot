@@ -1,4 +1,5 @@
 # アプリを起動します
+import asyncio
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -237,6 +238,4 @@ cli.add_command(preview, name="build-modals")
 
 
 if __name__ == "__main__":
-    import asyncio
-
     cli(_anyio_backend="asyncio")
