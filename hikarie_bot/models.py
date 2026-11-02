@@ -1,10 +1,11 @@
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, event, func
+from sqlalchemy import Boolean, DateTime, Dialect, ForeignKey, Integer, String, event, func
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapped, Mapper, Session, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from .database import BaseSchema, SessionLocal, engine
 
@@ -273,14 +274,86 @@ def set_user_info_raw_id_for_user_badge(
         target.user_info_raw_id = target.user_id
 
 
+class UTCDateTime(TypeDecorator[datetime]):
+    """Store timezone-aware datetimes as sortable UTC ISO 8601 text.
+
+    SQLite has no timezone support, so naive values are rejected instead of guessed.
+    """
+
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> str | None:  # noqa: ARG002
+        """Convert an aware datetime to UTC text."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            msg = "UTCDateTime requires a timezone-aware datetime"
+            raise ValueError(msg)
+        return value.astimezone(UTC).isoformat(timespec="microseconds")
+
+    def process_result_value(self, value: str | None, dialect: Dialect) -> datetime | None:  # noqa: ARG002
+        """Parse stored UTC text back to an aware datetime."""
+        return None if value is None else datetime.fromisoformat(value)
+
+
+class ArrivalEvent(BaseSchema):
+    """Define the ArrivalEvent table.
+
+    The source of truth for arrivals; append-only. Scores, ranks and badges are derived
+    from these events. Several events for the same user and day are allowed; the first
+    one counts. slack_ts identifies the Slack message the event was read from or posted as.
+    """
+
+    __tablename__ = "arrival_event"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    slack_ts: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    def __repr__(self) -> str:
+        """Return the string representation of the ArrivalEvent class."""
+        return f"<ArrivalEvent(user_id={self.user_id}, occurred_at={self.occurred_at}, source={self.source})>"
+
+
+class SyncState(BaseSchema):
+    """Define the SyncState table.
+
+    How far a Slack channel has been read: parent messages up to synced_until are ingested.
+    """
+
+    __tablename__ = "sync_state"
+
+    channel_id: Mapped[str] = mapped_column(String, primary_key=True)
+    synced_until: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    def __repr__(self) -> str:
+        """Return the string representation of the SyncState class."""
+        return f"<SyncState(channel_id={self.channel_id}, synced_until={self.synced_until})>"
+
+
 # Dependency
+
+_initialized_engines: set[int] = set()
+
+
+def ensure_database() -> None:
+    """Migrate the schema and sync master data once per process."""
+    if id(engine) not in _initialized_engines:
+        from hikarie_bot.migrations import init_database  # migrations imports this module
+
+        init_database(engine)
+        _initialized_engines.add(id(engine))
 
 
 @contextmanager
 def get_db() -> Generator[Session, None, None]:
-    """Get the database session."""
-    # create tables
-    BaseSchema.metadata.create_all(engine)
+    """Get the database session, preparing the schema and master data on first use."""
+    ensure_database()
     db = SessionLocal()  # sessionを生成
     try:
         yield db

@@ -275,42 +275,47 @@ def insert_arrival_action(session: Session, jst_datetime: datetime, user_id: str
     return True
 
 
-def initially_insert_badge_data(session: Session) -> None:
-    """Insert the badge data into the database.
+def _same_value(stored: object, expected: object) -> bool:
+    # SQLite DateTime columns store wall-clock time without the timezone.
+    if isinstance(stored, datetime) and isinstance(expected, datetime) and expected.tzinfo is not None:
+        return stored.replace(tzinfo=None) == expected.replace(tzinfo=None)
+    return stored == expected
+
+
+def _sync_rows(session: Session, model: type, rows: list, fields: list[str]) -> tuple[int, int]:
+    existing = {row.id: row for row in session.query(model).all()}
+    inserted = updated = 0
+    for row in rows:
+        values = {field: getattr(row, field) for field in fields}
+        current = existing.get(row.id)
+        if current is None:
+            session.add(model(id=row.id, **values))
+            inserted += 1
+        elif not all(_same_value(getattr(current, field), value) for field, value in values.items()):
+            for field, value in values.items():
+                setattr(current, field, value)
+            updated += 1
+    return inserted, updated
+
+
+def sync_badge_master_data(session: Session) -> None:
+    """Synchronize the badge master data in the database with the definitions in code.
+
+    New badges are inserted and changed ones updated, so a persistent database picks up
+    badges added in later releases. Rows no longer defined in code are kept because
+    achievements may still reference them.
 
     Args:
     ----
         session (Session): The session factory to interact with the database.
 
     """
-    if session.query(Badge).count() > 0:
-        logger.info("Badge data already exists")
-    else:
-        session.add_all(
-            Badge(
-                id=badge.id,
-                message=badge.message,
-                condition=badge.condition,
-                level=badge.level,
-                score=badge.score,
-                badge_type_id=badge.badge_type_id,
-            )
-            for badge in db_data.Badges
-        )
-        logger.info("Badge data inserted successfully")
-
-    if session.query(BadgeType).count() > 0:
-        logger.info("Badge Type data already exists")
-    else:
-        session.add_all(
-            BadgeType(
-                id=badge_type.id,
-                name=badge_type.name,
-                description=badge_type.description,
-                apply_start=badge_type.apply_start,
-            )
-            for badge_type in db_data.BadgeTypes
-        )
-        logger.info("Badge Type data inserted successfully")
+    badge_types = _sync_rows(session, BadgeType, db_data.BadgeTypes, ["name", "description", "apply_start"])
+    session.flush()
+    badges = _sync_rows(session, Badge, db_data.Badges, ["message", "condition", "level", "score", "badge_type_id"])
     session.commit()
-    logger.info("inserted successfully")
+    logger.info("Badge types synchronized (inserted, updated): {}; badges: {}", badge_types, badges)
+
+
+# Kept for existing callers and tests.
+initially_insert_badge_data = sync_badge_master_data

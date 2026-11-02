@@ -238,3 +238,17 @@ To run the Hikarie Bot using Docker Compose, follow these steps:
    ```
 
 This will build and run the bot in a container named `hikarie-bot-container`.
+
+### Database
+
+The bot creates and migrates its SQLite schema on startup with Alembic
+(`hikarie_bot/alembic/`). Revision `0000` is the baseline: databases created
+before it are not upgraded and must be removed, since the data is rebuilt from
+Slack. Badge definitions are synchronized from code on every start.
+
+To add a migration after changing the models, point `DATABASE_URL` at a database
+at the latest revision and autogenerate:
+
+```bash
+ENV=dev DATABASE_URL=sqlite:///.db/data.db uv run alembic revision --autogenerate -m "describe the change"
+```
