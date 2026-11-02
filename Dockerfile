@@ -41,13 +41,6 @@ COPY --from=builder /opt/.venv /opt/.venv
 
 USER 10001:10001
 
-FROM runtime AS initial-data
-
-ENV ENV=test
-COPY initial-data/ /opt/initial-data/
-
-ENTRYPOINT ["/opt/.venv/bin/python", "-m", "hikarie_bot.initial_data"]
-
 FROM runtime AS bot
 
 CMD ["/opt/.venv/bin/python", "-m", "hikarie_bot", "start"]

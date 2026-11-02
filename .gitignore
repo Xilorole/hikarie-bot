@@ -167,6 +167,3 @@ cython_debug/
 test_modals/*
 !test_modals/.gitkeep
 
-secrets/
-initial-data/*
-!initial-data/manifest.json
