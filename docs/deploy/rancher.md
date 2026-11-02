@@ -71,14 +71,17 @@ PVC が空の初回だけ、チャンネル全体（メッセージ約 7,500 件
 レート制限の待ちを含めて **10 分前後**かかり、その間 bot は Slack に接続していない（ボタンは反応しない）。
 **18 時以降か休日**に行うのがよい。
 
-Pod のログで次の順に進むことを確認する:
+ログチャンネルに、手順ごとに次のメッセージが届く（個人を特定できる情報は含まない）:
 
-1. `Syncing <channel> from the beginning`
-2. `Synced <channel>: SyncResult(messages=…, threads=…, inserted=…)`
-3. `Rebuilt derived tables from … events`
-4. Socket Mode の接続ログと、ログチャンネルの `application started`
+1. `starting application (rev 6709a7d)` — `rev` はイメージのビルド元コミット。Rancher で指定したタグ `sha-6709a7d` と一致すれば最新が動いている
+2. `*database*: schema 0000 …` — スキーマとバッジ定義の同期結果
+3. `first start: reading the whole channel …` — 初回だけ。この後 10 分前後かかる
+4. `*slack sync*: whole channel · … messages · … threads · … new events` — 2 回目以降は `since <日時> JST`
+5. `*scores*: … events → … arrivals · … users · … badges earned`
+6. `:white_check_mark: application started (rev …) in …s`
 
-2 回目以降の起動は差分だけ読むので数秒で終わる（`Syncing <channel> from <ts>`）。
+途中で失敗した場合は `:warning: startup failed at <手順>` が届き、詳細は Pod のログに残る。
+2 回目以降の起動は差分だけ読むので数秒で終わる。
 
 ### 5. 動作確認
 
@@ -88,6 +91,12 @@ Pod のログで次の順に進むことを確認する:
 ```bash
 kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -c "import sqlite3; c = sqlite3.connect('file:/opt/.db/data.db?mode=ro', uri=True); print(c.execute('select count(*) from arrival_event').fetchone(), c.execute('select version_num from alembic_version').fetchone())"
 ```
+
+### 再起動
+
+管理者（環境変数 `ADMIN` のユーザー）は、Slack の **メッセージショートカット「reboot」**（bot がいるチャンネルのメッセージの「…」→ ショートカット）で再起動できる。
+bot は `rebooting...` と返してプロセスを終了し、Kubernetes がコンテナを起動し直す（PVC のデータを使い、差分だけ読むので数秒）。
+同じイメージで起動し直すだけなので、新しいバージョンにするにはイメージのタグを変える。
 
 ## ロールバック
 

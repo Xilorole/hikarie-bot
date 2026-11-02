@@ -43,4 +43,8 @@ USER 10001:10001
 
 FROM runtime AS bot
 
+# the commit this image is built from, shown in the startup messages (Release passes github.sha)
+ARG APP_REVISION=unknown
+ENV APP_REVISION=${APP_REVISION}
+
 CMD ["/opt/.venv/bin/python", "-m", "hikarie_bot", "start"]

@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy import create_engine
@@ -85,31 +85,31 @@ def posted(client: AsyncMock) -> list[str]:
 @pytest.mark.asyncio
 async def test_first_start_reports_each_step_without_personal_data(client: AsyncMock) -> None:
     """The first start announces the full read and summarizes every step with counts only."""
-    reporter = StartupReporter(client=client, channel="C0LOG", version="1.2.3")
+    reporter = StartupReporter(client=client, channel="C0LOG", revision="abc1234")
 
     await prepare(reporter, Source(), CHANNEL)
     await reporter.post(reporter.summary())
 
     texts = posted(client)
     assert len(texts) == 6  # one message per section
-    assert texts[0] == "starting application (v1.2.3)"
+    assert texts[0] == "starting application (rev abc1234)"
     assert texts[1].startswith(
         "*database*: schema 0000 (migrated from empty) · badge definitions 19 types / 287 badges"
     )
     assert texts[2].startswith("first start: reading the whole channel")
     assert texts[3].startswith("*slack sync*: whole channel · 1 messages · 1 threads · 2 new events (")
     assert texts[4].startswith("*scores*: 2 events → 2 arrivals · 2 users · ")
-    assert texts[5].startswith(":white_check_mark: application started (v1.2.3) in ")
+    assert texts[5].startswith(":white_check_mark: application started (rev abc1234) in ")
     assert not any(user in text for text in texts for user in SECRET_USERS)
 
 
 @pytest.mark.asyncio
 async def test_restart_reports_the_catch_up(client: AsyncMock) -> None:
     """A restart has no full-read notice and reports where the catch-up started."""
-    await prepare(StartupReporter(client=client, channel="C0LOG", version="1.2.3"), Source(), CHANNEL)
+    await prepare(StartupReporter(client=client, channel="C0LOG", revision="abc1234"), Source(), CHANNEL)
     client.chat_postMessage.reset_mock()
     client.restart()
-    reporter = StartupReporter(client=client, channel="C0LOG", version="1.2.3")
+    reporter = StartupReporter(client=client, channel="C0LOG", revision="abc1234")
 
     await prepare(reporter, Source(), CHANNEL)
 
@@ -124,7 +124,7 @@ async def test_failed_step_reports_only_its_name_and_error_type(client: AsyncMoc
     """The exception message may contain data, so only the step and the error type are posted."""
     source = Source()
     source.replies = AsyncMock(side_effect=RuntimeError(f"bad reply from {SECRET_USERS[0]}"))
-    reporter = StartupReporter(client=client, channel="C0LOG", version="1.2.3")
+    reporter = StartupReporter(client=client, channel="C0LOG", revision="abc1234")
 
     with pytest.raises(RuntimeError):
         await prepare(reporter, source, CHANNEL)
@@ -139,8 +139,18 @@ async def test_failed_step_reports_only_its_name_and_error_type(client: AsyncMoc
 async def test_posting_failure_does_not_stop_startup(client: AsyncMock) -> None:
     """If the log channel cannot be reached, startup still completes."""
     client.chat_postMessage.side_effect = RuntimeError("channel_not_found")
-    reporter = StartupReporter(client=client, channel="C0LOG", version="1.2.3")
+    reporter = StartupReporter(client=client, channel="C0LOG", revision="abc1234")
 
     await prepare(reporter, Source(), CHANNEL)
 
     assert [step.name for step in reporter.steps] == ["database", "slack sync", "scores"]
+
+
+def test_current_revision_prefers_the_build_argument(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Images report the commit they were built from; a checkout falls back to git."""
+    monkeypatch.setattr(startup, "APP_REVISION", "6709a7d1234567890")
+    assert startup.current_revision() == "6709a7d"
+
+    monkeypatch.setattr(startup, "APP_REVISION", "")
+    monkeypatch.setattr(startup.subprocess, "run", Mock(side_effect=FileNotFoundError("git")))
+    assert startup.current_revision() == "unknown"
