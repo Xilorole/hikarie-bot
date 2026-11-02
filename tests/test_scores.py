@@ -2,7 +2,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from hikarie_bot.engine import JST
-from hikarie_bot.utils import get_level, get_level_name, is_level_uped, is_max_level_reached
+from hikarie_bot.utils import get_level, leveled_up, max_level_reached
 from tests.helpers import compute_in_order
 
 
@@ -52,8 +52,9 @@ def test_level_up() -> None:
 
     last = engine.results[-1]
     assert (last.previous_score, last.current_score) == (15, 20)
-    assert is_level_uped(last.previous_score, last.current_score)
-    assert (get_level(last.current_score), get_level_name(last.current_score)) == (2, "みならいのかいしゃいん")
+    assert leveled_up(last.previous_score, last.current_score)
+    level = get_level(last.current_score)
+    assert (level.number, level.name) == (2, "みならいのかいしゃいん")
 
 
 # only the fastest-arrival badge, worth 701pt, so three arrivals cross the 1400pt upper limit
@@ -64,7 +65,7 @@ def test_reach_max_level() -> None:
     engine = compute_in_order(*(("test_user", datetime(2024, 2, day, 7, 0, tzinfo=JST)) for day in (1, 2, 5)))
 
     reached, beyond = engine.results[1], engine.results[2]
-    assert is_max_level_reached(reached.previous_score, reached.current_score)
+    assert max_level_reached(reached.previous_score, reached.current_score)
     assert beyond.current_score > beyond.previous_score > 1400
-    assert get_level(beyond.current_score) == 12
-    assert not is_level_uped(beyond.previous_score, beyond.current_score)
+    assert get_level(beyond.current_score).number == 12
+    assert not leveled_up(beyond.previous_score, beyond.current_score)

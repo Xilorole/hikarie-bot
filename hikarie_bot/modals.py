@@ -27,14 +27,9 @@ from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kirib
 from hikarie_bot.engine import ArrivalResult, BadgeEngine, UserBadgeTally
 from hikarie_bot.utils import (
     get_current_jst_datetime,
-    get_current_level_point,
     get_level,
-    get_level_name,
-    get_point_range_to_next_level,
-    get_point_to_next_level,
-    is_level_uped,
-    is_max_level,
-    is_max_level_reached,
+    leveled_up,
+    max_level_reached,
 )
 
 # Constants
@@ -173,29 +168,24 @@ class PointGetMessage(BaseMessage):
 
         # get the variables
         level = get_level(current_point)
-        level_name = get_level_name(current_point)
-        point_to_next_level = get_point_to_next_level(current_point)
-        level_up_flag = is_level_uped(previous_point, current_point)
-        current_level_point = get_current_level_point(current_point)
-        point_range = get_point_range_to_next_level(current_point)
 
         # calculate the experience rate
-        experience_rate = int(100 * current_level_point / point_range)
-        experience_add_up_rate = int(100 * score_addup / point_range)
+        experience_rate = int(100 * level.progress_points / level.span)
+        experience_add_up_rate = int(100 * score_addup / level.span)
         # show at least one cell: a bar of spaces only renders as an empty inline code in Slack
         digits = max(1, (experience_rate + 10 - 1) // 10)
         point_rate_text = "█" * digits + " " * (10 - digits)
 
         # the level does not go beyond the upper limit
-        if is_max_level(current_point):
+        if level.is_max:
             next_level_text = "*上限に到達*"
             progress_text = f"`{point_rate_text}` | *100%*"
         else:
-            next_level_text = f"*{point_to_next_level}pt*"
+            next_level_text = f"*{level.points_to_next}pt*"
             progress_text = f"`{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)"
-        if is_max_level_reached(previous_point, current_point):
+        if max_level_reached(previous_point, current_point):
             level_up_text = " *上限に到達!* :crown: "
-        elif level_up_flag:
+        elif leveled_up(previous_point, current_point):
             level_up_text = " *LvUP!* :star2: "
         else:
             level_up_text = ""
@@ -209,7 +199,7 @@ class PointGetMessage(BaseMessage):
 
         context = dedent(
             f"""\
-            かたがき: *{level_name}* (lv{level})
+            かたがき: *{level.name}* (lv{level.number})
             つぎのレベルまで: {next_level_text}
             しんこうど: {progress_text}
             うちわけ:
@@ -437,7 +427,7 @@ class AchievementView(View):
         stats = {
             "total_arrivals": len(all_arrivals),
             "fastest_arrivals": sum(1 for arrival in all_arrivals if arrival.rank == 1),
-            "current_level": get_level(user.score),
+            "current_level": get_level(user.score).number,
             "current_score": user.score,
             "first_arrival_date": all_arrivals[0].time.strftime("%Y-%m-%d"),
         }

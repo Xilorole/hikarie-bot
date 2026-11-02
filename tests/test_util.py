@@ -1,189 +1,142 @@
 from datetime import date
 
+import pytest
+
 from hikarie_bot.utils import (
-    get_current_level_point,
+    LEVELS,
+    Level,
     get_level,
-    get_level_name,
-    get_point_range_to_next_level,
-    get_point_to_next_level,
     is_jp_bizday,
-    is_level_uped,
-    is_max_level,
-    is_max_level_reached,
+    leveled_up,
+    max_level_reached,
     unix_timestamp_to_jst,
 )
 
-
-def test_get_level() -> None:
-    "Test levels, which stay at the max level beyond the upper limit."
-    assert get_level(0) == 1
-    assert get_level(19) == 1
-    assert get_level(20) == 2
-    assert get_level(1399) == 12
-    assert get_level(1400) == 12
-    assert get_level(5000) == 12
-
-
-def test_is_max_level() -> None:
-    "Test whether the upper limit of the level is reached."
-    assert is_max_level(1399) is False
-    assert is_max_level(1400) is True
-    assert is_max_level(1401) is True
-    assert is_max_level_reached(1399, 1400) is True
-    assert is_max_level_reached(1390, 1405) is True
-    assert is_max_level_reached(1400, 1405) is False
-    assert is_max_level_reached(1300, 1399) is False
+# (name, points that complete the level) written out here, independent of hikarie_bot.utils.LEVELS
+EXPECTED_LEVELS = [
+    ("かけだしのかいしゃいん", 20),
+    ("みならいのかいしゃいん", 42),
+    ("けいけんちゅうのかいしゃいん", 71),
+    ("はんにんまえのかいしゃいん", 111),
+    ("じしんありのかいしゃいん", 167),
+    ("いちにんまえのかいしゃいん", 244),
+    ("じゅくれんのかいしゃいん", 346),
+    ("せんもんかのかいしゃいん", 478),
+    ("たつじんのかいしゃいん", 644),
+    ("エリートかいしゃいん", 849),
+    ("むてきのかいしゃいん", 1098),
+    ("でんせつのかいしゃいん", 1400),
+]
+MAX_POINT = 1400
 
 
-def test_get_level_name() -> None:
-    "Test level names."
-    assert get_level_name(0) == "かけだしのかいしゃいん"
-    assert get_level_name(19) == "かけだしのかいしゃいん"
-    assert get_level_name(20) == "みならいのかいしゃいん"
-    assert get_level_name(41) == "みならいのかいしゃいん"
-    assert get_level_name(42) == "けいけんちゅうのかいしゃいん"
-    assert get_level_name(70) == "けいけんちゅうのかいしゃいん"
-    assert get_level_name(71) == "はんにんまえのかいしゃいん"
-    assert get_level_name(110) == "はんにんまえのかいしゃいん"
-    assert get_level_name(111) == "じしんありのかいしゃいん"
-    assert get_level_name(166) == "じしんありのかいしゃいん"
-    assert get_level_name(167) == "いちにんまえのかいしゃいん"
-    assert get_level_name(243) == "いちにんまえのかいしゃいん"
-    assert get_level_name(244) == "じゅくれんのかいしゃいん"
-    assert get_level_name(345) == "じゅくれんのかいしゃいん"
-    assert get_level_name(346) == "せんもんかのかいしゃいん"
-    assert get_level_name(477) == "せんもんかのかいしゃいん"
-    assert get_level_name(478) == "たつじんのかいしゃいん"
-    assert get_level_name(643) == "たつじんのかいしゃいん"
-    assert get_level_name(644) == "エリートかいしゃいん"
-    assert get_level_name(848) == "エリートかいしゃいん"
-    assert get_level_name(849) == "むてきのかいしゃいん"
-    assert get_level_name(1097) == "むてきのかいしゃいん"
-    assert get_level_name(1098) == "でんせつのかいしゃいん"
-    assert get_level_name(1399) == "でんせつのかいしゃいん"
-    assert get_level_name(1400) == "でんせつのかいしゃいん"
-    assert get_level_name(1401) == "でんせつのかいしゃいん"
+def test_levels_table() -> None:
+    """The level table is the one written out above."""
+    assert list(LEVELS) == EXPECTED_LEVELS
 
 
-def test_is_level_uped() -> None:
-    """Test either level is uped or not.
-
-    The level is uped when the previous point is lower than
-    the threshold and the current point is equal or greater than
-    the next level point.
-    """
-    assert is_level_uped(0, 20) is True
-    assert is_level_uped(19, 20) is True
-    assert is_level_uped(19, 21) is True
-    assert is_level_uped(20, 21) is False
-    assert is_level_uped(20, 22) is False
-    assert is_level_uped(21, 22) is False
-    assert is_level_uped(1097, 1098) is True
-    # reaching the upper limit does not change the level
-    assert is_level_uped(1399, 1400) is False
-    assert is_level_uped(1390, 1405) is False
-    assert is_level_uped(1400, 1405) is False
+def test_get_level_at_zero() -> None:
+    """0 points is the first level, 0 of its 20 points."""
+    assert get_level(0) == Level(number=1, name="かけだしのかいしゃいん", start=0, end=20, point=0)
 
 
-def test_get_point_to_next_level() -> None:
-    """Test the point to the next level."""
-    assert get_point_to_next_level(0) == 20
-    assert get_point_to_next_level(19) == 1
-    assert get_point_to_next_level(20) == 22
-    assert get_point_to_next_level(21) == 21
-    assert get_point_to_next_level(22) == 20
-    assert get_point_to_next_level(41) == 1
-    assert get_point_to_next_level(42) == 29
-    assert get_point_to_next_level(43) == 28
-    assert get_point_to_next_level(70) == 1
-    assert get_point_to_next_level(71) == 40
-    assert get_point_to_next_level(110) == 1
-    assert get_point_to_next_level(111) == 56
-    assert get_point_to_next_level(166) == 1
-    assert get_point_to_next_level(167) == 77
-    assert get_point_to_next_level(243) == 1
-    assert get_point_to_next_level(244) == 102
-    assert get_point_to_next_level(345) == 1
-    assert get_point_to_next_level(346) == 132
-    assert get_point_to_next_level(477) == 1
-    assert get_point_to_next_level(478) == 166
-    assert get_point_to_next_level(643) == 1
-    assert get_point_to_next_level(644) == 205
-    assert get_point_to_next_level(848) == 1
-    assert get_point_to_next_level(849) == 249
-    assert get_point_to_next_level(1097) == 1
-    assert get_point_to_next_level(1098) == 302
-    assert get_point_to_next_level(1399) == 1
-    assert get_point_to_next_level(1400) == 0
-    assert get_point_to_next_level(1401) == 0
+@pytest.mark.parametrize("index", range(len(EXPECTED_LEVELS)))
+def test_get_level_around_each_threshold(index: int) -> None:
+    """Each level starts at the previous threshold and the last level stays at max."""
+    name, threshold = EXPECTED_LEVELS[index]
+    start = EXPECTED_LEVELS[index - 1][1] if index else 0
+    is_last = index == len(EXPECTED_LEVELS) - 1
+
+    # the level is completed at its threshold, which is the next level's start
+    assert get_level(threshold - 1) == Level(
+        number=index + 1, name=name, start=start, end=threshold, point=threshold - 1
+    )
+    assert get_level(start) == Level(number=index + 1, name=name, start=start, end=threshold, point=start)
+    if is_last:
+        assert get_level(threshold) == Level(number=12, name=name, start=start, end=threshold, point=threshold)
+        assert get_level(threshold + 1).number == 12
+    else:
+        next_name, next_threshold = EXPECTED_LEVELS[index + 1]
+        assert get_level(threshold) == Level(
+            number=index + 2, name=next_name, start=threshold, end=next_threshold, point=threshold
+        )
+        assert get_level(threshold + 1).number == index + 2
 
 
-def test_get_point_range_to_next_level() -> None:
-    "Assert the total amount of the point range is equal to the point to next level."
-    assert get_point_range_to_next_level(0) == 20
-    assert get_point_range_to_next_level(19) == 20
-    assert get_point_range_to_next_level(20) == 42 - 20
-    assert get_point_range_to_next_level(21) == 42 - 20
-    assert get_point_range_to_next_level(22) == 42 - 20
-    assert get_point_range_to_next_level(41) == 42 - 20
-    assert get_point_range_to_next_level(42) == 71 - 42
-    assert get_point_range_to_next_level(43) == 71 - 42
-    assert get_point_range_to_next_level(70) == 71 - 42
-    assert get_point_range_to_next_level(71) == 111 - 71
-    assert get_point_range_to_next_level(110) == 111 - 71
-    assert get_point_range_to_next_level(111) == 167 - 111
-    assert get_point_range_to_next_level(166) == 167 - 111
-    assert get_point_range_to_next_level(167) == 244 - 167
-    assert get_point_range_to_next_level(243) == 244 - 167
-    assert get_point_range_to_next_level(244) == 346 - 244
-    assert get_point_range_to_next_level(345) == 346 - 244
-    assert get_point_range_to_next_level(346) == 478 - 346
-    assert get_point_range_to_next_level(477) == 478 - 346
-    assert get_point_range_to_next_level(478) == 644 - 478
-    assert get_point_range_to_next_level(643) == 644 - 478
-    assert get_point_range_to_next_level(644) == 849 - 644
-    assert get_point_range_to_next_level(848) == 849 - 644
-    assert get_point_range_to_next_level(849) == 1098 - 849
-    assert get_point_range_to_next_level(1097) == 1098 - 849
-    assert get_point_range_to_next_level(1098) == 1400 - 1098
-    assert get_point_range_to_next_level(1399) == 1400 - 1098
-    # beyond the upper limit, the range of the last level is kept
-    assert get_point_range_to_next_level(1400) == 1400 - 1098
-    assert get_point_range_to_next_level(1500) == 1400 - 1098
+def test_level_beyond_max() -> None:
+    """Far beyond the upper limit the level is still the last one."""
+    assert get_level(5000).number == 12
+    assert get_level(5000).name == "でんせつのかいしゃいん"
 
 
-def test_get_current_level_point() -> None:
-    "test: Calculate the current level point based on the given total point."
-    assert get_current_level_point(0) == 0
-    assert get_current_level_point(19) == 19
-    assert get_current_level_point(20) == 20 - 20
-    assert get_current_level_point(21) == 21 - 20
-    assert get_current_level_point(22) == 22 - 20
-    assert get_current_level_point(41) == 41 - 20
-    assert get_current_level_point(42) == 42 - 42
-    assert get_current_level_point(43) == 43 - 42
-    assert get_current_level_point(70) == 70 - 42
-    assert get_current_level_point(71) == 71 - 71
-    assert get_current_level_point(110) == 110 - 71
-    assert get_current_level_point(111) == 111 - 111
-    assert get_current_level_point(166) == 166 - 111
-    assert get_current_level_point(167) == 167 - 167
-    assert get_current_level_point(243) == 243 - 167
-    assert get_current_level_point(244) == 244 - 244
-    assert get_current_level_point(345) == 345 - 244
-    assert get_current_level_point(346) == 346 - 346
-    assert get_current_level_point(477) == 477 - 346
-    assert get_current_level_point(478) == 478 - 478
-    assert get_current_level_point(643) == 643 - 478
-    assert get_current_level_point(644) == 644 - 644
-    assert get_current_level_point(848) == 848 - 644
-    assert get_current_level_point(849) == 849 - 849
-    assert get_current_level_point(1097) == 1097 - 849
-    assert get_current_level_point(1098) == 1098 - 1098
-    assert get_current_level_point(1399) == 1399 - 1098
-    # beyond the upper limit, the progress is full
-    assert get_current_level_point(1400) == 1400 - 1098
-    assert get_current_level_point(1500) == 1400 - 1098
+@pytest.mark.parametrize("index", range(len(EXPECTED_LEVELS)))
+def test_level_progress_around_each_threshold(index: int) -> None:
+    """Points to the next level, the span and the progress within the level."""
+    _, threshold = EXPECTED_LEVELS[index]
+    start = EXPECTED_LEVELS[index - 1][1] if index else 0
+    span = threshold - start
+
+    first = get_level(start)
+    assert (first.span, first.points_to_next, first.progress_points, first.is_max) == (span, span, 0, False)
+    last = get_level(threshold - 1)
+    assert (last.span, last.points_to_next, last.progress_points, last.is_max) == (span, 1, span - 1, False)
+
+    reached = get_level(threshold)
+    if index == len(EXPECTED_LEVELS) - 1:
+        # at the upper limit nothing is left, the progress is the whole span of the last level (100%)
+        assert (reached.span, reached.points_to_next, reached.progress_points, reached.is_max) == (span, 0, span, True)
+        beyond = get_level(threshold + 100)
+        assert (beyond.span, beyond.points_to_next, beyond.progress_points, beyond.is_max) == (span, 0, span, True)
+    else:
+        # reaching the threshold starts the next level
+        assert (reached.progress_points, reached.is_max) == (0, False)
+        assert reached.span == EXPECTED_LEVELS[index + 1][1] - threshold
+
+
+def test_level_progress_inside_a_level() -> None:
+    """Spot checks inside a level."""
+    level = get_level(21)
+    assert (level.points_to_next, level.span, level.progress_points) == (21, 22, 1)
+    level = get_level(1399)
+    assert (level.points_to_next, level.span, level.progress_points) == (1, 302, 301)
+
+
+def test_leveled_up() -> None:
+    """A level up is a move to a higher level; a point gain may even skip levels."""
+    assert leveled_up(0, 20) is True
+    assert leveled_up(19, 20) is True
+    assert leveled_up(19, 21) is True
+    assert leveled_up(20, 21) is False
+    assert leveled_up(20, 22) is False
+    assert leveled_up(21, 22) is False
+    assert leveled_up(1097, 1098) is True
+    assert leveled_up(0, 100) is True  # skips a level
+    assert leveled_up(1000, 1500) is True  # reaches the last level and goes beyond the upper limit
+    assert leveled_up(30, 20) is False  # going down is not a level up
+    # reaching the upper limit is not a level up (see max_level_reached)
+    assert leveled_up(1399, 1400) is False
+    assert leveled_up(1390, 1405) is False
+    assert leveled_up(1400, 1405) is False
+
+
+@pytest.mark.parametrize("threshold", [threshold for _, threshold in EXPECTED_LEVELS[:-1]])
+def test_leveled_up_at_each_threshold(threshold: int) -> None:
+    """Every threshold below the upper limit is a level up when crossed."""
+    assert leveled_up(threshold - 1, threshold) is True
+    assert leveled_up(threshold, threshold + 1) is False
+    assert leveled_up(threshold - 2, threshold - 1) is False
+
+
+def test_max_level_reached() -> None:
+    """The upper limit is reached once, by the gain that makes the total 1400 or more."""
+    assert max_level_reached(1399, MAX_POINT) is True
+    assert max_level_reached(1390, 1405) is True
+    assert max_level_reached(0, 2000) is True
+    assert max_level_reached(1400, 1405) is False
+    assert max_level_reached(1401, 1405) is False
+    assert max_level_reached(1300, 1399) is False
+    assert max_level_reached(1398, 1399) is False
+    assert max_level_reached(0, 0) is False
 
 
 def test_unix_timestamp_to_jst() -> None:
