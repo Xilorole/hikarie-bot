@@ -10,7 +10,7 @@ from asyncclick.testing import CliRunner
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from hikarie_bot import slack_helper, sync
+from hikarie_bot import sync
 from hikarie_bot.migrations import init_database
 from hikarie_bot.models import ArrivalEvent, GuestArrivalInfo, SyncState, User
 from hikarie_bot.sync import (
@@ -34,8 +34,7 @@ V2_ERA = datetime(2024, 6, 3, 0, 30, tzinfo=UTC).timestamp()
 @pytest.fixture(autouse=True)
 def bot_id(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give the bot an ID (it is empty under ENV=test)."""
-    for module in (slack_helper, sync):
-        monkeypatch.setattr(module, "BOT_ID", BOT)
+    monkeypatch.setattr(sync, "BOT_ID", BOT)
 
 
 @pytest.fixture

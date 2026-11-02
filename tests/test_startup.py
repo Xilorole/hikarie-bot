@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from hikarie_bot import slack_helper, startup, sync
+from hikarie_bot import startup, sync
 from hikarie_bot.migrations import init_database
 from hikarie_bot.startup import StartupReporter, prepare
 
@@ -67,8 +67,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
     monkeypatch.setattr(startup, "ensure_database", ensure_database)
     monkeypatch.setattr(startup, "get_db", get_db)
-    for module in (slack_helper, sync):
-        monkeypatch.setattr(module, "BOT_ID", BOT)
+    monkeypatch.setattr(sync, "BOT_ID", BOT)
     client = AsyncMock()
     client.restart = initialized.clear  # a new process initializes the database again
     return client
