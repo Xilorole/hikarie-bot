@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from itertools import batched
 from textwrap import dedent
@@ -15,11 +16,12 @@ from hikarie_bot import db_data
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
     CONTEXT_ITEM_MAX,
+    ITEM_IMAGE_URLS,
     JST,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
 from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
-from hikarie_bot.db_data.items import ITEMS, NAME_TAG, ItemData
+from hikarie_bot.db_data.items import ID_CARD, ITEMS, ItemData
 from hikarie_bot.engine import ArrivalResult, BadgeEngine, ItemEffect, UserBadgeTally
 from hikarie_bot.utils import (
     get_level,
@@ -63,6 +65,7 @@ class CallbackID:
     """Class for storing the callback IDs of the modals that are submitted."""
 
     ITEM_PICK = "ITEM_PICK"
+    ITEM_REVIEW = "ITEM_REVIEW"
 
 
 class ShortcutID:
@@ -111,14 +114,14 @@ def registry_message(arrivals: list[ArrivalResult]) -> list[Block]:
         blocks.DividerBlock(),
         blocks.SectionBlock(
             text="本日の出社ユーザー:\n"
-            + "\n".join(f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>{_name_tag(arrival)}" for arrival in arrivals),
+            + "\n".join(f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>{_id_card(arrival)}" for arrival in arrivals),
         ),
     ]
 
 
-def _name_tag(arrival: ArrivalResult) -> str:
-    """Return the name tag shown after the user while their name tag item acts."""
-    return f" {ITEMS[NAME_TAG].emoji}" if any(effect.item_id == NAME_TAG for effect in arrival.item_effects) else ""
+def _id_card(arrival: ArrivalResult) -> str:
+    """Return the ID card shown after the user while their ID card item acts."""
+    return f" {ITEMS[ID_CARD].emoji}" if any(effect.item_id == ID_CARD for effect in arrival.item_effects) else ""
 
 
 def point_get_message(arrival: ArrivalResult) -> list[Block]:
@@ -183,34 +186,86 @@ def _item_effect_text(effect: ItemEffect) -> str:
     return f"{item.label} (<@{effect.giver}>さんから)" if effect.giver else item.label
 
 
-def item_pick_view(offered: list[ItemData], channel_id: str, thread_ts: str, day: date) -> View:
-    """Build the modal offering today's items; the pick is announced in the daily post's thread."""
-    return View(
-        type="modal",
-        callback_id=CallbackID.ITEM_PICK,
-        title="今日のアイテム",
-        submit="獲得",
-        close="やめる",
-        private_metadata=json.dumps({"channel": channel_id, "thread_ts": thread_ts, "day": day.isoformat()}),
-        blocks=[
-            blocks.SectionBlock(text="1つだけ獲得できます。効果は次の出社から。持てるアイテムは1つまでです。"),
-            blocks.InputBlock(
-                block_id=BlockID.ITEM_CHOICE,
-                label="アイテム",
-                element=block_elements.RadioButtonsElement(
-                    action_id=ActionID.ITEM_CHOICE,
-                    options=[
-                        basic_components.Option(
-                            value=item.id,
-                            text=basic_components.MarkdownTextObject(text=f"*{item.label}*"),
-                            description=basic_components.MarkdownTextObject(text=item.effect),
-                        )
-                        for item in offered
-                    ],
-                ),
-            ),
+ITEM_PICK_GUIDE = (
+    "1つだけ獲得できます。効果は次の出社から。持てるアイテムは1つまでで、"
+    "アイテムによる加点は1回の出社につき最大 +3pt です。"
+)
+
+
+def item_pick_view(
+    offered: list[ItemData], channel_id: str, thread_ts: str, day: date, image_urls: Mapping[str, str] = ITEM_IMAGE_URLS
+) -> dict:
+    """Build the modal offering today's items as cards, picked with a radio button and submitted.
+
+    Views are built as dictionaries: slack_sdk has no model of the card block.
+    """
+    return {
+        "type": "modal",
+        "callback_id": CallbackID.ITEM_PICK,
+        "title": _plain("今日のアイテム"),
+        "submit": _plain("獲得"),
+        "close": _plain("やめる"),
+        "private_metadata": json.dumps({"channel": channel_id, "thread_ts": thread_ts, "day": day.isoformat()}),
+        "blocks": [
+            {"type": "section", "text": _mrkdwn(ITEM_PICK_GUIDE)},
+            *(item_card(item, image_urls.get(item.id)) for item in offered),
+            {
+                "type": "input",
+                "block_id": BlockID.ITEM_CHOICE,
+                "label": _plain("獲得するアイテム"),
+                "element": {
+                    "type": "radio_buttons",
+                    "action_id": ActionID.ITEM_CHOICE,
+                    "options": [{"text": _mrkdwn(f"*{item.name}*"), "value": item.id} for item in offered],
+                },
+            },
         ],
-    )
+    }
+
+
+def item_review_view(
+    offered: list[ItemData],
+    notice: str,
+    picked_item_id: str | None = None,
+    image_urls: Mapping[str, str] = ITEM_IMAGE_URLS,
+) -> dict:
+    """Build the read-only modal of today's items: after the pick, or while another item is held.
+
+    Slack shows a submit button anyway, so it reads "OK" and only closes the modal.
+    """
+    return {
+        "type": "modal",
+        "callback_id": CallbackID.ITEM_REVIEW,
+        "title": _plain("今日のアイテム"),
+        "submit": _plain("OK"),
+        "close": _plain("閉じる"),
+        "blocks": [
+            {"type": "section", "text": _mrkdwn(notice)},
+            *(item_card(item, image_urls.get(item.id), picked=item.id == picked_item_id) for item in offered),
+            {"type": "context", "elements": [_mrkdwn("アイテムは1日1つまで。出社した日に選べます。")]},
+        ],
+    }
+
+
+def item_card(item: ItemData, image_url: str | None, *, picked: bool = False) -> dict:
+    """Return an item's card: its image and name, its story as the subtitle and exactly what it does as the body."""
+    card = {
+        "type": "card",
+        "title": _mrkdwn(f"*{item.name}*" + ("  :white_check_mark: 獲得済み" if picked else "")),
+        "subtitle": _mrkdwn(item.flavor),
+        "body": _mrkdwn(f"効果: {item.effect}"),
+    }
+    if image_url:  # an item whose image is not hosted yet has no icon
+        card["icon"] = {"type": "image", "image_url": image_url, "alt_text": item.name}
+    return card
+
+
+def _plain(text: str) -> dict:
+    return {"type": "plain_text", "text": text}
+
+
+def _mrkdwn(text: str) -> dict:
+    return {"type": "mrkdwn", "text": text}
 
 
 def item_picked_text(user_id: str, item: ItemData) -> str:

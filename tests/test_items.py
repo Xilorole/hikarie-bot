@@ -2,6 +2,7 @@
 
 # Times are written naive for brevity and taken as JST.
 # ruff: noqa: DTZ001
+import json
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, date, datetime
 from typing import Any
@@ -19,8 +20,8 @@ from hikarie_bot.db_data.items import (
     ALARM_CLOCK,
     DASH_SHOES,
     DICE,
+    ID_CARD,
     ITEMS,
-    NAME_TAG,
     OFFER_COUNT,
     OMAMORI,
     TREAT,
@@ -29,7 +30,7 @@ from hikarie_bot.db_data.items import (
     offers,
 )
 from hikarie_bot.engine import BadgeEngine, ItemPick, compute
-from hikarie_bot.modals import ActionID, BlockID, registry_message
+from hikarie_bot.modals import ActionID, BlockID, CallbackID, registry_message
 from hikarie_bot.models import ItemPickEvent
 from hikarie_bot.picks import ALREADY_PICKED, NOT_ARRIVED, NOT_OFFERED
 from hikarie_bot.settings import Settings
@@ -59,6 +60,14 @@ def item_points(engine: BadgeEngine, user_id: str, day: int) -> list[tuple[str, 
 
 
 # --- the engine ---
+
+
+def test_every_item_tells_its_points_and_fits_a_radio_option() -> None:
+    """The effect says what the item does in points, or that it gives none; the name fits a radio option."""
+    for item in ITEMS.values():
+        assert item.flavor, item.id
+        assert "pt" in item.effect or "ポイントは増えない" in item.effect, item.id
+        assert len(f"*{item.name}*") <= 75, item.id
 
 
 def test_offers_are_three_distinct_items_and_the_same_every_time() -> None:
@@ -138,13 +147,13 @@ def test_weekly_pass_stops_after_three_points() -> None:
 
 
 @only_badge_types()
-def test_name_tag_shows_in_the_list_during_its_window() -> None:
-    """The tag follows the name on the days it acts on, and gives no points."""
-    engine = run([("U1", at(day)) for day in (2, 3, 10)] + [("U2", at(3, 11))], [("U1", 2, NAME_TAG)])
+def test_id_card_shows_in_the_list_during_its_window() -> None:
+    """The card follows the name on the days it acts on, and gives no points."""
+    engine = run([("U1", at(day)) for day in (2, 3, 10)] + [("U2", at(3, 11))], [("U1", 2, ID_CARD)])
 
     lines = registry_message(engine.arrivals_on(date(2025, 6, 3)))[3].text.text.splitlines()
-    assert lines[1:] == ["*10:00* : <@U1> :name_badge:", "*11:00* : <@U2>"]
-    assert item_points(engine, "U1", 3) == [(NAME_TAG, 0)]
+    assert lines[1:] == ["*10:00* : <@U1> :identification_card:", "*11:00* : <@U2>"]
+    assert item_points(engine, "U1", 3) == [(ID_CARD, 0)]
     assert item_points(engine, "U1", 10) == []  # the window was Tue 3 - Mon 9
 
 
@@ -250,7 +259,7 @@ async def arrive(client: AsyncMock, user_id: str, day: int) -> None:
 async def open_offers(client: AsyncMock, user_id: str, day: int) -> str:
     """Press the item button; return the opened modal's private metadata."""
     await bot.handle_pick_item(AsyncMock(), press(user_id, day, ActionID.PICK_ITEM), client)
-    return client.views_open.await_args.kwargs["view"].private_metadata
+    return client.views_open.await_args.kwargs["view"]["private_metadata"]
 
 
 def picks(database: Engine) -> list[tuple[str, date, str, str | None]]:
@@ -278,7 +287,12 @@ async def test_pick_is_stored_and_announced_quietly_in_the_thread(database: Engi
     metadata = await open_offers(client, "U1", 2)
     offered = [item.id for item in offers("U1", date(2025, 6, 2))]
     view = client.views_open.await_args.kwargs["view"]
-    assert [option.value for option in view.blocks[1].element.options] == offered
+    assert view["callback_id"] == CallbackID.ITEM_PICK
+    cards = [block for block in view["blocks"] if block["type"] == "card"]
+    assert [(card["subtitle"]["text"], card["body"]["text"]) for card in cards] == [
+        (ITEMS[item_id].flavor, f"効果: {ITEMS[item_id].effect}") for item_id in offered
+    ]
+    assert [option["value"] for option in view["blocks"][-1]["element"]["options"]] == offered
     ack = AsyncMock()
 
     await bot.handle_item_submission(ack, submission("U1", offered[1], metadata), client)
@@ -295,8 +309,8 @@ async def test_pick_is_stored_and_announced_quietly_in_the_thread(database: Engi
 
 
 @pytest.mark.asyncio
-async def test_one_pick_a_day(database: Engine) -> None:
-    """After picking, the button says so instead of opening the modal."""
+async def test_one_pick_a_day_and_then_the_offers_are_read_only(database: Engine) -> None:
+    """After picking, the button opens the day's offers to look at, with the picked one marked."""
     client = slack()
     await arrive(client, "U1", 2)
     metadata = await open_offers(client, "U1", 2)
@@ -307,8 +321,12 @@ async def test_one_pick_a_day(database: Engine) -> None:
 
     await bot.handle_pick_item(AsyncMock(), press("U1", 2, ActionID.PICK_ITEM), client)
 
-    assert client.chat_postEphemeral.await_args.kwargs["text"] == ALREADY_PICKED
-    client.views_open.assert_not_awaited()
+    view = client.views_open.await_args.kwargs["view"]
+    assert view["callback_id"] == CallbackID.ITEM_REVIEW
+    assert view["submit"]["text"] == "OK"
+    assert not any(block["type"] == "input" for block in view["blocks"])
+    titles = [block["title"]["text"] for block in view["blocks"] if block["type"] == "card"]
+    assert [title.endswith("獲得済み") for title in titles] == [True, False, False]
     # a modal left open from before cannot pick a second item either
     ack = AsyncMock()
     await bot.handle_item_submission(ack, submission("U1", offers("U1", date(2025, 6, 2))[1].id, metadata), client)
@@ -317,8 +335,8 @@ async def test_one_pick_a_day(database: Engine) -> None:
 
 
 @pytest.mark.asyncio
-async def test_holding_an_item_blocks_the_next_pick(database: Engine, clock: FrozenDateTimeFactory) -> None:
-    """A weekly pass is held for five business days, so the next day offers nothing."""
+async def test_holding_an_item_shows_the_offers_without_a_pick(database: Engine, clock: FrozenDateTimeFactory) -> None:
+    """A weekly pass is held for five business days: the next day's offers can be looked at, not picked."""
     client = slack()
     await arrive(client, "U1", 2)
     with Session(database) as session:  # store a weekly pass, as if it had been offered and picked
@@ -329,10 +347,17 @@ async def test_holding_an_item_blocks_the_next_pick(database: Engine, clock: Fro
 
     await bot.handle_pick_item(AsyncMock(), press("U1", 3, ActionID.PICK_ITEM), client)
 
-    text = client.chat_postEphemeral.await_args.kwargs["text"]
-    assert "週間パス" in text
-    assert "06/09まで" in text
-    client.views_open.assert_not_awaited()
+    view = client.views_open.await_args.kwargs["view"]
+    assert view["callback_id"] == CallbackID.ITEM_REVIEW
+    notice = view["blocks"][0]["text"]["text"]
+    assert "週間パス" in notice
+    assert "06/09まで" in notice
+    assert len([block for block in view["blocks"] if block["type"] == "card"]) == 3
+    # nor can a submission get around it
+    ack = AsyncMock()
+    metadata = json.dumps({"channel": "C0OUT", "thread_ts": post_ts(3), "day": "2025-06-03"})
+    await bot.handle_item_submission(ack, submission("U1", offers("U1", date(2025, 6, 3))[0].id, metadata), client)
+    assert ack.await_args.kwargs["response_action"] == "errors"
 
 
 @pytest.mark.asyncio

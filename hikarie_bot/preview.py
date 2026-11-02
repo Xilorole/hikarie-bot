@@ -23,18 +23,20 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from hikarie_bot.arrivals import compute_arrivals
-from hikarie_bot.constants import JST
-from hikarie_bot.db_data.items import offers
+from hikarie_bot.constants import ITEM_IMAGE_URLS, JST
+from hikarie_bot.db_data.items import ITEMS, WEEKLY_PASS, offers
 from hikarie_bot.engine import BadgeEngine
 from hikarie_bot.modals import (
     achievement_view,
     initial_message,
     item_pick_view,
     item_picked_message,
+    item_review_view,
     point_get_message,
     registry_message,
     render,
 )
+from hikarie_bot.picks import held_notice, picked_notice
 from hikarie_bot.settings import get_settings
 from hikarie_bot.utils import is_jp_bizday, leveled_up
 
@@ -46,6 +48,8 @@ SYNTHETIC_MAX_DAYS = 120
 SYNTHETIC_USERS = [f"U0PREVIEW{i}" for i in range(1, 6)]
 SYNTHETIC_ATTENDANCE_RATE = 0.7
 LEVEL_UP_USER = "U0PREVIEWL"
+# placeholder pictures for the item cards until the real ones are hosted (constants.ITEM_IMAGE_URLS)
+SAMPLE_ITEM_IMAGE_URLS = {item_id: f"https://picsum.photos/seed/hikarie-{item_id}/128/128" for item_id in ITEMS}
 
 
 def create_block_kit_url(payload: dict[str, Any], workspace_id: str) -> str:
@@ -102,7 +106,23 @@ def _point_get_item(context: PreviewContext) -> dict[str, Any] | None:
 
 def _item_pick(context: PreviewContext) -> dict[str, Any]:
     day = context.reference.date()
-    return item_pick_view(offers(context.user_id, day), "C0PREVIEW", "0000000000.000000", day).to_dict()
+    return item_pick_view(offers(context.user_id, day), "C0PREVIEW", "0000000000.000000", day, item_images())
+
+
+def _item_review(context: PreviewContext) -> dict[str, Any]:
+    offered = offers(context.user_id, context.reference.date())
+    return item_review_view(offered, picked_notice(offered[1].id), offered[1].id, item_images())
+
+
+def _item_review_held(context: PreviewContext) -> dict[str, Any]:
+    offered = offers(context.user_id, context.reference.date())
+    notice = held_notice(WEEKLY_PASS, context.reference.date() + timedelta(days=4))
+    return item_review_view(offered, notice, image_urls=item_images())
+
+
+def item_images() -> dict[str, str]:
+    """Return the item images: the hosted ones, and placeholders for the rest."""
+    return SAMPLE_ITEM_IMAGE_URLS | ITEM_IMAGE_URLS
 
 
 def _item_picked(context: PreviewContext) -> dict[str, Any]:
@@ -135,6 +155,8 @@ PREVIEWS = [
     Preview("point_get_item", "アイテム効果つきのポイント獲得メッセージ", _point_get_item),
     Preview("achievement_view", "実績確認モーダル", _achievement),
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
+    Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
+    Preview("item_review_held", "期限付きアイテムを持っていて選べない日のモーダル", _item_review_held),
     Preview("item_picked_message", "アイテム獲得をスレッドに知らせるメッセージ", _item_picked),
 ]
 PREVIEW_NAMES = [preview.name for preview in PREVIEWS]

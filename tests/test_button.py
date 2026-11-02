@@ -168,5 +168,6 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
         bot.handle_check_achievement,
         bot.handle_pick_item,
         bot.handle_item_submission,
+        bot.handle_item_review,
         bot.handle_reboot,
     }

@@ -21,11 +21,16 @@ OFFER_COUNT = 3
 
 @dataclass(frozen=True)
 class ItemData:
-    """An item: its stable ID (stored in item_pick_event), how it is shown and how long it lasts."""
+    """An item: its stable ID (stored in item_pick_event), how it is shown and how long it lasts.
+
+    flavor is the item's story on its card, hinting at what it does; effect states exactly what it does
+    (in points, or that it gives none) and is shown with it, in the thread announcement and in notices.
+    """
 
     id: str
     name: str
     emoji: str
+    flavor: str
     effect: str
     duration_bizdays: int | None = None
 
@@ -36,7 +41,7 @@ class ItemData:
 
 
 OMAMORI = "omamori"
-NAME_TAG = "name_tag"
+ID_CARD = "id_card"
 ALARM_CLOCK = "alarm_clock"
 DASH_SHOES = "dash_shoes"
 WEEKLY_PASS = "weekly_pass"  # noqa: S105  # an item ID, not a password
@@ -48,45 +53,52 @@ Items = [
         id=OMAMORI,
         name="おまもり",
         emoji=":four_leaf_clover:",
-        effect="次の出社で、ストレートフラッ出社が1日の休みを許す",
+        flavor="高輪築堤の石垣のそばで見つけた、四つ葉が縫い込まれたお守り。かすかな加護が、休んでしまった一日をなかったことにしてくれる。",
+        effect="次の出社で、直近6営業日のうち休みが1日だけならストレートフラッ出社（+3pt）を獲得",
     ),
     ItemData(
-        id=NAME_TAG,
-        name="名札",
-        emoji=":name_badge:",
-        effect="5営業日のあいだ、出社一覧の名前に名札が付く",
+        id=ID_CARD,
+        name="社員証",
+        emoji=":identification_card:",
+        flavor="高輪の新しいオフィスで最初に受け取った、ICチップ入りの社員証。胸に下げているあいだは、出社一覧であなたの名前が少しだけ目立つ。",
+        effect="5営業日のあいだ、出社一覧の名前の横に社員証が付く（ポイントは増えない）",
         duration_bizdays=5,
     ),
     ItemData(
         id=ALARM_CLOCK,
         name="目覚まし時計",
         emoji=":alarm_clock:",
-        effect="次の出社が9時前なら +3pt",
+        flavor="二つのベルを持つ、年季の入った真鍮の目覚まし時計。その音は眠りの呪いを打ち破り、朝の弱いかいしゃいんでも9時前の改札をくぐらせる。",
+        effect="次の出社が9時より前なら +3pt",
     ),
     ItemData(
         id=DASH_SHOES,
         name="スタートダッシュシューズ",
         emoji=":athletic_shoe:",
-        effect="次の出社が最速なら +2pt",
+        flavor="靴底に厚いクッションがついているシューズ。独特のバネが高輪への足取りを軽くし、誰よりも早く着いた朝にだけ真価を発揮する。",
+        effect="次の出社でその日の一番乗りになれば +2pt",
     ),
     ItemData(
         id=WEEKLY_PASS,
         name="週間パス",
         emoji=":ticket:",
-        effect="5営業日のあいだ、前の営業日に続けて出社するたびに +1pt (最大 +3pt)",
+        flavor="5日分の改札印が並ぶ、古びた紙の通行証。一日も欠かさず通うほど、刻まれた印がひとつずつ力に変わっていく。",
+        effect="5営業日のあいだ、前の営業日にも出社していれば出社ごとに +1pt（合計で最大 +3pt）",
         duration_bizdays=5,
     ),
     ItemData(
         id=DICE,
         name="サイコロ",
         emoji=":game_die:",
-        effect="次の出社で 0〜3pt",
+        flavor="備品ロッカーの奥で見つかった、角の欠けた骨のサイコロ。次の出社の運勢を、この一振りに預ける。",
+        effect="次の出社で 0〜3pt のどれか",
     ),
     ItemData(
         id=TREAT,
         name="差し入れ",
-        emoji=":doughnut:",
-        effect="次の出社の日、あとから出社した3人まで +1pt ずつ",
+        emoji=":bread:",
+        flavor="鋳物の鍋でひとつずつ焼き上げる、駅ビルのパン屋の焼きたての包み。あとから来た仲間に配ると、オフィスに小さな祝福が満ちる。",
+        effect="次に出社した日、あとから出社した先着3人がそれぞれ +1pt（あなた自身は増えない）",
     ),
 ]
 ITEMS = {item.id: item for item in Items}

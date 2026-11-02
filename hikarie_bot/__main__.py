@@ -28,6 +28,7 @@ from hikarie_bot.modals import (
     item_pick_view,
     item_picked_message,
     item_picked_text,
+    item_review_view,
     point_get_message,
     registry_message,
     render,
@@ -247,7 +248,7 @@ async def announce_pick(client: AsyncWebClient, channel_id: str, thread_ts: str,
 
 
 async def handle_pick_item(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Open today's item offers, or say why the user cannot pick (one pick a day, after arriving, one item held)."""
+    """Open today's item offers to pick from, or to look at once picked or while an item is held."""
     await ack()
     user_id = body["user"]["id"]
     channel_id = body["channel"]["id"]
@@ -265,10 +266,12 @@ async def handle_pick_item(ack: AsyncAck, body: dict[str, Any], client: AsyncWeb
     if gate.refusal is not None:
         await client.chat_postEphemeral(channel=channel_id, user=user_id, text=gate.refusal)
         return
+    if gate.notice is not None:  # picked today, or holding an item: the offers to look at
+        view = item_review_view(gate.offers, gate.notice, gate.picked_item_id)
+    else:
+        view = item_pick_view(gate.offers, channel_id, message_ts, now.date())
     logger.info(f"Opening item offers for user {user_id}")
-    await client.views_open(
-        trigger_id=body["trigger_id"], view=item_pick_view(gate.offers, channel_id, message_ts, now.date())
-    )
+    await client.views_open(trigger_id=body["trigger_id"], view=view)
 
 
 async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -293,6 +296,11 @@ async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: As
             return
         await ack()
         await announce_pick(client, metadata["channel"], metadata["thread_ts"], gate.unannounced)
+
+
+async def handle_item_review(ack: AsyncAck) -> None:
+    """Close the read-only item modal: its OK button submits nothing."""
+    await ack()
 
 
 async def handle_reboot(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -323,6 +331,7 @@ def create_app() -> AsyncApp:
     app.action(ActionID.CHECK_ACHIEVEMENT)(handle_check_achievement)
     app.action(ActionID.PICK_ITEM)(handle_pick_item)
     app.view(CallbackID.ITEM_PICK)(handle_item_submission)
+    app.view(CallbackID.ITEM_REVIEW)(handle_item_review)
     app.shortcut(ShortcutID.REBOOT)(handle_reboot)
     return app
 
