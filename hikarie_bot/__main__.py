@@ -11,14 +11,14 @@ from slack_bolt.context.ack.async_ack import AsyncAck
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot._version import version
-from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
+from hikarie_bot.curd import insert_arrival_action
 from hikarie_bot.modals import (
     ActionID,
     PointGetMessage,
     RegistryMessage,
     ShortcutID,
 )
-from hikarie_bot.models import get_db
+from hikarie_bot.models import ensure_database, get_db
 from hikarie_bot.preview import preview
 from hikarie_bot.settings import (
     ADMIN,
@@ -92,6 +92,9 @@ async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
         text=f"starting application (v{version})",
     )
 
+    # migrate the schema and sync badge master data before any task touches the database
+    ensure_database()
+
     background_task = set()
 
     # get now in JST for now
@@ -113,8 +116,6 @@ async def start(*, dev: bool = False, skip_db_create: bool = False) -> None:
     background_task.add(a)
 
     with get_db() as session:
-        initially_insert_badge_data(session)
-
         # get now in JST for now
         if dev:
             now = get_current_jst_datetime()

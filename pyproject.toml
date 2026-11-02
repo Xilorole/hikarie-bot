@@ -23,10 +23,10 @@ core = [
     "pydantic",
     "python-dateutil",
     "slack-bolt",
-    "sqlalchemy-utils",
     "sqlalchemy",
     "tzdata>=2025.2",
     "pydantic-settings>=2.16.2",
+    "alembic>=1.20.1",
 ]
 dev = [
     "pytest-asyncio",
@@ -49,6 +49,9 @@ jupyter = [
 
 [tool.setuptools.packages.find]
 exclude = ["build", "tests"]
+
+[tool.setuptools.package-data]
+hikarie_bot = ["alembic/*.py", "alembic/*.mako", "alembic/versions/*.py"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hikarie_bot.version" }

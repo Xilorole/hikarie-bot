@@ -23,7 +23,7 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from hikarie_bot.curd import initially_insert_badge_data, insert_arrival_action
+from hikarie_bot.curd import insert_arrival_action, sync_badge_master_data
 from hikarie_bot.database import BaseSchema
 from hikarie_bot.modals import (
     AchievementView,
@@ -166,7 +166,7 @@ def _bizdays(start: datetime) -> list[datetime]:
 
 def build_synthetic_context(session: Session) -> PreviewContext:
     """Fill an empty database with deterministic arrivals that end on a level-up day."""
-    initially_insert_badge_data(session)
+    sync_badge_master_data(session)
     rng = random.Random(0)  # noqa: S311
     for index, day in enumerate(_bizdays(SYNTHETIC_START)):
         arrivals = [(LEVEL_UP_USER, time(9, rng.randint(0, 59)))]
