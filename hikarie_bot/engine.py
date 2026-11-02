@@ -180,10 +180,11 @@ class BadgeEngine:
         recent = user.times[-STRAIGHT_FLASH_LENGTH:][::-1]
         if len(recent) < STRAIGHT_FLASH_LENGTH:
             return []
+        # the last five business days within two weeks; fewer (a long holiday) means no streak
         bizdays = list_bizdays(self._start_of_day(time), STRAIGHT_FLASH_LENGTH)
-        if any(bizday != arrival.date() for bizday, arrival in zip(bizdays, recent, strict=True)):
+        if bizdays != [arrival.date() for arrival in recent]:
             return []
-        # The original re-checks the previous four arrivals recursively; their results are memoized here.
+        # A badge earned within the previous four arrivals is not awarded again.
         recently_achieved = set().union(*user.straight_flash[-(STRAIGHT_FLASH_LENGTH - 1) :])
         badges = [] if STRAIGHT_FLASH in recently_achieved else [STRAIGHT_FLASH]
         hours = {arrival.hour for arrival in recent}

@@ -101,3 +101,13 @@ def test_second_arrival_on_the_same_day_is_not_counted() -> None:
     assert engine.add("U1", datetime(2025, 6, 2, 9, 0)) is not None
     assert engine.add("U1", datetime(2025, 6, 2, 10, 0)) is None
     assert engine.add("U2", datetime(2025, 6, 2, 10, 0)).rank == 2
+
+
+def test_straight_flash_without_five_business_days_is_no_streak(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A two-week window with fewer than five business days ends the streak instead of failing."""
+    monkeypatch.setattr("hikarie_bot.engine.list_bizdays", lambda start, _length: [start.date()])
+    engine = BadgeEngine()
+    for day in range(2, 7):
+        result = engine.add("U1", datetime(2025, 6, day, 9, 0))
+
+    assert not {401, 402, 403} & set(result.badge_ids)
