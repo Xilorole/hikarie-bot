@@ -193,8 +193,10 @@ not install or update dependencies when starting. Python and uv images are
 pinned by digest; Dependabot checks Docker image updates weekly.
 
 Create `.env` from `.env.template` and fill in the Slack configuration before
-starting the bot. If using `URL=sqlite:///.db/data.db`, persist `/opt/.db` with a
-Docker volume when recreating containers:
+starting the bot. `DATABASE_URL` is required outside `ENV=dev`/`ENV=test`; with
+`DATABASE_URL=sqlite:////opt/.db/data.db`, persist `/opt/.db` with a Docker volume
+when recreating containers. Settings come from environment variables, then
+`DOTENV_PATH` or `./.env` (a parent directory's `.env` is never read):
 
 ```bash
 docker run -d --name hikarie-bot-container --env-file .env \
@@ -237,73 +239,44 @@ To run the Hikarie Bot using Docker Compose, follow these steps:
 
 This will build and run the bot in a container named `hikarie-bot-container`.
 
-### Initial data image
+### Database
 
-Compose runs the one-shot `initial-data` service before the bot. Both services
-share the `bot-db` volume at `/opt/.db`. The initial-data service has no network
-access and runs as UID/GID 10001. With the current manifest it creates the schema
-and badge definitions, but no users or arrival history. The bot starts with
-`--skip-db-create`, so it does not replay Slack history on startup.
+The bot creates and migrates its SQLite schema on startup with Alembic
+(`hikarie_bot/alembic/`). Revision `0000` is the baseline: databases created
+before it are not upgraded and must be removed, since the data is rebuilt from
+Slack. Badge definitions are synchronized from code on every start.
 
-The release workflow publishes both `ghcr.io/xilorole/hikarie-bot` and
-`ghcr.io/xilorole/hikarie-bot-initial-data`. To deploy without a local build:
+To add a migration after changing the models, point `DATABASE_URL` at a database
+at the latest revision and autogenerate:
 
 ```bash
-docker compose pull
-docker compose up -d --no-build
+ENV=dev DATABASE_URL=sqlite:///.db/data.db uv run alembic revision --autogenerate -m "describe the change"
 ```
 
-`BOT_IMAGE` and `INITIAL_DATA_IMAGE` can select versioned tags or digests. The
-default tags are `latest`; pin matching versions for repeatable deployments.
-For a local build use `docker compose up -d --build`.
+### Deploying to Rancher
 
-**Migration:** this Compose configuration selects `/opt/.db/data.db` explicitly,
-overriding `URL` in `.env`. Before upgrading an existing deployment, back up its
-SQLite database and copy a consistent snapshot into the `bot-db` volume with
-ownership 10001:10001. Otherwise the new volume starts empty. Do not delete the
-volume (`docker compose down -v`) unless intentionally discarding all history.
-An existing compatible database is validated and preserved, never replaced by
-the seed. Invalid existing databases stop initialization rather than being erased.
-Stopping the bot during migration avoids inconsistent copies.
+See [docs/deploy/rancher.md](docs/deploy/rancher.md) (Japanese) and the manifests in
+[deploy/rancher/](deploy/rancher/): one replica with the `Recreate` strategy, the
+SQLite database on an `ebs-sc` PVC at `/opt/.db`, and `DATABASE_URL` pointing to it.
 
-For a future encrypted seed, set `initial-data/manifest.json` to:
+### Syncing from Slack
 
-```json
-{"format_version": 1, "mode": "fernet-sqlite"}
+On startup the bot reads arrival events from the output channel into the
+`arrival_event` table: the whole channel the first time, then only what was
+posted since the last run (one day of overlap, and only threads with new
+replies). Scores and badges are then recomputed from those events.
+
+A button press is stored the same way (as a `button` event) and the scores are
+recomputed before the bot replies. The reply carries the press time as Slack
+message metadata (`hikarie_arrival`), so rebuilding from Slack restores it exactly.
+
+The same sync is available as a command. It only reads from Slack:
+
+```bash
+# read from Slack and keep the raw responses (gitignored) for offline use
+uv run python -m hikarie_bot sync --record .cache/slack
+# rebuild a local database from those responses without network access
+ENV=dev DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache .cache/slack
 ```
 
-Supply a consistent SQLite snapshot authenticated/encrypted with
-`cryptography.fernet.Fernet` as `initial-data/snapshot.sqlite.fernet`, and build
-the `initial-data` target. The snapshot must contain this application's schema;
-the encrypted file is limited to 64 MiB. Only the manifest and this ciphertext
-are allowed from `initial-data/` into the Docker build context.
-Never put plaintext databases or keys in the repository, build arguments, or
-image. Keep the data package private and distribute the key separately.
-
-Mount the key using a Compose secret and add
-`command: ["--key-file", "/run/secrets/initial_data_key"]` to the initial-data
-service. For example, a deployment override can contain:
-
-```yaml
-services:
-  initial-data:
-    command: ["--key-file", "/run/secrets/initial_data_key"]
-    secrets:
-      - initial_data_key
-secrets:
-  initial_data_key:
-    file: ./secrets/initial-data.key
-```
-
-The secret file must be readable by UID 10001. Missing/wrong keys, tampered data,
-and incompatible snapshots fail initialization; the bot remains stopped. An
-existing valid database does not need the old seed or its key. Import is locked,
-validated, and published without replacing an existing file; temporary plaintext
-is removed on handled failure. A host crash may leave a restricted temporary
-file, so protect the DB volume and host storage.
-
-This initial-data change does not implement Slack catch-up synchronization:
-messages sent while the bot is stopped are not automatically replayed. Live
-button interactions continue to record arrivals. Running the bot directly
-without the Compose `--skip-db-create` command retains the existing history
-import behavior.
+The raw responses contain real user data: never commit or upload them.

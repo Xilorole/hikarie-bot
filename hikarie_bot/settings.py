@@ -1,46 +1,85 @@
 import os
+from typing import Self
 
-from dotenv import load_dotenv
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
-from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
+from hikarie_bot.exceptions import EnvironmentVariableNotFoundError, InMemoryDatabaseError
 
-# DOTENV_PATH pins the env file (e.g. .env.dev for `slack run`); otherwise .env is searched upward
-load_dotenv(os.environ.get("DOTENV_PATH"), override=True)
-
-# slack.channel
-OUTPUT_CHANNEL = os.environ.get("OUTPUT_CHANNEL", "")
-LOG_CHANNEL = os.environ.get("LOG_CHANNEL", "")
-
-# slack.user
-BOT_ID = os.environ.get("BOT_ID", "")
-V1_BOT_ID = os.environ.get("V1_BOT_ID", "")
-V2_BOT_ID = os.environ.get("V2_BOT_ID", "")
-ADMIN = os.environ.get("ADMIN", "")
-
-# slack.workspace
-SLACK_WORKSPACE_ID = os.environ.get("SLACK_WORKSPACE_ID", "")
-
-# auth
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-SLACK_APP_TOKEN = os.environ.get("SLACK_APP_TOKEN", "")
-
-for env, env_str in [
-    (OUTPUT_CHANNEL, "OUTPUT_CHANNEL"),
-    (LOG_CHANNEL, "LOG_CHANNEL"),
-    (BOT_ID, "BOT_ID"),
-    (V1_BOT_ID, "V1_BOT_ID"),
-    (V2_BOT_ID, "V2_BOT_ID"),
-    (ADMIN, "ADMIN"),
-    (SLACK_WORKSPACE_ID, "SLACK_WORKSPACE_ID"),
-    (SLACK_BOT_TOKEN, "SLACK_BOT_TOKEN"),
-    (SLACK_APP_TOKEN, "SLACK_APP_TOKEN"),
-]:
-    if env == "" and os.environ.get("ENV") not in ["dev", "test"] and env_str != "SLACK_WORKSPACE_ID":
-        raise EnvironmentVariableNotFoundError(env_str)
+REQUIRED = [
+    "output_channel",
+    "log_channel",
+    "bot_id",
+    "v1_bot_id",
+    "v2_bot_id",
+    "admin",
+    "slack_bot_token",
+    "slack_app_token",
+    "database_url",
+]
 
 
-# database
-DATABASE_URL = os.environ.get("URL", "sqlite:///:memory:")
+class Settings(BaseSettings):
+    """Application settings from environment variables, then an env file.
 
-# log
-LOGURU_LEVEL = os.environ.get("LOGURU_LEVEL", "DEBUG")
+    The env file is DOTENV_PATH (e.g. .env.dev for `slack run`) or the working directory's
+    .env; a parent directory's file is never read, and tests (ENV=test) read none.
+    Environment variables win over the file. Outside dev/test every REQUIRED value must be set
+    and the database must be a file (an in-memory database loses everything on restart).
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=None if os.environ.get("ENV") == "test" else os.environ.get("DOTENV_PATH", ".env"),
+        extra="ignore",
+    )
+
+    env: str = ""
+
+    # slack.channel
+    output_channel: str = ""
+    log_channel: str = ""
+
+    # slack.user
+    bot_id: str = ""
+    v1_bot_id: str = ""
+    v2_bot_id: str = ""
+    admin: str = ""
+
+    # slack.workspace
+    slack_workspace_id: str = ""
+
+    # auth
+    slack_bot_token: str = ""
+    slack_app_token: str = ""
+
+    # database (dev/test fall back to an in-memory database)
+    database_url: str = ""
+
+    # log
+    loguru_level: str = "DEBUG"
+
+    @model_validator(mode="after")
+    def _require_production_values(self) -> Self:
+        if self.env in {"dev", "test"}:
+            self.database_url = self.database_url or "sqlite:///:memory:"
+        elif missing := [name for name in REQUIRED if not getattr(self, name)]:
+            raise EnvironmentVariableNotFoundError(missing[0].upper())
+        elif make_url(self.database_url).database in {None, "", ":memory:"}:
+            raise InMemoryDatabaseError(self.database_url)
+        return self
+
+
+settings = Settings()
+
+OUTPUT_CHANNEL = settings.output_channel
+LOG_CHANNEL = settings.log_channel
+BOT_ID = settings.bot_id
+V1_BOT_ID = settings.v1_bot_id
+V2_BOT_ID = settings.v2_bot_id
+ADMIN = settings.admin
+SLACK_WORKSPACE_ID = settings.slack_workspace_id
+SLACK_BOT_TOKEN = settings.slack_bot_token
+SLACK_APP_TOKEN = settings.slack_app_token
+DATABASE_URL = settings.database_url
+LOGURU_LEVEL = settings.loguru_level

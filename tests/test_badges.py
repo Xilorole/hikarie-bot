@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from unittest import mock
 
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
 
-from hikarie_bot.curd import insert_arrival_action
-from hikarie_bot.db_data.badges import BadgeChecker
+from tests.helpers import EngineChecker, record_arrival
 
 
 @dataclass
@@ -25,12 +23,11 @@ class UserData:
             self.jst_datetime = jst_datetime
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [1])
 def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        badge = BadgeChecker.get_badge(session=session, badge_id=101)
-        checker = BadgeChecker(badge_type_to_check=[1])
+        badge = EngineChecker.get_badge(session=session, badge_id=101)
+        checker = EngineChecker(badge_type_to_check=[1])
 
         # test scenario
         # 1. test_user:
@@ -55,7 +52,7 @@ def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -74,12 +71,11 @@ def test_badge_checker_id1_welcome(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [2])
 def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        badge = BadgeChecker.get_badge(session=session, badge_id=201)
-        checker = BadgeChecker([2])
+        badge = EngineChecker.get_badge(session=session, badge_id=201)
+        checker = EngineChecker([2])
 
         # test scenario
         # 1. test_user:
@@ -104,7 +100,7 @@ def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -118,12 +114,11 @@ def test_badge_checker_id2_fastest_arrival(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [3])
 def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        badge_5 = BadgeChecker.get_badge(session=session, badge_id=301)
-        checker = BadgeChecker([3])
+        badge_5 = EngineChecker.get_badge(session=session, badge_id=301)
+        checker = EngineChecker([3])
 
         # Badge types are below:
         # > # BadgeType id=3, name="arrival_count", description="たくさん出社登録をした"
@@ -184,7 +179,7 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -198,14 +193,13 @@ def test_badge_checker_id3_arrival_count(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [4])
 def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=401)
-        badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=402)
-        badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=403)
-        checker = BadgeChecker([4])
+        badge_lv1 = EngineChecker.get_badge(session=session, badge_id=401)
+        badge_lv2 = EngineChecker.get_badge(session=session, badge_id=402)
+        badge_lv3 = EngineChecker.get_badge(session=session, badge_id=403)
+        checker = EngineChecker([4])
 
         # > # BadgeTypeData id=4, name="straight_flash", description="連続して出社した"
         # > BadgeData(
@@ -341,7 +335,7 @@ def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -356,15 +350,14 @@ def test_badge_checker_id4_straight_flash(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [5])
 def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=503)
-        badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=502)
-        badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=501)
-        badge_lv4 = BadgeChecker.get_badge(session=session, badge_id=504)
-        checker = BadgeChecker([5])
+        badge_lv1 = EngineChecker.get_badge(session=session, badge_id=503)
+        badge_lv2 = EngineChecker.get_badge(session=session, badge_id=502)
+        badge_lv3 = EngineChecker.get_badge(session=session, badge_id=501)
+        badge_lv4 = EngineChecker.get_badge(session=session, badge_id=504)
+        checker = EngineChecker([5])
 
         # > # BadgeTypeData id=5, name="time_window", description="時間帯による出社登録"
         # > BadgeData(
@@ -419,7 +412,7 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -433,14 +426,13 @@ def test_badge_checker_id5_time_window(temp_db: sessionmaker) -> None:
             ), f"failed: {idx}"
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [6])
 def test_badge_checker_id6_kiriban(
     temp_db: sessionmaker,
 ) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        badge_n100 = BadgeChecker.get_badge(session=session, badge_id=6001)
-        checker = BadgeChecker([6])
+        badge_n100 = EngineChecker.get_badge(session=session, badge_id=6001)
+        checker = EngineChecker([6])
 
         test_data = (
             *[
@@ -464,7 +456,7 @@ def test_badge_checker_id6_kiriban(
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -478,7 +470,6 @@ def test_badge_checker_id6_kiriban(
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [7])
 def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
@@ -517,12 +508,12 @@ def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
         # >     badge_type_id=7,
         # > ),
 
-        badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=701)
-        badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=702)
-        badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=703)
-        badge_lv4 = BadgeChecker.get_badge(session=session, badge_id=704)
+        badge_lv1 = EngineChecker.get_badge(session=session, badge_id=701)
+        badge_lv2 = EngineChecker.get_badge(session=session, badge_id=702)
+        badge_lv3 = EngineChecker.get_badge(session=session, badge_id=703)
+        badge_lv4 = EngineChecker.get_badge(session=session, badge_id=704)
 
-        checker = BadgeChecker([7])
+        checker = EngineChecker([7])
 
         # test scenario: all users arriveld at 2024-01-01 07:00:00 initially
         # 1. 2 weeks no see (+15 days)
@@ -553,7 +544,7 @@ def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -568,14 +559,13 @@ def test_badge_checker_id7_long_time_no_see(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [8])
 def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
     """Test the badge checker."""
     with temp_db() as session:
-        badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=801)
-        badge_lv2 = BadgeChecker.get_badge(session=session, badge_id=802)
-        badge_lv3 = BadgeChecker.get_badge(session=session, badge_id=803)
-        checker = BadgeChecker([8])
+        badge_lv1 = EngineChecker.get_badge(session=session, badge_id=801)
+        badge_lv2 = EngineChecker.get_badge(session=session, badge_id=802)
+        badge_lv3 = EngineChecker.get_badge(session=session, badge_id=803)
+        checker = EngineChecker([8])
 
         # > # BadgeTypeData id=8, name="lucky_you_guys", description="同じ時間に出社登録をした"
         # > BadgeData(
@@ -628,7 +618,7 @@ def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -643,14 +633,13 @@ def test_badge_checker_id8_lucky_you_guys(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [1, 2, 3])
 def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
     """Test the badge checker with complex condition."""
     with temp_db() as session:
-        badge_id1 = BadgeChecker.get_badge(session=session, badge_id=101)
-        badge_id2 = BadgeChecker.get_badge(session=session, badge_id=201)
-        badge_id3 = BadgeChecker.get_badge(session=session, badge_id=301)
-        checker = BadgeChecker(badge_type_to_check=[1, 2, 3])
+        badge_id1 = EngineChecker.get_badge(session=session, badge_id=101)
+        badge_id2 = EngineChecker.get_badge(session=session, badge_id=201)
+        badge_id3 = EngineChecker.get_badge(session=session, badge_id=301)
+        checker = EngineChecker(badge_type_to_check=[1, 2, 3])
 
         # test scenario
         # A: always comes fastest, arrive from 1/1,
@@ -688,7 +677,7 @@ def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -702,12 +691,11 @@ def test_badge_checker_complex_id1_id2(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [15])
 def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
     """Test the start dash badge."""
     with temp_db() as session:
-        badge_lv1 = BadgeChecker.get_badge(session=session, badge_id=1501)
-        checker = BadgeChecker([15])
+        badge_lv1 = EngineChecker.get_badge(session=session, badge_id=1501)
+        checker = EngineChecker([15])
 
         # > # BadgeTypeData id=15, name="start_dash", description="初回利用から2週間以内に出社登録した"
         # > BadgeData(
@@ -754,7 +742,7 @@ def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -769,7 +757,6 @@ def test_badge_checker_id15_start_dash(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [16])
 def test_badge_checker_id16_specific_day(temp_db: sessionmaker) -> None:
     """Test the specific day badge."""
     with temp_db() as session:
@@ -791,9 +778,9 @@ def test_badge_checker_id16_specific_day(temp_db: sessionmaker) -> None:
         # >     badge_type_id=16,
         # > ),
 
-        badge_2024_end = BadgeChecker.get_badge(session=session, badge_id=1601)
-        badge_2025_start = BadgeChecker.get_badge(session=session, badge_id=1602)
-        checker = BadgeChecker([16])
+        badge_2024_end = EngineChecker.get_badge(session=session, badge_id=1601)
+        badge_2025_start = EngineChecker.get_badge(session=session, badge_id=1602)
+        checker = EngineChecker([16])
 
         # test scenario
         # 1. 2024-12-27
@@ -816,7 +803,7 @@ def test_badge_checker_id16_specific_day(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -831,7 +818,6 @@ def test_badge_checker_id16_specific_day(temp_db: sessionmaker) -> None:
             )
 
 
-@mock.patch("hikarie_bot.curd.BADGE_TYPES_TO_CHECK", [17])
 def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
     """Test the yearly specific day badge."""
     with temp_db() as session:
@@ -871,11 +857,11 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
         # >     badge_type_id=17,
         # > ),
 
-        badge_christmas = BadgeChecker.get_badge(session=session, badge_id=1701)
-        badge_workyear_end = BadgeChecker.get_badge(session=session, badge_id=1702)
-        badge_workyear_start = BadgeChecker.get_badge(session=session, badge_id=1703)
-        badge_gw = BadgeChecker.get_badge(session=session, badge_id=1704)
-        checker = BadgeChecker([17])
+        badge_christmas = EngineChecker.get_badge(session=session, badge_id=1701)
+        badge_workyear_end = EngineChecker.get_badge(session=session, badge_id=1702)
+        badge_workyear_start = EngineChecker.get_badge(session=session, badge_id=1703)
+        badge_gw = EngineChecker.get_badge(session=session, badge_id=1704)
+        checker = EngineChecker([17])
 
         # test scenario
         # クリスマス出社は12/25に出社した場合のみもらえる
@@ -969,7 +955,7 @@ def test_badge_checker_id17_yearly_specific_day(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -1027,12 +1013,12 @@ def test_badge_checker_id18_specific_time(temp_db: sessionmaker) -> None:
         # >     badge_type_id=18,
         # > ),
 
-        badge_adjacent = BadgeChecker.get_badge(session=session, badge_id=1801)
-        badge_repeater = BadgeChecker.get_badge(session=session, badge_id=1802)
-        badge_stairs = BadgeChecker.get_badge(session=session, badge_id=1803)
-        badge_pocky = BadgeChecker.get_badge(session=session, badge_id=1804)
+        badge_adjacent = EngineChecker.get_badge(session=session, badge_id=1801)
+        badge_repeater = EngineChecker.get_badge(session=session, badge_id=1802)
+        badge_stairs = EngineChecker.get_badge(session=session, badge_id=1803)
+        badge_pocky = EngineChecker.get_badge(session=session, badge_id=1804)
 
-        checker = BadgeChecker([18])
+        checker = EngineChecker([18])
 
         # test scenario
         # 1. 2025-12-27 07:08:00 -> adjacent
@@ -1067,7 +1053,7 @@ def test_badge_checker_id18_specific_time(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -1112,11 +1098,11 @@ def test_badge_checker_id18_specific_time_added_badge(temp_db: sessionmaker) -> 
         # >     badge_type_id=18,
         # > ),
 
-        badge_animal = BadgeChecker.get_badge(session=session, badge_id=1805)
-        badge_meat = BadgeChecker.get_badge(session=session, badge_id=1806)
-        badge_truth = BadgeChecker.get_badge(session=session, badge_id=1807)
+        badge_animal = EngineChecker.get_badge(session=session, badge_id=1805)
+        badge_meat = EngineChecker.get_badge(session=session, badge_id=1806)
+        badge_truth = EngineChecker.get_badge(session=session, badge_id=1807)
 
-        checker = BadgeChecker([18])
+        checker = EngineChecker([18])
 
         # test scenario
         # 1. 2025-12-27 11:22:00 -> animal
@@ -1145,7 +1131,7 @@ def test_badge_checker_id18_specific_time_added_badge(temp_db: sessionmaker) -> 
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,
@@ -1165,8 +1151,8 @@ def test_badge_checker_id18_specific_time_added_badge(temp_db: sessionmaker) -> 
 def test_badge_checker_id19_takanawa_welcome(temp_db: sessionmaker) -> None:
     """Test the takanawa welcome badge."""
     with temp_db() as session:
-        badge = BadgeChecker.get_badge(session=session, badge_id=1901)
-        checker = BadgeChecker(badge_type_to_check=[19])
+        badge = EngineChecker.get_badge(session=session, badge_id=1901)
+        checker = EngineChecker(badge_type_to_check=[19])
 
         # test scenario
         # 1. user_first_takanawa:
@@ -1195,7 +1181,7 @@ def test_badge_checker_id19_takanawa_welcome(temp_db: sessionmaker) -> None:
         )
 
         for data in test_data:
-            insert_arrival_action(
+            record_arrival(
                 session=session,
                 jst_datetime=data.jst_datetime,
                 user_id=data.user_id,

@@ -1,0 +1,15 @@
+# Persistent storage for the bot's SQLite database (arrival events and derived tables).
+# EBS volumes attach to one node at a time (ReadWriteOnce) and stay in one availability zone.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hikarie-bot-data
+  labels:
+    app: hikarie-bot
+spec:
+  storageClassName: ebs-sc
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -18,16 +18,15 @@ core = [
     "aiohttp",
     "asyncclick",
     "click",
-    "cryptography",
     "jpholiday",
     "loguru",
     "pydantic",
     "python-dateutil",
-    "python-dotenv",
     "slack-bolt",
-    "sqlalchemy-utils",
     "sqlalchemy",
     "tzdata>=2025.2",
+    "pydantic-settings>=2.16.2",
+    "alembic>=1.20.1",
 ]
 dev = [
     "pytest-asyncio",
@@ -40,6 +39,7 @@ dev = [
     "pytest-env",
     "pre-commit-uv>=4.1.4",
     "slack-cli-hooks>=0.3.0",
+    "python-dotenv>=1.2.4",
 ]
 jupyter = [
     "jupyter",
@@ -49,6 +49,9 @@ jupyter = [
 
 [tool.setuptools.packages.find]
 exclude = ["build", "tests"]
+
+[tool.setuptools.package-data]
+hikarie_bot = ["alembic/*.py", "alembic/*.mako", "alembic/versions/*.py"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hikarie_bot.version" }
@@ -61,6 +64,8 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.pytest_env]
 ENV = "test"
+# Dummy token so the Slack app can be constructed; tests never call Slack.
+SLACK_BOT_TOKEN = "xoxb-test-not-a-real-token"
 
 [tool.uv]
 default-groups = ["core", "dev"]

@@ -1,45 +1,17 @@
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, event, func
+from sqlalchemy import Boolean, DateTime, Dialect, ForeignKey, Integer, String, event, func
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapped, Mapper, Session, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from .database import BaseSchema, SessionLocal, engine
 
-
-# define the GuestArrivalRaw table
-class GuestArrivalRaw(BaseSchema):
-    """Define the GuestArrivalRaw table.
-
-    The GuestArrivalRaw table stores the raw data of guest arrival information.
-    The raw data includes the user ID and the arrival time.
-    Refined data is stored in the GuestArrivalInfo table.
-    """
-
-    __tablename__ = "guest_arrival_raw"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, unique=True)
-    user_id: Mapped[str] = mapped_column(String, ForeignKey("user.id"), nullable=False)
-    user_info_raw_id: Mapped[str] = mapped_column(String, ForeignKey("user_raw.user_id"), nullable=False)
-    arrival_time: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-
-    def __repr__(self) -> str:
-        """Return the string representation of the GuestArrivalRaw class."""
-        return f"<GuestArrivalRaw(user_id={self.user_id}, arrival_time={self.arrival_time})>"
-
-
-# Add event listener to automatically set user_info_raw_id from user_id
-@event.listens_for(GuestArrivalRaw, "before_insert")
-def set_user_info_raw_id(
-    mapper: Mapper[GuestArrivalRaw],  # noqa: ARG001
-    connection: Connection,  # noqa: ARG001
-    target: GuestArrivalRaw,
-) -> None:
-    """Set user_info_raw_id to the same value as user_id before insert."""
-    if target.user_id and not target.user_info_raw_id:
-        target.user_info_raw_id = target.user_id
+if TYPE_CHECKING:
+    from hikarie_bot.migrations import InitResult
 
 
 # Define the GuestArrivalInfo table
@@ -143,7 +115,6 @@ class User(BaseSchema):
     point_range_to_next_level: Mapped[int] = mapped_column(Integer)
     current_level_point: Mapped[int] = mapped_column(Integer)
 
-    guest_arrivals_raw = relationship("GuestArrivalRaw", backref="user")
     guest_arrivals_info = relationship("GuestArrivalInfo", backref="user")
     badges = relationship("UserBadge", back_populates="user")
 
@@ -182,7 +153,6 @@ class UserInfoRaw(BaseSchema):
     point_range_to_next_level: Mapped[int] = mapped_column(Integer)
     current_level_point: Mapped[int] = mapped_column(Integer)
 
-    guest_arrivals_raw = relationship("GuestArrivalRaw", backref="user_raw")
     guest_arrivals_info = relationship("GuestArrivalInfo", backref="user_raw")
     user_badges = relationship("UserBadge", back_populates="user_raw")
 
@@ -273,14 +243,86 @@ def set_user_info_raw_id_for_user_badge(
         target.user_info_raw_id = target.user_id
 
 
+class UTCDateTime(TypeDecorator[datetime]):
+    """Store timezone-aware datetimes as sortable UTC ISO 8601 text.
+
+    SQLite has no timezone support, so naive values are rejected instead of guessed.
+    """
+
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> str | None:  # noqa: ARG002
+        """Convert an aware datetime to UTC text."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            msg = "UTCDateTime requires a timezone-aware datetime"
+            raise ValueError(msg)
+        return value.astimezone(UTC).isoformat(timespec="microseconds")
+
+    def process_result_value(self, value: str | None, dialect: Dialect) -> datetime | None:  # noqa: ARG002
+        """Parse stored UTC text back to an aware datetime."""
+        return None if value is None else datetime.fromisoformat(value)
+
+
+class ArrivalEvent(BaseSchema):
+    """Define the ArrivalEvent table.
+
+    The source of truth for arrivals; append-only. Scores, ranks and badges are derived
+    from these events. Several events for the same user and day are allowed; the first
+    one counts. slack_ts identifies the Slack message the event was read from or posted as.
+    """
+
+    __tablename__ = "arrival_event"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    slack_ts: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    def __repr__(self) -> str:
+        """Return the string representation of the ArrivalEvent class."""
+        return f"<ArrivalEvent(user_id={self.user_id}, occurred_at={self.occurred_at}, source={self.source})>"
+
+
+class SyncState(BaseSchema):
+    """Define the SyncState table.
+
+    How far a Slack channel has been read: the newest message ts seen, thread replies included.
+    """
+
+    __tablename__ = "sync_state"
+
+    channel_id: Mapped[str] = mapped_column(String, primary_key=True)
+    synced_until: Mapped[str] = mapped_column(String, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    def __repr__(self) -> str:
+        """Return the string representation of the SyncState class."""
+        return f"<SyncState(channel_id={self.channel_id}, synced_until={self.synced_until})>"
+
+
 # Dependency
+
+_initialized_engines: dict[int, "InitResult"] = {}
+
+
+def ensure_database() -> "InitResult":
+    """Migrate the schema and sync master data once per process; return what that first run did."""
+    if id(engine) not in _initialized_engines:
+        from hikarie_bot.migrations import init_database  # migrations imports this module
+
+        _initialized_engines[id(engine)] = init_database(engine)
+    return _initialized_engines[id(engine)]
 
 
 @contextmanager
 def get_db() -> Generator[Session, None, None]:
-    """Get the database session."""
-    # create tables
-    BaseSchema.metadata.create_all(engine)
+    """Get the database session, preparing the schema and master data on first use."""
+    ensure_database()
     db = SessionLocal()  # sessionを生成
     try:
         yield db

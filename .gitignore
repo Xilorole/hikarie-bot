@@ -164,9 +164,7 @@ cython_debug/
 .env*
 !.env.template
 !.env.dev.template
+deploy/rancher/secret.yaml
 test_modals/*
 !test_modals/.gitkeep
 
-secrets/
-initial-data/*
-!initial-data/manifest.json

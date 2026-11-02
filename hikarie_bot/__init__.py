@@ -4,10 +4,9 @@ __all__ = [
     "Badge",
     "BadgeType",
     "GuestArrivalInfo",
-    "GuestArrivalRaw",
     "User",
     "version",
 ]
 
 from ._version import version
-from .models import Badge, BadgeType, GuestArrivalInfo, GuestArrivalRaw, User
+from .models import Badge, BadgeType, GuestArrivalInfo, User
