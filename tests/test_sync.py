@@ -215,6 +215,23 @@ async def test_catch_up_reads_one_day_back_and_only_threads_with_new_replies(ses
     assert source.fetched == []
 
 
+@pytest.mark.asyncio
+async def test_a_thread_not_read_in_full_is_read_again(session: Session) -> None:
+    """A thread missing replies (e.g. from a partial cache) keeps the position before it."""
+    source = channel_with_two_days()
+    day2 = ts(T0 + DAY)
+    full_thread = source.threads[day2]
+    source.threads[day2] = []
+    await sync_channel(session, source, CHANNEL)
+    assert session.get(SyncState, CHANNEL).synced_until == day2
+
+    source.threads[day2] = full_thread
+    result = await sync_channel(session, source, CHANNEL)
+
+    assert result.inserted == 1
+    assert session.get(SyncState, CHANNEL).synced_until == full_thread[-1]["ts"]
+
+
 class FakeClient:
     """AsyncWebClient stand-in that pages history two messages at a time."""
 
