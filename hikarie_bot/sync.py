@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
-from hikarie_bot.engine import JST
+from hikarie_bot.constants import JST
 from hikarie_bot.models import ArrivalEvent
 from hikarie_bot.settings import get_settings
 

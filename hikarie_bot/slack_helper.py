@@ -6,7 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from slack_sdk.web.async_client import AsyncWebClient
 
-from hikarie_bot.engine import JST
+from hikarie_bot.constants import JST
 from hikarie_bot.modals import initial_message, render, to_text
 from hikarie_bot.utils import is_jp_bizday
 

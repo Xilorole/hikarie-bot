@@ -1,19 +1,12 @@
 """The stored data: arrival events and the Slack sync position."""
 
-from collections.abc import Generator
-from contextlib import contextmanager
 from datetime import UTC, datetime
-from functools import cache
-from typing import TYPE_CHECKING
 
 from sqlalchemy import Dialect, Integer, String
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
-from .database import BaseSchema, get_engine
-
-if TYPE_CHECKING:
-    from hikarie_bot.migrations import InitResult
+from .database import BaseSchema
 
 
 class UTCDateTime(TypeDecorator[datetime]):
@@ -60,19 +53,3 @@ class ArrivalEvent(BaseSchema):
     def __repr__(self) -> str:
         """Return the string representation of the ArrivalEvent class."""
         return f"<ArrivalEvent(user_id={self.user_id}, occurred_at={self.occurred_at}, source={self.source})>"
-
-
-@cache
-def ensure_database() -> InitResult:
-    """Migrate the schema once per process; return what that first run did."""
-    from hikarie_bot.migrations import init_database  # noqa: PLC0415 - migrations imports this module
-
-    return init_database(get_engine())
-
-
-@contextmanager
-def get_db() -> Generator[Session]:
-    """Get the database session, preparing the schema on first use."""
-    ensure_database()
-    with Session(get_engine(), autoflush=False) as session:
-        yield session

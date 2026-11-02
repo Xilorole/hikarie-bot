@@ -6,8 +6,9 @@ from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
+from hikarie_bot.constants import JST
 from hikarie_bot.db_data import Badges
-from hikarie_bot.engine import JST, BadgeEngine, compute
+from hikarie_bot.engine import BadgeEngine, compute
 from hikarie_bot.utils import is_jp_bizday
 
 BADGE_TYPE = {badge.id: badge.badge_type_id for badge in Badges}

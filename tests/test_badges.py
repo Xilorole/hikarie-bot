@@ -4,9 +4,9 @@ from datetime import date, datetime
 
 import pytest
 
+from hikarie_bot.constants import JST
 from hikarie_bot.db_data import Badges
 from hikarie_bot.db_data.badges import KIRIBANS, kiriban_score
-from hikarie_bot.engine import JST
 from tests.helpers import compute_in_order
 
 BADGE_TYPE = {badge.id: badge.badge_type_id for badge in Badges}

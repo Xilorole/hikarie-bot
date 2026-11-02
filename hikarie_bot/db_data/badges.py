@@ -12,7 +12,8 @@ Variables:
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import pairwise
-from zoneinfo import ZoneInfo
+
+from hikarie_bot.constants import JST
 
 KIRIBAN_GENERATION_LIMIT = 10000
 FIRST_KIRIBAN_ID = 6001  # kiriban badge IDs start here (6000 series to avoid conflicts)
@@ -127,31 +128,31 @@ BadgeTypes = [
         id=15,
         name="start_dash",
         description="初回利用から2週間以内に出社登録した",
-        apply_start=datetime(2024, 12, 9, tzinfo=ZoneInfo("Asia/Tokyo")),
+        apply_start=datetime(2024, 12, 9, tzinfo=JST),
     ),
     BadgeTypeData(
         id=16,
         name="specific_day",
         description="特定の年月日に出社した",
-        apply_start=datetime(2024, 12, 26, tzinfo=ZoneInfo("Asia/Tokyo")),
+        apply_start=datetime(2024, 12, 26, tzinfo=JST),
     ),
     BadgeTypeData(
         id=17,
         name="yearly_specific_day",
         description="毎年特定の日に出社した",
-        apply_start=datetime(2024, 12, 1, tzinfo=ZoneInfo("Asia/Tokyo")),
+        apply_start=datetime(2024, 12, 1, tzinfo=JST),
     ),
     BadgeTypeData(
         id=18,
         name="specific_time",
         description="特定の時間に出社した",
-        apply_start=datetime(2025, 1, 1, tzinfo=ZoneInfo("Asia/Tokyo")),
+        apply_start=datetime(2025, 1, 1, tzinfo=JST),
     ),
     BadgeTypeData(
         id=19,
         name="takanawa_welcome",
         description="高輪オフィスに移転後、初めて出社した",
-        apply_start=datetime(2026, 1, 19, tzinfo=ZoneInfo("Asia/Tokyo")),
+        apply_start=datetime(2026, 1, 19, tzinfo=JST),
     ),
 ]
 

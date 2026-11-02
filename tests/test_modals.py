@@ -1,11 +1,12 @@
 import re
 from datetime import date, datetime, timedelta
 from textwrap import dedent
-from unittest import mock
 
-from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, NOT_ACHIEVED_BADGE_IMAGE_URL
+from freezegun import freeze_time
+
+from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, JST, NOT_ACHIEVED_BADGE_IMAGE_URL
 from hikarie_bot.db_data import Badges
-from hikarie_bot.engine import JST, ArrivalResult
+from hikarie_bot.engine import ArrivalResult
 from hikarie_bot.modals import (
     achievement_view,
     attendance_by_day,
@@ -337,7 +338,7 @@ def test_achievement_view_attendance_history() -> None:
     test_current_date = base_date + timedelta(weeks=9, days=2)  # Wednesday of week 10
 
     with (
-        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=test_current_date),
+        freeze_time(test_current_date),
         only_badge_types(1),  # Minimize badge data
     ):
         view = achievement_view(engine, user_id=test_user_id)
@@ -438,7 +439,7 @@ def test_create_github_style_display() -> None:
     engine = compute_in_order(*((test_user_id, date_time) for date_time in test_attendance_data))
 
     with (
-        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
+        freeze_time(current_date),
         only_badge_types(1),
     ):
         view = achievement_view(engine, user_id=test_user_id)
@@ -493,7 +494,7 @@ def test_achievement_view_attendance_history_simple() -> None:
     current_date = datetime(2024, 3, 20, 15, 0, 0, tzinfo=JST)  # Wednesday
 
     with (
-        mock.patch("hikarie_bot.modals.get_current_jst_datetime", return_value=current_date),
+        freeze_time(current_date),
         only_badge_types(1),
     ):
         view = achievement_view(engine, user_id=test_user_id)

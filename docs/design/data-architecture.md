@@ -187,7 +187,7 @@ alembic_version                     -- Alembic のリビジョン（0000 が基�
 - `docker compose` の bot サービスに named volume を付けて DB を永続化する（PVC 相当）。
 - **Slack 応答の生キャッシュ**: `/Users/<you>/hikarie-bot/.cache/slack/<channel>/` に、API の応答本体をそのまま保存（gitignore・dockerignore 済み）。
   `python -m hikarie_bot sync --record <dir>` で記録し、`python -m hikarie_bot sync --from-cache <dir>` で Slack にアクセスせず DB を作り直す。
-- **書き込み防止**: 本番設定で動かすときは、`chat.*` / `views.*` などの書き込み API を止めてログに出す dry-run モードを既定にする。
+- **書き込み防止**: 書き込み API を止める dry-run モードは作らない。開発用アプリを `slack run` で開発用ワークスペースに立てれば本番のチャンネルには書き込まないため、それで足りる（次の項目）。
 - §2.4-12 のため、手元で Socket Mode を動かす場合は**開発用の Slack アプリ**を使う（§10-3）。main に入った `slack run`（#109、開発用ワークスペースに開発用アプリを立てる）をそのまま使う。本番アプリのトークンでは接続しない。
 - メッセージの見た目は `python -m hikarie_bot preview` で Block Kit Builder の URL を発行して確認する。
 

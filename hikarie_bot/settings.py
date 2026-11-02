@@ -47,9 +47,6 @@ class Settings(BaseSettings):
     # database (dev/test fall back to an in-memory database)
     database_url: str = ""
 
-    # log
-    loguru_level: str = "DEBUG"
-
     # the commit the running image was built from (set by the Docker build)
     app_revision: str = ""
 
