@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import date, datetime, timedelta
 from textwrap import dedent
@@ -10,6 +11,7 @@ from hikarie_bot.engine import ArrivalResult, Outlook, TeamProgress
 from hikarie_bot.modals import (
     achievement_view,
     attendance_by_day,
+    goals_message,
     initial_message,
     outlook_lines,
     point_get_message,
@@ -47,7 +49,7 @@ def test_initial_message() -> None:
                     "action_id": "CHECK_ACHIEVEMENT",
                     "text": {
                         "emoji": True,
-                        "text": "実績を確認",
+                        "text": "ステータス",
                         "type": "plain_text",
                     },
                     "type": "button",
@@ -88,7 +90,7 @@ def test_registry_message() -> None:
                     "action_id": "CHECK_ACHIEVEMENT",
                     "text": {
                         "emoji": True,
-                        "text": "実績を確認",
+                        "text": "ステータス",
                         "type": "plain_text",
                     },
                     "type": "button",
@@ -142,7 +144,7 @@ def test_registry_message_2() -> None:
                     "action_id": "CHECK_ACHIEVEMENT",
                     "text": {
                         "emoji": True,
-                        "text": "実績を確認",
+                        "text": "ステータス",
                         "type": "plain_text",
                     },
                     "type": "button",
@@ -621,21 +623,35 @@ def arrival_with(badge_ids: list[int], rank: int = 2, previous_score: int = 30, 
     )
 
 
-def test_point_get_message_shows_what_to_aim_for() -> None:
-    """The outlook adds the streak, the next count badge, the next kiriban and the week's team progress."""
+def test_point_get_message_has_no_goals() -> None:
+    """The thread post says which arrival of the day it was; the goals go to the user alone."""
+    message = render(point_get_message(arrival_with([501])))
+
+    assert message[0]["text"]["text"].endswith("\n本日 2人目の出社です")
+    assert "つぎのもくひょう" not in json.dumps(message, ensure_ascii=False)
+
+
+def test_goals_message_lists_what_to_aim_for() -> None:
+    """The ephemeral message lists the streak, the next count badge, the next kiriban and the week."""
     outlook = Outlook(
         streak=3, next_count_badge=(302, 4), next_kiriban=(3443, 12), team=TeamProgress(date(2026, 11, 9), 12, 20)
     )
-    message = render(point_get_message(arrival_with([501]), outlook))
 
-    assert message[0]["text"]["text"].endswith("\n本日 2人目の出社です")
-    assert message[2]["elements"][0]["text"].endswith(
-        "つぎのもくひょう:\n"
-        " - 連続出社 *3日目* (あと2日でストレートフラッ出社)\n"
-        " - あと *4回* の出社で「出社登録マスター」\n"
-        " - みんなの出社 3443回目のキリ番まで あと *12回*\n"
+    assert render(goals_message(outlook))[0]["text"]["text"] == (
+        "*つぎのもくひょう*\n"
+        "• 連続出社 *3日目* · あと2日でストレートフラッ出社\n"
+        "• あと *4回* の出社で「出社登録マスター」\n"
+        "• みんなの出社 3443回目のキリ番まで あと *12回*\n"
         ":busts_in_silhouette: 今週のみんなの出社: *12* / 20回 (達成したあとの出社は +1pt)"
     )
+    assert goals_message(Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=None)) == []
+
+
+def test_status_streak_before_todays_arrival() -> None:
+    """Before arriving today the status shows the streak as still alive and what arriving today makes it."""
+    outlook = Outlook(streak=2, next_count_badge=None, next_kiriban=None, team=None, streak_pending=True)
+
+    assert outlook_lines(outlook) == ["連続出社 *2日* 継続中 (今日出社すると3日目) · あと3日でストレートフラッ出社"]
 
 
 def test_outlook_lines_leave_out_a_one_day_streak() -> None:

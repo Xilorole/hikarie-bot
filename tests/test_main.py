@@ -22,4 +22,7 @@ async def test_check_achievement_opens_the_users_view(app_database: Engine) -> N
 
     kwargs = client.views_open.await_args.kwargs
     assert kwargs["trigger_id"] == "T1"
-    assert "• *総出社回数*: 1回" in kwargs["view"].blocks[1].text.text
+    texts = [block.text.text for block in kwargs["view"].blocks if getattr(block, "text", None)]
+    assert kwargs["view"].title.text == "ステータス"
+    assert "• *ポイント*: 7pt" in texts[1]
+    assert any("• *総出社回数*: 1回" in text for text in texts)

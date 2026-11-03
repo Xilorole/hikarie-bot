@@ -90,3 +90,35 @@ def test_outlook_looks_only_at_arrivals_up_to_the_one_given() -> None:
 
     assert engine.outlook(first).next_count_badge == (301, 4)
     assert engine.outlook(first).streak == 1
+
+
+def test_status_outlook_before_todays_arrival_keeps_the_streak_alive() -> None:
+    """On a business day before arriving, the streak runs to the previous business day and is pending."""
+    engine = BadgeEngine()
+    engine.add("U1", at(date(2026, 11, 19), 9))  # Thursday
+    engine.add("U1", at(date(2026, 11, 20), 9))  # Friday
+
+    tuesday = engine.status_outlook("U1", at(date(2026, 11, 24), 8))  # after the Monday holiday
+    assert (tuesday.streak, tuesday.streak_pending) == (2, True)
+    saturday = engine.status_outlook("U1", at(date(2026, 11, 21), 12))
+    assert (saturday.streak, saturday.streak_pending) == (2, False)
+    after_a_gap = engine.status_outlook("U1", at(date(2026, 11, 25), 8))  # missed Tuesday
+    assert (after_a_gap.streak, after_a_gap.streak_pending) == (0, False)
+
+
+def test_status_outlook_after_todays_arrival_and_for_a_new_user() -> None:
+    """After arriving today the streak includes today; a user without arrivals starts from nothing."""
+    engine = BadgeEngine()
+    engine.add("U1", at(date(2025, 6, 2), 9))
+    engine.add("U1", at(date(2025, 6, 3), 9))
+
+    today = engine.status_outlook("U1", at(date(2025, 6, 3), 12))
+    assert (today.streak, today.streak_pending, today.next_count_badge, today.next_kiriban) == (
+        2,
+        False,
+        (301, 3),
+        (10, 8),
+    )
+    new = engine.status_outlook("U9", at(date(2025, 6, 3), 12))
+    assert (new.streak, new.next_count_badge) == (0, (301, 5))
+    assert "U9" not in engine.users  # looking does not create the user

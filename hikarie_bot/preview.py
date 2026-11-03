@@ -24,9 +24,11 @@ from sqlalchemy.orm import Session
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import JST
 from hikarie_bot.db_data.items import WEEKLY_PASS, offers
-from hikarie_bot.engine import ArrivalResult, BadgeEngine, TeamProgress
+from hikarie_bot.engine import ArrivalResult, BadgeEngine, Outlook, TeamProgress
 from hikarie_bot.modals import (
     achievement_view,
+    goals_message,
+    goals_text,
     initial_message,
     item_pick_view,
     item_picked_message,
@@ -89,9 +91,18 @@ def _team(context: PreviewContext, hour: int = 23) -> TeamProgress:
     return context.engine.week_progress(context.reference.replace(hour=hour, minute=0))
 
 
-def _point_get_blocks(context: PreviewContext, arrival: ArrivalResult) -> dict[str, Any]:
-    outlook = replace(context.engine.outlook(arrival), team=context.engine.week_progress(arrival.time))
-    return {"blocks": render(point_get_message(arrival, outlook))}
+def _point_get_blocks(_context: PreviewContext, arrival: ArrivalResult) -> dict[str, Any]:
+    return {"blocks": render(point_get_message(arrival))}
+
+
+def _outlook(context: PreviewContext, arrival: ArrivalResult) -> Outlook:
+    """Return the arrival's outlook with the week's progress, shown even before the team goal applies."""
+    return replace(context.engine.outlook(arrival), team=context.engine.week_progress(arrival.time))
+
+
+def _arrival_goals(context: PreviewContext) -> dict[str, Any] | None:
+    arrival = context.engine.arrival_of(context.user_id, context.reference.date())
+    return None if arrival is None else {"blocks": render(goals_message(_outlook(context, arrival)))}
 
 
 def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
@@ -137,11 +148,17 @@ def _item_picked(context: PreviewContext) -> dict[str, Any]:
 
 
 def _achievement(context: PreviewContext) -> dict[str, Any]:
-    return achievement_view(context.engine, context.user_id, jst_datetime=context.reference).to_dict()
+    now = context.reference.replace(hour=18)
+    outlook = replace(context.engine.status_outlook(context.user_id, now), team=context.engine.week_progress(now))
+    return achievement_view(context.engine, context.user_id, jst_datetime=now, outlook=outlook).to_dict()
 
 
-def _arrive_shortcut(_context: PreviewContext) -> dict[str, Any]:
-    return notice_view("出社登録しました。<#C0PREVIEW> の今日の投稿のスレッドで確認できます")
+def _arrive_shortcut(context: PreviewContext) -> dict[str, Any]:
+    text = "出社登録しました。<#C0PREVIEW> の今日の投稿のスレッドで確認できます"
+    arrival = context.engine.arrival_of(context.user_id, context.reference.date())
+    if arrival is not None:
+        text += f"\n\n*つぎのもくひょう*\n{goals_text(_outlook(context, arrival))}"
+    return notice_view(text)
 
 
 def _weekly_usage(context: PreviewContext) -> dict[str, Any]:
@@ -172,7 +189,8 @@ PREVIEWS = [
         lambda context: _point_get(context, context.level_up_user_id),
     ),
     Preview("point_get_item", "アイテム効果つきのポイント獲得メッセージ", _point_get_item),
-    Preview("achievement_view", "実績確認モーダル", _achievement),
+    Preview("arrival_goals", "出社登録の直後に本人にだけ送る、つぎのもくひょう (ephemeral)", _arrival_goals),
+    Preview("achievement_view", "ステータスモーダル (旧: 実績確認モーダル)", _achievement),
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
     Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
     Preview("item_review_held", "期限付きアイテムを持っていて選べない日のモーダル", _item_review_held),
