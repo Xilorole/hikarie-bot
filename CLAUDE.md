@@ -36,6 +36,15 @@ uv run alembic upgrade head && uv run alembic revision --autogenerate --rev-id <
 - CI runs `uv run pytest -n auto`, `uv run ruff check .` and `uv run ruff format --check .`. pyright is installed but not enforced and has existing errors.
 - Regenerate `uv.lock` with the uv version pinned in the `Dockerfile` (`uvx --from uv==<version> uv lock`).
 
+## Item images
+
+Item cards show `assets/items/<item id>.png` (128x128, white with rounded corners), served from `main` by raw.githubusercontent.com. To draw or redraw an item:
+
+1. Generate a whole 4x4 sheet (1024x1024) with Azure OpenAI's `gpt-image-2` (image edit with a reference image), using `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` from the environment (never commit their values).
+2. Pass `assets/items/sources/sheet-2.png` as the only reference image, every time; never replace it with a generated sheet (generating from generated images degrades them).
+3. Pass the prompt in `assets/items/sources/prompt.md`, rebuilt from the first sheet's prompt, with only the redrawn cells changed. Describe a new design in words instead of adding a second reference image.
+4. Save the result as the next `assets/items/sources/sheet-<n>.png`, cut only the redrawn items with `uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-<n>.png assets/items <item id>...` (it centres each item and keeps at least 7.5% white around it), compare the icons with the others, and record the sheet and its items in `assets/items/sources/README.md`.
+
 ## Personal data
 
 Slack user IDs and arrival times are personal data: never put real ones in the repo, tests, CI, images or the startup reports posted to the log channel. Recorded Slack responses live only in `.cache/slack/` of the main checkout (gitignored; worktrees do not have it).

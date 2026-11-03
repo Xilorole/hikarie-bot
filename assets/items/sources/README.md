@@ -9,5 +9,6 @@
 
   Every other icon still comes from `sheet-2.png`.
 
+Generate a new sheet with the prompt in `prompt.md` (the steps are in the "Item images" section of `CLAUDE.md`).
 Cut the icons with `scripts/cut_item_icons.py` (see its docstring); name items after the output directory to cut
 only those.
