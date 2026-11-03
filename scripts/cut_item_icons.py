@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.14"
+# dependencies = ["numpy>=2", "pillow>=11"]
+# ///
 """Cut a generated 4x4 item sheet into one 128x128 icon per item, each centred in its own square.
 
 The sheet is a white-background grid of 16 items (see the cell order in CELLS). Every item is
@@ -6,12 +10,13 @@ its cell edge is kept whole and a neighbour's overhang is left out. The item is 
 centre of its bounding box is the centre of its square, scaled to 128x128 and cut to a rounded
 square (the corners are transparent).
 
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-2.png assets/items
+Its dependencies are declared inline (PEP 723), so `uv run` runs it in its own environment.
+
+    uv run scripts/cut_item_icons.py assets/items/sources/sheet-2.png assets/items
 
 Naming items after the output directory writes only those icons, e.g. one item from a newer sheet:
 
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py \
-        assets/items/sources/sheet-3.png assets/items dice
+    uv run scripts/cut_item_icons.py assets/items/sources/sheet-3.png assets/items dice
 """
 
 import sys
@@ -27,6 +32,7 @@ ICON_SIZE = 128
 CORNER_RADIUS = 20
 BLOCK = 4  # pieces are found on a grid of BLOCK x BLOCK pixels, which is fast and ignores single stray pixels
 WHITE_THRESHOLD = 235  # a pixel whose channels are all above this is background
+MAX_FILL = 0.85  # an item larger than this share of its square is scaled down, leaving at least 7.5% white each side
 
 # the items of the sheet, left to right and top to bottom; those not in db_data/items.py are spares
 CELLS = [
@@ -44,6 +50,7 @@ class Placement:
     name: str
     shift_x: int
     shift_y: int
+    scale: float = 1.0  # below 1 when the item was scaled down to keep the white margin
 
 
 def label_pieces(foreground: np.ndarray) -> np.ndarray:
@@ -106,11 +113,26 @@ def cut(sheet_path: Path, output_dir: Path, only: set[str] | None = None) -> lis
         target_y, target_x = ys + shift_y - row * cell, xs + shift_x - column * cell
         inside = (target_y >= 0) & (target_y < cell) & (target_x >= 0) & (target_x < cell)
         square[target_y[inside], target_x[inside]] = pixels[ys[inside], xs[inside]]
+        square, scale = fit_margin(square, target_y[inside], target_x[inside])
         icon = Image.fromarray(square).resize((ICON_SIZE, ICON_SIZE), Image.Resampling.LANCZOS).convert("RGBA")
         icon.putalpha(mask)
         icon.save(output_dir / f"{name}.png", optimize=True)
-        placements.append(Placement(name, shift_x, shift_y))
+        placements.append(Placement(name, shift_x, shift_y, round(float(scale), 3)))
     return placements
+
+
+def fit_margin(square: np.ndarray, ys: np.ndarray, xs: np.ndarray) -> tuple[np.ndarray, float]:
+    """Scale the item at (ys, xs) down to MAX_FILL of the square if it is larger, keeping it centred."""
+    size = square.shape[0]
+    top, bottom, left, right = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    scale = min(1.0, MAX_FILL * size / max(bottom - top, right - left))
+    if scale == 1.0:
+        return square, scale
+    item = Image.fromarray(square[top:bottom, left:right])
+    item = item.resize((round(item.width * scale), round(item.height * scale)), Image.Resampling.LANCZOS)
+    fitted = Image.new("RGB", (size, size), (255, 255, 255))
+    fitted.paste(item, ((size - item.width) // 2, (size - item.height) // 2))
+    return np.asarray(fitted), scale
 
 
 if __name__ == "__main__":
