@@ -15,7 +15,6 @@ from hikarie_bot.modals import (
     point_get_message,
     registry_message,
     render,
-    should_broadcast,
     to_text,
 )
 from tests.helpers import compute_in_order, only_badge_types
@@ -620,22 +619,6 @@ def arrival_with(badge_ids: list[int], rank: int = 2, previous_score: int = 30, 
         previous_score=previous_score,
         current_score=previous_score + score_sum,
     )
-
-
-def test_broadcast_only_for_moments_worth_the_channel() -> None:
-    """The first of the day, a first arrival, a comeback, a level up and the team goal's arrival go to the channel."""
-    team = TeamProgress(date(2026, 11, 9), 20, 20)
-    outlook = Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=team)
-
-    assert not should_broadcast(arrival_with([501]))
-    assert should_broadcast(arrival_with([501], rank=1))
-    assert should_broadcast(arrival_with([101]))
-    assert should_broadcast(arrival_with([702]))
-    assert should_broadcast(arrival_with([], previous_score=40, score_sum=3))  # 40 -> 43: lv2 -> lv3
-    assert should_broadcast(arrival_with([2001]), outlook)
-    # later arrivals in a reached week keep their badge but stay in the thread
-    later = Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=TeamProgress(date(2026, 11, 9), 21, 20))
-    assert not should_broadcast(arrival_with([2001]), later)
 
 
 def test_point_get_message_shows_what_to_aim_for() -> None:

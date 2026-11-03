@@ -105,10 +105,6 @@ async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, cloc
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
     await bot.handle_button_click(AsyncMock(), click("U1", ActionID.FASTEST_ARRIVAL), client)
 
-    with Session(database) as session:  # U2 arrived the business day before, so this is no first arrival
-        previous = datetime(2025, 5, 30, 9, 0, tzinfo=JST)
-        session.add(ArrivalEvent(user_id="U2", occurred_at=previous, source="button", slack_ts="1748563200.000100"))
-        session.commit()
     clock.move_to(PRESSED.replace(second=31))
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000200"}
     await bot.handle_button_click(AsyncMock(), click("U2", ActionID.FASTEST_ARRIVAL), client)

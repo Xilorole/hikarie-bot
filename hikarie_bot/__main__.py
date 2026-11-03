@@ -33,7 +33,6 @@ from hikarie_bot.modals import (
     point_get_message,
     registry_message,
     render,
-    should_broadcast,
     to_text,
 )
 from hikarie_bot.picks import PickGate, StoredPick, attach_pick_ts, pick_gate, record_pick
@@ -198,7 +197,7 @@ async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts:
             thread_ts=post_ts,
             text=to_text(point_get),
             blocks=render(point_get),
-            reply_broadcast=should_broadcast(registration.arrival, registration.outlook),
+            reply_broadcast=registration.arrival.rank == 1,
             metadata=arrival_metadata(user_id, registration.occurred_at),
         )
         with get_db() as session:

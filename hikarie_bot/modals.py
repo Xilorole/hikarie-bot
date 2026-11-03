@@ -40,8 +40,6 @@ from hikarie_bot.utils import (
 
 # Constants
 KIRIBAN_BADGE_TYPE_ID = 6
-WELCOME_BADGE = 101
-LONG_TIME_NO_SEE_BADGES = {701, 702, 703, 704}
 BADGES = {badge.id: badge for badge in db_data.Badges}
 BADGES_BY_TYPE = {
     badge_type.id: [badge for badge in db_data.Badges if badge.badge_type_id == badge_type.id]
@@ -152,24 +150,6 @@ def registry_message(arrivals: list[ArrivalResult], team: TeamProgress | None = 
 def _id_card(arrival: ArrivalResult) -> str:
     """Return the ID card shown after the user while their ID card item acts."""
     return f" {ITEMS[ID_CARD].emoji}" if any(effect.item_id == ID_CARD for effect in arrival.item_effects) else ""
-
-
-def should_broadcast(arrival: ArrivalResult, outlook: Outlook | None = None) -> bool:
-    """Whether the announcement also goes to the channel, not only the thread.
-
-    Kept to moments worth the channel's attention: the day's first, a first arrival ever, a comeback, a level
-    up and the arrival that reached the week's team goal.
-    """
-    badges = set(arrival.badge_ids)
-    team = outlook.team if outlook else None
-    return (
-        arrival.rank == 1
-        or WELCOME_BADGE in badges
-        or bool(badges & LONG_TIME_NO_SEE_BADGES)
-        or leveled_up(arrival.previous_score, arrival.current_score)
-        or max_level_reached(arrival.previous_score, arrival.current_score)
-        or (team is not None and TEAM_GOAL_BADGE in badges and team.count == team.goal)
-    )
 
 
 def outlook_lines(outlook: Outlook) -> list[str]:
