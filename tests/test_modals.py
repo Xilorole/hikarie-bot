@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from textwrap import dedent
 
 from freezegun import freeze_time
@@ -261,7 +261,7 @@ def cards(view: dict) -> dict[str, dict]:
 
 @only_badge_types(1, 3)
 def test_badge_card_lists_earned_with_first_date_then_unearned() -> None:
-    """Earned badges come first as "*name* @<first date>; <score>pt x<count>"; the unearned follow by name only."""
+    """Earned badges come first as "*name* <score>pt x<count>"; the unearned follow by name only."""
     engine = compute_in_order(*(("test_user", datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST)) for i in range(5)))
 
     view = achievement_view(engine, user_id="test_user", jst_datetime=datetime(2024, 1, 5, 18, 0, tzinfo=JST))
@@ -271,21 +271,19 @@ def test_badge_card_lists_earned_with_first_date_then_unearned() -> None:
     assert set(by_title) == {"*出社登録BOTを初めて利用した*", "*たくさん出社登録をした*"}
     count = by_title["*たくさん出社登録をした*"]
     assert count["subtitle"]["text"] == "1 / 3 獲得・計 3pt"
-    assert (
-        count["body"]["text"] == "*出社登録ビギナー* @2024/01/05; 3pt x1\n\n未獲得: 出社登録マスター / 出社登録フリーク"
-    )
+    assert count["body"]["text"] == "*出社登録ビギナー* 3pt x1\n\n未獲得: 出社登録マスター / 出社登録フリーク"
     assert "icon" not in count
-    assert by_title["*出社登録BOTを初めて利用した*"]["body"]["text"] == "*はじめての出社登録* @2024/01/01; 2pt x1"
+    assert by_title["*出社登録BOTを初めて利用した*"]["body"]["text"] == "*はじめての出社登録* 2pt x1"
 
 
 @only_badge_types(5)
 def test_badge_card_counts_a_badge_earned_again() -> None:
-    """A badge earned on several days shows its first date and how often it was earned."""
+    """A badge earned on several days shows how often it was earned."""
     engine = compute_in_order(*(("test_user", datetime(2024, 1, 1 + i, 8, 0, 0, tzinfo=JST)) for i in range(3)))
 
     card = cards(achievement_view(engine, user_id="test_user"))["*時間帯による出社登録*"]
 
-    assert card["body"]["text"].startswith("*朝型出社* @2024/01/01; 3pt x3\n\n未獲得: ")
+    assert card["body"]["text"].startswith("*朝型出社* 3pt x3\n\n未獲得: ")
     assert card["subtitle"]["text"] == "1 / 4 獲得・計 9pt"
 
 
@@ -297,7 +295,7 @@ def test_kiriban_card_lists_only_the_taken_ones_and_the_next() -> None:
     card = cards(achievement_view(engine, user_id="test_user"))["*特定の出社登録の回数で付与される*"]
 
     assert card["subtitle"]["text"] == "1個 獲得・計 4pt"
-    assert card["body"]["text"] == "*10番目のお客様* @2024/01/10; 4pt x1\n\n次のキリ番 11回目まで あと1回"
+    assert card["body"]["text"] == "*10番目のお客様* 4pt x1\n\n次のキリ番 11回目まで あと1回"
 
 
 def test_achievement_view_attendance_history() -> None:
@@ -671,3 +669,22 @@ def test_status_top_is_one_list_with_the_goals_indented() -> None:
         {"type": "text", "text": "1", "style": {"bold": True}},
         {"type": "text", "text": " / 20回。届いたら、そのあとの出社は +1pt"},
     ]
+
+
+def test_every_badge_card_fits_slack_body_limit() -> None:
+    """With years of arrivals the oldest earned badges fold into one line; every body stays within 200 characters."""
+    arrivals = [
+        (user, datetime.combine(day, time(9 + index % 3, index * 11 % 60), tzinfo=JST))
+        for day in (date(2022, 6, 1) + timedelta(days=offset) for offset in range(1600))
+        if day.weekday() < 5
+        for index, user in enumerate(("U0", "U1", "U2"))
+    ]
+    engine = compute_in_order(*arrivals)
+
+    view = achievement_view(engine, user_id="U0", jst_datetime=datetime(2026, 11, 3, 18, tzinfo=JST))
+
+    bodies = {block["title"]["text"]: block["body"]["text"] for block in view["blocks"] if block["type"] == "card"}
+    assert all(len(body) <= 200 for body in bodies.values())
+    kiriban = bodies["*特定の出社登録の回数で付与される*"]
+    assert re.match(r"ほか\d+個（計 \d+pt）\n", kiriban)
+    assert kiriban.endswith("回")  # the next kiriban always shows

@@ -17,7 +17,7 @@ from hikarie_bot.constants import (
     JST,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
-from hikarie_bot.db_data.badges import KIRIBANS, BadgeTypeData, Kiriban
+from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
 from hikarie_bot.db_data.items import ID_CARD, ITEM_IMAGE_URLS, ITEMS, ItemData
 from hikarie_bot.engine import (
     STRAIGHT_FLASH,
@@ -492,14 +492,19 @@ def badge_blocks(
     ]
 
 
+CARD_BODY_MAX = 200  # Slack refuses a card whose body text is longer
+
+
 def badge_type_card(
     badge_type: BadgeTypeData, user_badges: dict[int, UserBadgeTally], arrival_count: int, next_kiriban: Kiriban | None
 ) -> dict:
     """Return a badge type's card.
 
     The subtitle counts the earned badges and their points; the body lists the earned ones, earliest first, as
-    "*name* @<first date>; <score>pt x<count>", and after a blank line the unearned names (never their conditions).
+    "*name* <score>pt x<count>", and after a blank line the unearned names (never their conditions).
     Kiribans have no fixed total: only the taken ones are listed, with how far the next one is.
+    A body holds at most CARD_BODY_MAX characters: the oldest earned badges that do not fit are folded into
+    one "ほかN個" line with their points, so the latest ones, the unearned and the next kiriban always show.
     """
     kiriban = badge_type.id == KIRIBAN_BADGE_TYPE_ID
     badges = BADGES_BY_TYPE[badge_type.id]
@@ -509,20 +514,30 @@ def badge_type_card(
     unearned = [] if kiriban else [badge for badge in badges if badge.id not in user_badges]
     points = sum(badge.score * user_badges[badge.id].count for badge in earned)
     count = f"{len(earned)}個 獲得" if kiriban else f"{len(earned)} / {len(badges)} 獲得"
-    groups = [
-        [
-            f"*{badge.message}* @{user_badges[badge.id].first:%Y/%m/%d}; {badge.score}pt x{user_badges[badge.id].count}"
-            for badge in earned
-        ],
-        # " / " between them: some names contain 、 themselves
-        [f"未獲得: {' / '.join(badge.message for badge in unearned)}"] if unearned else [],
-        [_kiriban_status_text(arrival_count, next_kiriban)] if kiriban else [],
-    ]
+
+    def line(badge: BadgeData) -> str:
+        return f"*{badge.message}* {badge.score}pt x{user_badges[badge.id].count}"
+
+    def body(folded: int) -> str:
+        older = earned[:folded]
+        older_points = sum(badge.score * user_badges[badge.id].count for badge in older)
+        summary = [f"ほか{len(older)}個（計 {older_points}pt）"] if older else []
+        groups = [
+            [*summary, *(line(badge) for badge in earned[folded:])],
+            # " / " between them: some names contain 、 themselves
+            [f"未獲得: {' / '.join(badge.message for badge in unearned)}"] if unearned else [],
+            [_kiriban_status_text(arrival_count, next_kiriban)] if kiriban else [],
+        ]
+        return "\n\n".join("\n".join(group) for group in groups if group) or "未獲得"
+
+    folded = 0
+    while len(text := body(folded)) > CARD_BODY_MAX and folded < len(earned):
+        folded += 1
     return {
         "type": "card",
         "title": _mrkdwn(f"*{badge_type.description}*"),
         "subtitle": _mrkdwn(f"{count}・計 {points}pt"),
-        "body": _mrkdwn("\n\n".join("\n".join(group) for group in groups if group) or "未獲得"),
+        "body": _mrkdwn(text[:CARD_BODY_MAX]),
     }
 
 
