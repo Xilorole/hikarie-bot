@@ -17,7 +17,6 @@ from typing import Any
 
 import asyncclick as click
 from loguru import logger
-from slack_sdk import WebClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
@@ -42,7 +41,8 @@ from hikarie_bot.settings import get_settings
 from hikarie_bot.usage import describe_usage, last_full_week, usage_report
 from hikarie_bot.utils import is_jp_bizday, leveled_up
 
-BLOCK_KIT_BUILDER_URL = "https://app.slack.com/block-kit-builder/{workspace_id}#{payload}"
+# Without a workspace ID the builder opens in the workspace the browser is signed in to; an unknown ID fails.
+BLOCK_KIT_BUILDER_URL = "https://app.slack.com/block-kit-builder"
 
 SYNTHETIC_START = datetime(2025, 4, 7, tzinfo=JST)
 SYNTHETIC_MIN_DAYS = 15
@@ -52,10 +52,11 @@ SYNTHETIC_ATTENDANCE_RATE = 0.7
 LEVEL_UP_USER = "U0PREVIEWL"
 
 
-def create_block_kit_url(payload: dict[str, Any], workspace_id: str) -> str:
+def create_block_kit_url(payload: dict[str, Any], workspace_id: str | None = None) -> str:
     """Create a Block Kit Builder URL for a message (``{"blocks": ...}``) or a view payload."""
     encoded = urllib.parse.quote(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
-    return BLOCK_KIT_BUILDER_URL.format(workspace_id=workspace_id, payload=encoded)
+    workspace = f"/{workspace_id}" if workspace_id else ""
+    return f"{BLOCK_KIT_BUILDER_URL}{workspace}#{encoded}"
 
 
 def create_clickable_link(url: str, display_text: str) -> str:
@@ -256,20 +257,17 @@ def _read_only_url(database_url: str) -> str:
     return database_url
 
 
-def resolve_workspace_id(workspace_id: str | None) -> str:
-    """Resolve the team ID from the option, the environment, or auth.test (read-only)."""
-    settings = get_settings()
-    if workspace_id := workspace_id or settings.slack_workspace_id:
-        return workspace_id
-    if settings.slack_bot_token:
-        return WebClient(token=settings.slack_bot_token).auth_test()["team_id"]
-    msg = "Pass --workspace-id, or set SLACK_WORKSPACE_ID or SLACK_BOT_TOKEN"
-    raise click.ClickException(msg)
+def resolve_workspace_id(workspace_id: str | None) -> str | None:
+    """Return the team ID from the option or SLACK_WORKSPACE_ID, or None to leave it out of the URLs."""
+    return workspace_id or get_settings().slack_workspace_id or None
 
 
 @click.command()
 @click.argument("names", nargs=-1, type=click.Choice(PREVIEW_NAMES))
-@click.option("--workspace-id", help="Slack team ID used in the Block Kit Builder URL (e.g. T0123456).")
+@click.option(
+    "--workspace-id",
+    help="Slack team ID to put in the Block Kit Builder URLs (default: none, which opens the signed-in workspace).",
+)
 @click.option("--database-url", help="Render from this database (read-only) instead of synthetic data.")
 @click.option("--user-id", help="With --database-url: the user to render user-specific messages for.")
 @click.option(

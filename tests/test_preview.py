@@ -15,7 +15,9 @@ from hikarie_bot.preview import (
     build_synthetic_context,
     create_block_kit_url,
     preview,
+    resolve_workspace_id,
 )
+from hikarie_bot.settings import Settings
 
 
 def test_create_block_kit_url_round_trips_payload() -> None:
@@ -80,3 +82,24 @@ def test_database_context_defaults_to_latest_arrival_day() -> None:
     assert context.reference.date() == synthetic.reference.date()
     assert context.fastest_user_id == synthetic.fastest_user_id
     assert context.level_up_user_id == synthetic.level_up_user_id
+
+
+def test_block_kit_url_leaves_out_an_unknown_workspace() -> None:
+    """Without a team ID the URL opens in the signed-in workspace; a given ID goes before the payload."""
+    payload = {"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "4 / 12回"}}]}
+
+    url = create_block_kit_url(payload)
+
+    assert url.startswith("https://app.slack.com/block-kit-builder#%7B%22blocks%22")
+    assert create_block_kit_url(payload, "T0123").startswith("https://app.slack.com/block-kit-builder/T0123#%7B")
+    assert json.loads(urllib.parse.unquote(url.split("#", 1)[1])) == payload
+
+
+def test_workspace_id_comes_from_the_option_or_the_settings(settings: Settings) -> None:
+    """No option and no SLACK_WORKSPACE_ID means no ID, and Slack is not asked."""
+    settings.slack_bot_token = "xoxb-test"  # noqa: S105
+
+    assert resolve_workspace_id(None) is None
+    assert resolve_workspace_id("T0123") == "T0123"
+    settings.slack_workspace_id = "T0456"
+    assert resolve_workspace_id(None) == "T0456"
