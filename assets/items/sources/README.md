@@ -6,6 +6,7 @@
 - Newer sheets were generated from `sheet-2.png` to redraw one item each, and only that item is cut from them:
   - `sheet-3.png`: `dice` (the four-sided die)
   - `sheet-4.png`: `dash_shoes` (the tech shoe, without the spring)
+  - `sheet-5.png`: `sticky_notes` (a checklist on the top note instead of the arcane circle)
 
   Every other icon still comes from `sheet-2.png`.
 

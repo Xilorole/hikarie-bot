@@ -52,7 +52,9 @@ Cells, left to right, top to bottom:
 11. onigiri: rice ball wrapped in nori, a few green sparkle pixels
 12. umbrella: closed navy umbrella with a brass band and a carved wooden crook handle
 13. business bag: battered brown leather briefcase with a quilted pattern and brass clasps
-14. sticky notes: stack of yellow notes with an arcane circle doodle on the top note, one corner curled
+14. sticky notes: stack of yellow sticky notes, the top note with one corner curled and a business checklist
+    handwritten in dark blue pen: a short heading underline and three rows, each a small empty checkbox with a
+    line of text, the first two boxes ticked with a red check mark. No arcane symbols, no circles, no letters
 15. potted plant: green office plant in a cracked terracotta pot, a few green sparkle pixels
 16. hourglass: carved wooden hourglass with golden sand falling, gold sparkle pixels
 ```
