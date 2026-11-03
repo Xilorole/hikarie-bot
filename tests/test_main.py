@@ -2,6 +2,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from slack_sdk.errors import SlackApiError
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
@@ -30,3 +31,18 @@ async def test_check_achievement_opens_the_users_view(app_database: Engine) -> N
     assert any(
         "総出社回数: 1回" in "".join(p["text"] for p in i["elements"][0]["elements"]) for i in lists[1]["elements"]
     )
+
+
+@pytest.mark.asyncio
+async def test_status_failure_is_told_to_the_user(app_database: Engine) -> None:
+    """When Slack refuses the modal, the user gets Slack's reason instead of no response."""
+    client = AsyncMock()
+    response = {"ok": False, "error": "invalid_arguments", "response_metadata": {"messages": ["[ERROR] bad block"]}}
+    client.views_open.side_effect = SlackApiError("refused", response)
+
+    body = {"user": {"id": "U1"}, "trigger_id": "T1", "channel": {"id": "C0OUT"}}
+    await bot.handle_check_achievement(AsyncMock(), body, client)
+
+    ephemeral = client.chat_postEphemeral.await_args.kwargs
+    assert (ephemeral["channel"], ephemeral["user"]) == ("C0OUT", "U1")
+    assert ephemeral["text"] == "ステータスを開けませんでした（invalid_arguments; [ERROR] bad block）"

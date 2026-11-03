@@ -11,6 +11,7 @@ from loguru import logger
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.context.ack.async_ack import AsyncAck
+from slack_sdk.errors import SlackApiError
 from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -274,13 +275,30 @@ def build_achievement_view(user_id: str) -> dict:
     return achievement_view(engine, user_id)
 
 
+def describe_error(error: Exception) -> str:
+    """Describe an error for the user who hit it: Slack's error code and its messages, or the exception type."""
+    if isinstance(error, SlackApiError):
+        messages = error.response.get("response_metadata", {}).get("messages", [])
+        return "; ".join([error.response.get("error", "slack_error"), *messages])
+    return type(error).__name__
+
+
 async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Handle the check achievement button click event."""
+    """Open the status modal; if it fails, tell the user why in an ephemeral message instead of nothing."""
     await ack()
     user_id = body["user"]["id"]
-    view = await asyncio.to_thread(build_achievement_view, user_id)
-    logger.info(f"Opening achievement view for user {user_id}")
-    await client.views_open(trigger_id=body["trigger_id"], view=view)
+    try:
+        view = await asyncio.to_thread(build_achievement_view, user_id)
+        logger.info(f"Opening achievement view for user {user_id}")
+        await client.views_open(trigger_id=body["trigger_id"], view=view)
+    except Exception as error:
+        logger.exception("Could not open the status modal")
+        channel = body.get("channel", {}).get("id")
+        if channel is None:
+            raise
+        await client.chat_postEphemeral(
+            channel=channel, user=user_id, text=f"ステータスを開けませんでした（{describe_error(error)}）"
+        )
 
 
 ITEM_LOCK = asyncio.Lock()
