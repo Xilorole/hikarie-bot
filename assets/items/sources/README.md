@@ -8,3 +8,7 @@
 
 Cut the icons with `scripts/cut_item_icons.py` (see its docstring); name items after the output directory to cut
 only those.
+
+`sticky_notes.png` is hand-edited and is no longer the cut from `sheet-2.png`: the magic circle on the generated note
+was replaced by a checklist (heading and ticked boxes) to suit an IT consultancy. Do not re-cut it from the sheet
+(`scripts/cut_item_icons.py` without item names writes every icon), or the magic circle comes back.
