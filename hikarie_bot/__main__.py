@@ -25,8 +25,6 @@ from hikarie_bot.modals import (
     CallbackID,
     ShortcutID,
     achievement_view,
-    goals_message,
-    goals_text,
     item_pick_view,
     item_picked_message,
     item_picked_text,
@@ -176,20 +174,13 @@ ALREADY_ARRIVED = "本日は既に出社申告を済ませています"
 NO_DAILY_POST = "今日の出社確認の投稿がまだありません（営業日の6時から18時まで）"
 
 
-class Arrival(NamedTuple):
-    """How a press went: why it was refused, or what the user can aim for after the announced arrival."""
-
-    refusal: str | None
-    outlook: Outlook | None = None
-
-
-async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts: str) -> Arrival:
-    """Record and announce an arrival on the daily post; return why it was refused, or its outlook."""
+async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts: str) -> str | None:
+    """Record and announce an arrival on the daily post; return why it was refused, or None once announced."""
     now = datetime.now(JST)
     # the action is only valid from 6AM to 6PM JST of the post's day
     post_at6 = datetime.fromtimestamp(float(post_ts), JST).replace(hour=6, minute=0, second=0, microsecond=0)
     if not (post_at6 < now < post_at6 + timedelta(hours=12)):
-        return Arrival(OUTSIDE_WINDOW)
+        return OUTSIDE_WINDOW
 
     # One press at a time, until it is announced and the daily post is updated: a second press retries an
     # arrival only if it was not announced, and the updates must land in the order the lists were computed,
@@ -198,9 +189,9 @@ async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts:
     async with ARRIVAL_LOCK:
         registration = await asyncio.to_thread(register_arrival, user_id, now)
         if registration is None:
-            return Arrival(ALREADY_ARRIVED)
+            return ALREADY_ARRIVED
 
-        point_get = point_get_message(registration.arrival)
+        point_get = point_get_message(registration.arrival, registration.outlook)
         response = await client.chat_postMessage(
             channel=channel_id,
             thread_ts=post_ts,
@@ -215,18 +206,7 @@ async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts:
         # replace the message with the day's arrivals
         registry = registry_message(registration.arrivals_today, registration.team)
         await client.chat_update(channel=channel_id, ts=post_ts, text=to_text(registry), blocks=render(registry))
-    return Arrival(None, registration.outlook)
-
-
-async def send_goals(client: AsyncWebClient, channel_id: str, user_id: str, outlook: Outlook) -> None:
-    """Tell the user alone what to aim for next; the arrival is announced already, so a failure only logs."""
-    message = goals_message(outlook)
-    if not message:
-        return
-    try:
-        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=to_text(message), blocks=render(message))
-    except Exception:  # noqa: BLE001
-        logger.exception("Could not send the next goals")
+    return None
 
 
 async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -235,18 +215,15 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
     user_id = body["user"]["id"]
     channel_id = body["channel"]["id"]
     logger.debug(f"user_id: {user_id}, action_id: {body['actions'][0]['action_id']}")
-    arrival = await arrive(client, user_id, channel_id, body["message"]["ts"])
-    if arrival.refusal is not None:
-        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=arrival.refusal)
-    elif arrival.outlook is not None:
-        await send_goals(client, channel_id, user_id, arrival.outlook)
+    refusal = await arrive(client, user_id, channel_id, body["message"]["ts"])
+    if refusal is not None:
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=refusal)
 
 
 async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Record an arrival from the global shortcut, on today's daily post, and reply in a modal.
 
-    The modal opens first (a trigger expires in 3 seconds) and shows the outcome, with the next goals,
-    when it is known.
+    The modal opens first (a trigger expires in 3 seconds) and shows the outcome when it is known.
     """
     await ack()
     user_id = body["user"]["id"]
@@ -255,16 +232,11 @@ async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: As
     view_id = opened["view"]["id"]
     try:
         post_ts = await find_daily_post(client, channel_id, datetime.now(JST))
-        arrival = Arrival(NO_DAILY_POST) if post_ts is None else await arrive(client, user_id, channel_id, post_ts)
+        refusal = NO_DAILY_POST if post_ts is None else await arrive(client, user_id, channel_id, post_ts)
     except Exception:
         await client.views_update(view_id=view_id, view=notice_view("出社登録に失敗しました。もう一度試してください"))
         raise
-    if arrival.refusal is not None:
-        text = arrival.refusal
-    else:
-        text = f"出社登録しました。<#{channel_id}> の今日の投稿のスレッドで確認できます"
-        if arrival.outlook is not None and (goals := goals_text(arrival.outlook)):
-            text += f"\n\n*つぎのもくひょう*\n{goals}"
+    text = refusal or f"出社登録しました。<#{channel_id}> の今日の投稿のスレッドで確認できます"
     await client.views_update(view_id=view_id, view=notice_view(text))
 
 

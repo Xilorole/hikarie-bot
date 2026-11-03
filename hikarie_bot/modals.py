@@ -117,7 +117,7 @@ def initial_message(team: TeamProgress | None = None) -> list[Block]:
         blocks.ActionsBlock(
             elements=[
                 block_elements.ButtonElement(text="最速出社した", action_id=ActionID.FASTEST_ARRIVAL, style="primary"),
-                block_elements.ButtonElement(text="ステータス", action_id=ActionID.CHECK_ACHIEVEMENT),
+                block_elements.ButtonElement(text="実績を確認", action_id=ActionID.CHECK_ACHIEVEMENT),
                 block_elements.ButtonElement(text="今日のアイテム", action_id=ActionID.PICK_ITEM),
             ],
             block_id=BlockID.FASTEST_ARRIVAL,
@@ -133,7 +133,7 @@ def registry_message(arrivals: list[ArrivalResult], team: TeamProgress | None = 
         blocks.ActionsBlock(
             elements=[
                 block_elements.ButtonElement(text="出社した", action_id=ActionID.ARRIVED_OFFICE),
-                block_elements.ButtonElement(text="ステータス", action_id=ActionID.CHECK_ACHIEVEMENT),
+                block_elements.ButtonElement(text="実績を確認", action_id=ActionID.CHECK_ACHIEVEMENT),
                 block_elements.ButtonElement(text="今日のアイテム", action_id=ActionID.PICK_ITEM),
             ],
             block_id=BlockID.ARRIVED_OFFICE,
@@ -155,14 +155,11 @@ def _id_card(arrival: ArrivalResult) -> str:
 def outlook_lines(outlook: Outlook) -> list[str]:
     """Describe what the user can aim for next: the streak, the next count badge, the next kiriban."""
     lines = []
-    if outlook.streak >= 2 or (outlook.streak_pending and outlook.streak >= 1):  # noqa: PLR2004
-        if outlook.streak_pending:
-            streak = f"連続出社 *{outlook.streak}日* 継続中 (今日出社すると{outlook.streak + 1}日目)"
-        else:
-            streak = f"連続出社 *{outlook.streak}日目*"
+    if outlook.streak >= 2:  # noqa: PLR2004
+        streak = f"連続出社 *{outlook.streak}日目*"
         if outlook.streak < STRAIGHT_FLASH_LENGTH:
             to_go = STRAIGHT_FLASH_LENGTH - outlook.streak
-            streak += f" · あと{to_go}日で{BADGES[STRAIGHT_FLASH].message}"
+            streak += f" (あと{to_go}日で{BADGES[STRAIGHT_FLASH].message})"
         lines.append(streak)
     if outlook.next_count_badge:
         badge_id, to_go = outlook.next_count_badge
@@ -173,34 +170,15 @@ def outlook_lines(outlook: Outlook) -> list[str]:
     return lines
 
 
-def goals_text(outlook: Outlook) -> str:
-    """Describe what to aim for next and the week's team progress, as one mrkdwn text (empty if nothing)."""
-    lines = [f"• {line}" for line in outlook_lines(outlook)]
-    if outlook.team is not None:
-        lines.append(team_text(outlook.team))
-    return "\n".join(lines)
-
-
-def goals_message(outlook: Outlook) -> list[Block]:
-    """Build the ephemeral message that tells the user, right after their arrival, what to aim for next."""
-    text = goals_text(outlook)
-    if not text:
-        return []
-    return [
-        blocks.SectionBlock(text=f"*つぎのもくひょう*\n{text}"),
-        blocks.ContextBlock(
-            elements=[basic_components.MarkdownTextObject(text="ボタン「ステータス」から、いつでも見られます")]
-        ),
-    ]
-
-
-def point_get_message(arrival: ArrivalResult) -> list[Block]:
-    """Build the message announcing a counted arrival, its points and its level."""
+def point_get_message(arrival: ArrivalResult, outlook: Outlook | None = None) -> list[Block]:
+    """Build the message announcing a counted arrival, its points, its level and what to aim for next."""
     level = get_level(arrival.current_score)
 
     experience_rate = int(100 * level.progress_points / level.span)
     experience_add_up_rate = int(100 * arrival.score_sum / level.span)
-    point_rate_text = _progress_bar(experience_rate)
+    # show at least one cell: a bar of spaces only renders as an empty inline code in Slack
+    digits = max(1, (experience_rate + 10 - 1) // 10)
+    point_rate_text = "█" * digits + " " * (10 - digits)
 
     # the level does not go beyond the upper limit
     if level.is_max:
@@ -233,6 +211,11 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
         )
         + achievements_text
     )
+    if outlook is not None:
+        if lines := outlook_lines(outlook):
+            context += "\nつぎのもくひょう:\n" + "\n".join(f" - {line}" for line in lines)
+        if outlook.team is not None:
+            context += f"\n{team_text(outlook.team)}"
 
     return [
         blocks.SectionBlock(
@@ -356,65 +339,30 @@ def item_picked_message(user_id: str, item: ItemData) -> list[Block]:
     return [blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=item_picked_text(user_id, item))])]
 
 
-def achievement_view(
-    engine: BadgeEngine, user_id: str, jst_datetime: datetime | None = None, outlook: Outlook | None = None
-) -> View:
-    """Build the status modal: level, points, held item and next goals, then statistics, history and badges.
+def achievement_view(engine: BadgeEngine, user_id: str, jst_datetime: datetime | None = None) -> View:
+    """Build the modal with the user's statistics, attendance history and badges.
 
-    jst_datetime is "now" (default: the current time); outlook defaults to the engine's status at that time.
+    jst_datetime is the "today" of the attendance history (default: now).
     """
-    now = jst_datetime or datetime.now(JST)
-    today = now.date()
+    today = (jst_datetime or datetime.now(JST)).date()
     user_badges = {badge_id: tally for (owner, badge_id), tally in engine.user_badges.items() if owner == user_id}
     # kiribans number the arrivals of all users
     arrival_count = len(engine.results)
     next_kiriban = next((kiriban for kiriban in KIRIBANS if arrival_count < kiriban.number), None)
     return View(
         type="modal",
-        title="ステータス",
+        title="Achievements",
         close="閉じる",
         blocks=[
-            *status_blocks(engine, user_id, today, outlook or engine.status_outlook(user_id, now)),
-            *statistics_blocks(engine, user_id),
+            *statistics_blocks(engine, user_id, today),
             *attendance_history_blocks(attendance_by_day(engine, user_id, today)),
             *badge_blocks(user_badges, arrival_count, next_kiriban),
         ],
     )
 
 
-def _progress_bar(rate: int) -> str:
-    """Return a 10-cell bar for a percentage, with at least one cell (a bar of spaces renders as empty code)."""
-    digits = max(1, (rate + 10 - 1) // 10)
-    return "█" * digits + " " * (10 - digits)
-
-
-def status_blocks(engine: BadgeEngine, user_id: str, today: date, outlook: Outlook) -> list[Block]:
-    """Build the top of the status modal: level, points, progress, held item, and what to aim for next."""
-    user = engine.users.get(user_id)
-    score = user.score if user else 0
-    level = get_level(score)
-    if level.is_max:
-        progress = f"`{_progress_bar(100)}` | *上限に到達*"
-    else:
-        rate = int(100 * level.progress_points / level.span)
-        progress = f"`{_progress_bar(rate)}` | *{rate:>3d}%* (つぎのレベルまで *{level.points_to_next}pt*)"
-    lines = [
-        f"• *かたがき*: {level.name} (lv{level.number})",
-        f"• *ポイント*: {score}pt",
-        f"• *しんこうど*: {progress}",
-    ]
-    held = engine.held_item(user_id, today)
-    if held is not None:
-        until = f" ({held.last_day:%m/%d}まで)" if held.last_day else " (次の出社で使います)"
-        lines.append(f"• *所持アイテム*: {ITEMS[held.pick.item_id].label}{until}")
-    result: list[Block] = [blocks.HeaderBlock(text="ステータス"), blocks.SectionBlock(text="\n".join(lines))]
-    if goals := goals_text(outlook):
-        result += [blocks.HeaderBlock(text="つぎのもくひょう"), blocks.SectionBlock(text=goals)]
-    return [*result, blocks.DividerBlock()]
-
-
-def statistics_blocks(engine: BadgeEngine, user_id: str) -> list[Block]:
-    """Build the statistics section: counts and the first, earliest and latest arrival times."""
+def statistics_blocks(engine: BadgeEngine, user_id: str, today: date | None = None) -> list[Block]:
+    """Build the statistics section: counts, level, the earliest and latest arrival times and the held item."""
     user = engine.users.get(user_id)
     arrivals = user.results if user else []
     if not arrivals:
@@ -426,11 +374,16 @@ def statistics_blocks(engine: BadgeEngine, user_id: str) -> list[Block]:
             [
                 f"• *総出社回数*: {len(arrivals)}回",
                 f"• *最速出社*: {sum(arrival.rank == 1 for arrival in arrivals)}回",
+                f"• *現在レベル*: {get_level(user.score).number} ({user.score}pt)",
                 f"• *初回出社*: {arrivals[0].time:%Y-%m-%d}",
                 f"• *最早出社*: `{min(times)}`",
                 f"• *最遅出社*: `{max(times)}`",
             ]
         )
+        held = engine.held_item(user_id, today) if today else None
+        if held is not None:
+            until = f" ({held.last_day:%m/%d}まで)" if held.last_day else " (次の出社で使います)"
+            text += f"\n• *所持アイテム*: {ITEMS[held.pick.item_id].label}{until}"
     return [blocks.HeaderBlock(text="出社統計情報"), blocks.SectionBlock(text=text), blocks.DividerBlock()]
 
 

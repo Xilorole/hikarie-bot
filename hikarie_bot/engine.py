@@ -166,7 +166,6 @@ class Outlook:
     next_count_badge: tuple[int, int] | None
     next_kiriban: tuple[int, int] | None
     team: TeamProgress | None
-    streak_pending: bool = False  # a business day not arrived yet: arriving today extends the streak
 
 
 @dataclass
@@ -356,28 +355,10 @@ class BadgeEngine:
 
     def outlook(self, result: ArrivalResult) -> Outlook:
         """Return what the user can aim for right after this arrival (later arrivals are not looked at)."""
-        # result.id numbers the arrivals of all users, as the kiribans do
-        return self._outlook(result.user_id, result.time, result.id)
-
-    def status_outlook(self, user_id: str, now: datetime) -> Outlook:
-        """Return what the user can aim for at `now` (an aware datetime), arrived today or not.
-
-        Before today's arrival the streak counts up to the previous business day, as it is still alive.
-        """
-        now = now.astimezone(JST)
-        return self._outlook(user_id, now, bisect_right(self.times, now))
-
-    def _outlook(self, user_id: str, until: datetime, everyone: int) -> Outlook:
-        """Build the outlook from the user's arrivals up to `until` and everyone's arrival count."""
-        user = self.users.get(user_id)
-        times = user.times if user else []
-        own_count = bisect_right(times, until)
+        times = self.users[result.user_id].times
+        own_count = bisect_right(times, result.time)
         days = {time.date() for time in times[:own_count]}
-        day = until.date()
-        pending = day not in days and is_jp_bizday(day)
-        if day not in days:
-            day = previous_bizday(day)
-        streak = 0
+        streak, day = 0, result.time.date()
         while day in days:
             streak += 1
             day = previous_bizday(day)
@@ -385,13 +366,13 @@ class BadgeEngine:
             ((badge_id, count - own_count) for count, badge_id in ARRIVAL_COUNT_BADGES.items() if count > own_count),
             None,
         )
-        kiriban = next((kiriban for kiriban in KIRIBANS if kiriban.number > everyone), None)
+        # result.id numbers the arrivals of all users, as the kiribans do
+        kiriban = next((kiriban for kiriban in KIRIBANS if kiriban.number > result.id), None)
         return Outlook(
             streak=streak,
             next_count_badge=next_count,
-            next_kiriban=(kiriban.number, kiriban.number - everyone) if kiriban else None,
-            team=self.team_progress(until),
-            streak_pending=pending and streak > 0,
+            next_kiriban=(kiriban.number, kiriban.number - result.id) if kiriban else None,
+            team=self.team_progress(result.time),
         )
 
     # --- badge rules ---
