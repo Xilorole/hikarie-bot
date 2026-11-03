@@ -5,7 +5,14 @@ import pytest
 from freezegun import freeze_time
 
 from hikarie_bot.constants import JST
-from hikarie_bot.slack_helper import DAILY_MESSAGE_TRIGGER, schedule_daily_message, send_daily_message
+from hikarie_bot.slack_helper import (
+    DAILY_MESSAGE_TRIGGER,
+    WEEKLY_USAGE_TRIGGER,
+    schedule_daily_message,
+    schedule_weekly_usage,
+    send_daily_message,
+    send_weekly_usage,
+)
 
 
 @pytest.mark.parametrize(
@@ -67,3 +74,29 @@ async def test_schedule_daily_message() -> None:
         )
     finally:
         scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_schedule_weekly_usage() -> None:
+    """The weekly usage goes to the given channel on Monday mornings."""
+    client = AsyncMock()
+    scheduler = schedule_weekly_usage(client, "C0LOG")
+    try:
+        (job,) = scheduler.get_jobs()
+        assert (job.func, job.trigger, job.args) == (send_weekly_usage, WEEKLY_USAGE_TRIGGER, (client, "C0LOG"))
+    finally:
+        scheduler.shutdown(wait=False)
+    after = datetime(2026, 11, 3, 12, 0, tzinfo=JST)  # Tuesday
+    assert WEEKLY_USAGE_TRIGGER.get_next_fire_time(None, after) == datetime(2026, 11, 9, 7, 0, tzinfo=JST)
+
+
+@pytest.mark.asyncio
+async def test_send_weekly_usage_posts_counts(app_database: object) -> None:
+    """The report is posted to the log channel as text."""
+    client = AsyncMock()
+
+    await send_weekly_usage(client, "C0LOG")
+
+    post = client.chat_postMessage.await_args.kwargs
+    assert post["channel"] == "C0LOG"
+    assert "利用状況" in post["text"]

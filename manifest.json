@@ -9,6 +9,12 @@
     },
     "shortcuts": [
       {
+        "name": "出社した",
+        "type": "global",
+        "callback_id": "arrive",
+        "description": "今日の出社を登録する"
+      },
+      {
         "name": "reboot",
         "type": "message",
         "callback_id": "reboot",

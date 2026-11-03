@@ -6,14 +6,16 @@ from freezegun import freeze_time
 
 from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, JST, NOT_ACHIEVED_BADGE_IMAGE_URL
 from hikarie_bot.db_data import Badges
-from hikarie_bot.engine import ArrivalResult
+from hikarie_bot.engine import ArrivalResult, Outlook, TeamProgress
 from hikarie_bot.modals import (
     achievement_view,
     attendance_by_day,
     initial_message,
+    outlook_lines,
     point_get_message,
     registry_message,
     render,
+    should_broadcast,
     to_text,
 )
 from tests.helpers import compute_in_order, only_badge_types
@@ -604,3 +606,69 @@ def test_attendance_history_counts_the_first_monday_of_the_window() -> None:
 
     assert min(attendance) == date(2024, 1, 15)
     assert attendance[date(2024, 1, 15)] is True
+
+
+def arrival_with(badge_ids: list[int], rank: int = 2, previous_score: int = 30, score_sum: int = 3) -> ArrivalResult:
+    """Return a hand-built arrival (lv2 throughout unless the scores say otherwise)."""
+    return ArrivalResult(
+        id=100,
+        user_id="test_user",
+        time=datetime(2026, 11, 10, 9, 0, tzinfo=JST),
+        rank=rank,
+        badge_ids=badge_ids,
+        score_sum=score_sum,
+        previous_score=previous_score,
+        current_score=previous_score + score_sum,
+    )
+
+
+def test_broadcast_only_for_moments_worth_the_channel() -> None:
+    """The first of the day, a first arrival, a comeback, a level up and the team goal's arrival go to the channel."""
+    team = TeamProgress(date(2026, 11, 9), 20, 20)
+    outlook = Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=team)
+
+    assert not should_broadcast(arrival_with([501]))
+    assert should_broadcast(arrival_with([501], rank=1))
+    assert should_broadcast(arrival_with([101]))
+    assert should_broadcast(arrival_with([702]))
+    assert should_broadcast(arrival_with([], previous_score=40, score_sum=3))  # 40 -> 43: lv2 -> lv3
+    assert should_broadcast(arrival_with([2001]), outlook)
+    # later arrivals in a reached week keep their badge but stay in the thread
+    later = Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=TeamProgress(date(2026, 11, 9), 21, 20))
+    assert not should_broadcast(arrival_with([2001]), later)
+
+
+def test_point_get_message_shows_what_to_aim_for() -> None:
+    """The outlook adds the streak, the next count badge, the next kiriban and the week's team progress."""
+    outlook = Outlook(
+        streak=3, next_count_badge=(302, 4), next_kiriban=(3443, 12), team=TeamProgress(date(2026, 11, 9), 12, 20)
+    )
+    message = render(point_get_message(arrival_with([501]), outlook))
+
+    assert message[0]["text"]["text"].endswith("\n本日 2人目の出社です")
+    assert message[2]["elements"][0]["text"].endswith(
+        "つぎのもくひょう:\n"
+        " - 連続出社 *3日目* (あと2日でストレートフラッ出社)\n"
+        " - あと *4回* の出社で「出社登録マスター」\n"
+        " - みんなの出社 3443回目のキリ番まで あと *12回*\n"
+        ":busts_in_silhouette: 今週のみんなの出社: *12* / 20回 (達成したあとの出社は +1pt)"
+    )
+
+
+def test_outlook_lines_leave_out_a_one_day_streak() -> None:
+    """A streak shows from its second day; past five days it shows without a target."""
+    assert outlook_lines(Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=None)) == []
+    assert outlook_lines(Outlook(streak=7, next_count_badge=None, next_kiriban=None, team=None)) == ["連続出社 *7日目*"]
+
+
+def test_daily_post_shows_the_team_progress() -> None:
+    """The morning post and the updated post end with the week's progress; without it they are unchanged."""
+    team = TeamProgress(date(2026, 11, 9), 21, 20)
+    text = ":tada: 今週のみんなの出社: *21* / 20回 達成！ 今週これからの出社は +1pt"
+
+    assert render(initial_message(team))[-1] == {
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": text}],
+    }
+    assert render(registry_message([], team))[-1]["elements"][0]["text"] == text
+    assert len(initial_message()) == 2

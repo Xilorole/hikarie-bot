@@ -21,7 +21,17 @@ from hikarie_bot.constants import (
 )
 from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
 from hikarie_bot.db_data.items import ID_CARD, ITEM_IMAGE_URLS, ITEMS, ItemData
-from hikarie_bot.engine import ArrivalResult, BadgeEngine, ItemEffect, UserBadgeTally
+from hikarie_bot.engine import (
+    STRAIGHT_FLASH,
+    STRAIGHT_FLASH_LENGTH,
+    TEAM_GOAL_BADGE,
+    ArrivalResult,
+    BadgeEngine,
+    ItemEffect,
+    Outlook,
+    TeamProgress,
+    UserBadgeTally,
+)
 from hikarie_bot.utils import (
     get_level,
     leveled_up,
@@ -30,6 +40,8 @@ from hikarie_bot.utils import (
 
 # Constants
 KIRIBAN_BADGE_TYPE_ID = 6
+WELCOME_BADGE = 101
+LONG_TIME_NO_SEE_BADGES = {701, 702, 703, 704}
 BADGES = {badge.id: badge for badge in db_data.Badges}
 BADGES_BY_TYPE = {
     badge_type.id: [badge for badge in db_data.Badges if badge.badge_type_id == badge_type.id]
@@ -71,6 +83,7 @@ class ShortcutID:
     """Class for storing the shortcut IDs used in the Slack app."""
 
     REBOOT = "reboot"  # only small letters are allowed
+    ARRIVE = "arrive"  # the global shortcut that records an arrival from anywhere in Slack
 
 
 def render(message: list[Block]) -> list[dict]:
@@ -83,8 +96,24 @@ def to_text(message: list[Block]) -> str:
     return "\n".join(block.text.text for block in message if isinstance(block, blocks.SectionBlock))
 
 
-def initial_message() -> list[Block]:
-    """Build the daily question with its buttons."""
+def team_text(team: TeamProgress) -> str:
+    """Describe everyone's arrivals this week against the goal."""
+    bonus = f"+{BADGES[TEAM_GOAL_BADGE].score}pt"
+    if team.reached:
+        return f":tada: 今週のみんなの出社: *{team.count}* / {team.goal}回 達成！ 今週これからの出社は {bonus}"
+    return f":busts_in_silhouette: 今週のみんなの出社: *{team.count}* / {team.goal}回 (達成したあとの出社は {bonus})"
+
+
+def _team_context(team: TeamProgress | None) -> list[Block]:
+    return (
+        []
+        if team is None
+        else [blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=team_text(team))])]
+    )
+
+
+def initial_message(team: TeamProgress | None = None) -> list[Block]:
+    """Build the daily question with its buttons, and the week's team progress once the team goal applies."""
     return [
         blocks.SectionBlock(text="高輪に出社してる？"),
         blocks.ActionsBlock(
@@ -95,11 +124,12 @@ def initial_message() -> list[Block]:
             ],
             block_id=BlockID.FASTEST_ARRIVAL,
         ),
+        *_team_context(team),
     ]
 
 
-def registry_message(arrivals: list[ArrivalResult]) -> list[Block]:
-    """Build the question with its buttons and the day's arrivals in time order."""
+def registry_message(arrivals: list[ArrivalResult], team: TeamProgress | None = None) -> list[Block]:
+    """Build the question with its buttons, the day's arrivals in time order and the week's team progress."""
     return [
         blocks.SectionBlock(text="高輪に出社してる？"),
         blocks.ActionsBlock(
@@ -115,6 +145,7 @@ def registry_message(arrivals: list[ArrivalResult]) -> list[Block]:
             text="本日の出社ユーザー:\n"
             + "\n".join(f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>{_id_card(arrival)}" for arrival in arrivals),
         ),
+        *_team_context(team),
     ]
 
 
@@ -123,8 +154,44 @@ def _id_card(arrival: ArrivalResult) -> str:
     return f" {ITEMS[ID_CARD].emoji}" if any(effect.item_id == ID_CARD for effect in arrival.item_effects) else ""
 
 
-def point_get_message(arrival: ArrivalResult) -> list[Block]:
-    """Build the message announcing a counted arrival, its points and its level."""
+def should_broadcast(arrival: ArrivalResult, outlook: Outlook | None = None) -> bool:
+    """Whether the announcement also goes to the channel, not only the thread.
+
+    Kept to moments worth the channel's attention: the day's first, a first arrival ever, a comeback, a level
+    up and the arrival that reached the week's team goal.
+    """
+    badges = set(arrival.badge_ids)
+    team = outlook.team if outlook else None
+    return (
+        arrival.rank == 1
+        or WELCOME_BADGE in badges
+        or bool(badges & LONG_TIME_NO_SEE_BADGES)
+        or leveled_up(arrival.previous_score, arrival.current_score)
+        or max_level_reached(arrival.previous_score, arrival.current_score)
+        or (team is not None and TEAM_GOAL_BADGE in badges and team.count == team.goal)
+    )
+
+
+def outlook_lines(outlook: Outlook) -> list[str]:
+    """Describe what the user can aim for next: the streak, the next count badge, the next kiriban."""
+    lines = []
+    if outlook.streak >= 2:  # noqa: PLR2004
+        streak = f"連続出社 *{outlook.streak}日目*"
+        if outlook.streak < STRAIGHT_FLASH_LENGTH:
+            to_go = STRAIGHT_FLASH_LENGTH - outlook.streak
+            streak += f" (あと{to_go}日で{BADGES[STRAIGHT_FLASH].message})"
+        lines.append(streak)
+    if outlook.next_count_badge:
+        badge_id, to_go = outlook.next_count_badge
+        lines.append(f"あと *{to_go}回* の出社で「{BADGES[badge_id].message}」")
+    if outlook.next_kiriban:
+        number, to_go = outlook.next_kiriban
+        lines.append(f"みんなの出社 {number}回目のキリ番まで あと *{to_go}回*")
+    return lines
+
+
+def point_get_message(arrival: ArrivalResult, outlook: Outlook | None = None) -> list[Block]:
+    """Build the message announcing a counted arrival, its points, its level and what to aim for next."""
     level = get_level(arrival.current_score)
 
     experience_rate = int(100 * level.progress_points / level.span)
@@ -164,6 +231,11 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
         )
         + achievements_text
     )
+    if outlook is not None:
+        if lines := outlook_lines(outlook):
+            context += "\nつぎのもくひょう:\n" + "\n".join(f" - {line}" for line in lines)
+        if outlook.team is not None:
+            context += f"\n{team_text(outlook.team)}"
 
     return [
         blocks.SectionBlock(
@@ -171,7 +243,7 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
             f"{'最速' if is_first else ''}出社登録しました！"
             f"\n<@{arrival.user_id}>さんのポイント "
             f"{arrival.previous_score} → *{arrival.current_score}* "
-            f"(*+{arrival.score_sum}*){level_up_text}"
+            f"(*+{arrival.score_sum}*){level_up_text}" + ("" if is_first else f"\n本日 {arrival.rank}人目の出社です")
         ),
         blocks.DividerBlock(),
         blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=context)]),
@@ -265,6 +337,16 @@ def _plain(text: str) -> dict:
 
 def _mrkdwn(text: str) -> dict:
     return {"type": "mrkdwn", "text": text}
+
+
+def notice_view(text: str) -> dict:
+    """Build a modal that only shows a message (the reply to the arrival shortcut)."""
+    return {
+        "type": "modal",
+        "title": _plain("出社登録"),
+        "close": _plain("閉じる"),
+        "blocks": [{"type": "section", "text": _mrkdwn(text)}],
+    }
 
 
 def item_picked_text(user_id: str, item: ItemData) -> str:

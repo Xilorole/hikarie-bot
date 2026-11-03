@@ -154,6 +154,12 @@ BadgeTypes = [
         description="高輪オフィスに移転後、初めて出社した",
         apply_start=datetime(2026, 1, 19, tzinfo=JST),
     ),
+    BadgeTypeData(
+        id=20,
+        name="team_goal",
+        description="みんなで今週の出社目標を達成した",
+        apply_start=datetime(2026, 11, 9, tzinfo=JST),
+    ),
 ]
 
 
@@ -454,5 +460,14 @@ Badges = [
         level=1,
         score=3,
         badge_type_id=19,
+    ),
+    # BadgeTypeData id=20, name="team_goal", description="みんなで今週の出社目標を達成した"
+    BadgeData(
+        id=2001,
+        message="みんなで達成",
+        condition="今週の全員の出社登録が目標（営業日 x 4回）に届いたあとに出社した",
+        level=1,
+        score=1,
+        badge_type_id=20,
     ),
 ]

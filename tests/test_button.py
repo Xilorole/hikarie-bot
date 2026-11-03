@@ -105,6 +105,10 @@ async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, cloc
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
     await bot.handle_button_click(AsyncMock(), click("U1", ActionID.FASTEST_ARRIVAL), client)
 
+    with Session(database) as session:  # U2 arrived the business day before, so this is no first arrival
+        previous = datetime(2025, 5, 30, 9, 0, tzinfo=JST)
+        session.add(ArrivalEvent(user_id="U2", occurred_at=previous, source="button", slack_ts="1748563200.000100"))
+        session.commit()
     clock.move_to(PRESSED.replace(second=31))
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000200"}
     await bot.handle_button_click(AsyncMock(), click("U2", ActionID.FASTEST_ARRIVAL), client)
@@ -112,6 +116,7 @@ async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, cloc
     post = client.chat_postMessage.await_args.kwargs
     assert post["reply_broadcast"] is False
     assert "最速" not in post["text"]
+    assert "本日 2人目の出社です" in post["text"]
 
 
 @pytest.mark.asyncio
@@ -170,4 +175,68 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
         bot.handle_item_submission,
         bot.handle_item_review,
         bot.handle_reboot,
+        bot.handle_arrive_shortcut,
     }
+
+
+def daily_post(ts: datetime = DAILY_POST) -> dict:
+    """Return the daily post as conversations.history lists it."""
+    return {
+        "ts": f"{ts.timestamp():.6f}",
+        "bot_id": "B0BOT",
+        "blocks": [{"type": "actions", "block_id": "FASTEST_ARRIVAL"}],
+    }
+
+
+def shortcut_client(messages: list[dict]) -> AsyncMock:
+    """Return a client whose channel history holds these messages."""
+    client = AsyncMock()
+    client.views_open.return_value = {"ok": True, "view": {"id": "V1"}}
+    client.conversations_history.return_value = {"ok": True, "messages": messages}
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
+    return client
+
+
+@pytest.mark.asyncio
+async def test_shortcut_records_the_arrival_on_todays_post(database: Engine, settings: Settings) -> None:
+    """The global shortcut announces the arrival in the daily post's thread and says so in its modal."""
+    settings.output_channel = "C0OUT"
+    # a broadcast thread reply is listed in the history too, but is not the daily post
+    broadcast = {**daily_post(PRESSED), "thread_ts": f"{DAILY_POST.timestamp():.6f}", "blocks": []}
+    client = shortcut_client([broadcast, daily_post()])
+
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T1"}, client)
+
+    post = client.chat_postMessage.await_args.kwargs
+    assert (post["channel"], post["thread_ts"]) == ("C0OUT", f"{DAILY_POST.timestamp():.6f}")
+    client.chat_update.assert_awaited_once()
+    assert "出社登録しました" in client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"]
+    with Session(database) as session:
+        assert session.query(ArrivalEvent).one().user_id == "U1"
+
+
+@pytest.mark.asyncio
+async def test_shortcut_without_a_daily_post_records_nothing(database: Engine, settings: Settings) -> None:
+    """Before the daily post (or on a day off) the modal says so and nothing is stored."""
+    settings.output_channel = "C0OUT"
+    client = shortcut_client([])
+
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T1"}, client)
+
+    assert client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"] == bot.NO_DAILY_POST
+    client.chat_postMessage.assert_not_awaited()
+    with Session(database) as session:
+        assert session.query(ArrivalEvent).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_shortcut_tells_a_second_arrival_it_is_already_recorded(database: Engine, settings: Settings) -> None:
+    """A press after the day's arrival gets the same reply as the button, in the modal."""
+    settings.output_channel = "C0OUT"
+    client = shortcut_client([daily_post()])
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T1"}, client)
+
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T2"}, client)
+
+    assert client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"] == bot.ALREADY_ARRIVED
+    assert client.chat_postMessage.await_count == 1

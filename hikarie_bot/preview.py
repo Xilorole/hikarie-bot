@@ -10,7 +10,7 @@ import random
 import sys
 import urllib.parse
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -25,19 +25,21 @@ from sqlalchemy.orm import Session
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import JST
 from hikarie_bot.db_data.items import WEEKLY_PASS, offers
-from hikarie_bot.engine import BadgeEngine
+from hikarie_bot.engine import ArrivalResult, BadgeEngine, TeamProgress
 from hikarie_bot.modals import (
     achievement_view,
     initial_message,
     item_pick_view,
     item_picked_message,
     item_review_view,
+    notice_view,
     point_get_message,
     registry_message,
     render,
 )
 from hikarie_bot.picks import held_notice, picked_notice
 from hikarie_bot.settings import get_settings
+from hikarie_bot.usage import describe_usage, last_full_week, usage_report
 from hikarie_bot.utils import is_jp_bizday, leveled_up
 
 BLOCK_KIT_BUILDER_URL = "https://app.slack.com/block-kit-builder/{workspace_id}#{payload}"
@@ -81,13 +83,23 @@ class Preview:
     render: Callable[[PreviewContext], dict[str, Any] | None]
 
 
+def _team(context: PreviewContext, hour: int = 23) -> TeamProgress:
+    """Return the week's progress at an hour of the reference day, shown even before the team goal applies."""
+    return context.engine.week_progress(context.reference.replace(hour=hour, minute=0))
+
+
+def _point_get_blocks(context: PreviewContext, arrival: ArrivalResult) -> dict[str, Any]:
+    outlook = replace(context.engine.outlook(arrival), team=context.engine.week_progress(arrival.time))
+    return {"blocks": render(point_get_message(arrival, outlook))}
+
+
 def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
     arrival = None if user_id is None else context.engine.arrival_of(user_id, context.reference.date())
-    return None if arrival is None else {"blocks": render(point_get_message(arrival))}
+    return None if arrival is None else _point_get_blocks(context, arrival)
 
 
 def _registry(context: PreviewContext) -> dict[str, Any]:
-    return {"blocks": render(registry_message(context.engine.arrivals_on(context.reference.date())))}
+    return {"blocks": render(registry_message(context.engine.arrivals_on(context.reference.date()), _team(context)))}
 
 
 def _point_get_item(context: PreviewContext) -> dict[str, Any] | None:
@@ -99,7 +111,7 @@ def _point_get_item(context: PreviewContext) -> dict[str, Any] | None:
         ),
         None,
     )
-    return None if arrival is None else {"blocks": render(point_get_message(arrival))}
+    return None if arrival is None else _point_get_blocks(context, arrival)
 
 
 def _item_pick(context: PreviewContext) -> dict[str, Any]:
@@ -127,8 +139,21 @@ def _achievement(context: PreviewContext) -> dict[str, Any]:
     return achievement_view(context.engine, context.user_id, jst_datetime=context.reference).to_dict()
 
 
+def _arrive_shortcut(_context: PreviewContext) -> dict[str, Any]:
+    return notice_view("出社登録しました。<#C0PREVIEW> の今日の投稿のスレッドで確認できます")
+
+
+def _weekly_usage(context: PreviewContext) -> dict[str, Any]:
+    text = describe_usage(usage_report(context.engine, last_full_week(context.reference.date())))
+    return {"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]}
+
+
 PREVIEWS = [
-    Preview("initial_message", "毎朝の出社確認メッセージ", lambda _: {"blocks": render(initial_message())}),
+    Preview(
+        "initial_message",
+        "毎朝の出社確認メッセージ",
+        lambda context: {"blocks": render(initial_message(_team(context, hour=6)))},
+    ),
     Preview("registry_message", "出社登録後に更新される出社確認メッセージ", _registry),
     Preview(
         "point_get_fastest",
@@ -150,6 +175,8 @@ PREVIEWS = [
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
     Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
     Preview("item_review_held", "期限付きアイテムを持っていて選べない日のモーダル", _item_review_held),
+    Preview("arrive_shortcut", "ショートカットから出社登録したときのモーダル", _arrive_shortcut),
+    Preview("weekly_usage", "ログチャンネルに毎週送る利用状況", _weekly_usage),
     Preview("item_picked_message", "アイテム獲得をスレッドに知らせるメッセージ", _item_picked),
 ]
 PREVIEW_NAMES = [preview.name for preview in PREVIEWS]

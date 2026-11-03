@@ -32,6 +32,7 @@ uv run alembic upgrade head && uv run alembic revision --autogenerate --rev-id <
 - Offline commands need no Slack token:
   - `uv run python -m hikarie_bot preview --workspace-id T0000`: message mocks from synthetic data (without `--workspace-id` it calls `auth.test`).
   - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and `OUTPUT_CHANNEL`).
+  - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot stats`: the weekly usage (counts only) that the bot posts to the log channel on Mondays.
 - Never run the bot locally with the production app's tokens: Socket Mode would take button presses away from production. Use `slack run` (dev app, `.env.dev`).
 - CI runs `uv run pytest -n auto`, `uv run ruff check .` and `uv run ruff format --check .`. pyright is installed but not enforced and has existing errors.
 - Regenerate `uv.lock` with the uv version pinned in the `Dockerfile` (`uvx --from uv==<version> uv lock`).
