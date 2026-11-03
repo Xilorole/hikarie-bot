@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.14"
+# dependencies = ["numpy>=2", "pillow>=11"]
+# ///
 """Cut a generated 4x4 item sheet into one 128x128 icon per item, each centred in its own square.
 
 The sheet is a white-background grid of 16 items (see the cell order in CELLS). Every item is
@@ -6,12 +10,13 @@ its cell edge is kept whole and a neighbour's overhang is left out. The item is 
 centre of its bounding box is the centre of its square, scaled to 128x128 and cut to a rounded
 square (the corners are transparent).
 
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py assets/items/sources/sheet-2.png assets/items
+Its dependencies are declared inline (PEP 723), so `uv run` runs it in its own environment.
+
+    uv run scripts/cut_item_icons.py assets/items/sources/sheet-2.png assets/items
 
 Naming items after the output directory writes only those icons, e.g. one item from a newer sheet:
 
-    uv run --with pillow --with numpy python scripts/cut_item_icons.py \
-        assets/items/sources/sheet-3.png assets/items dice
+    uv run scripts/cut_item_icons.py assets/items/sources/sheet-3.png assets/items dice
 """
 
 import sys
