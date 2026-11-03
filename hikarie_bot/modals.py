@@ -500,7 +500,7 @@ def badge_type_card(
 ) -> dict:
     """Return a badge type's card.
 
-    The subtitle counts the earned badges and their points; the body lists the earned ones, earliest first, as
+    The subtitle counts the earned badges and their points; the body lists the earned ones, newest first, as
     "*name* <score>pt x<count>", and after a blank line the unearned names (never their conditions).
     Kiribans have no fixed total: only the taken ones are listed, with how far the next one is.
     A body holds at most CARD_BODY_MAX characters: the oldest earned badges that do not fit are folded into
@@ -523,7 +523,8 @@ def badge_type_card(
         older_points = sum(badge.score * user_badges[badge.id].count for badge in older)
         summary = [f"ほか{len(older)}個（計 {older_points}pt）"] if older else []
         groups = [
-            [*summary, *(line(badge) for badge in earned[folded:])],
+            # newest first, so the folded older ones come last
+            [*(line(badge) for badge in reversed(earned[folded:])), *summary],
             # " / " between them: some names contain 、 themselves
             [f"未獲得: {' / '.join(badge.message for badge in unearned)}"] if unearned else [],
             [_kiriban_status_text(arrival_count, next_kiriban)] if kiriban else [],

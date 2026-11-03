@@ -686,5 +686,8 @@ def test_every_badge_card_fits_slack_body_limit() -> None:
     bodies = {block["title"]["text"]: block["body"]["text"] for block in view["blocks"] if block["type"] == "card"}
     assert all(len(body) <= 200 for body in bodies.values())
     kiriban = bodies["*特定の出社登録の回数で付与される*"]
-    assert re.match(r"ほか\d+個（計 \d+pt）\n", kiriban)
+    earned = kiriban.split("\n\n")[0].split("\n")
+    assert re.fullmatch(r"ほか\d+個（計 \d+pt）", earned[-1])  # the folded older ones come last
+    numbers = [int(re.match(r"\*(\d+)番目", line).group(1)) for line in earned[:-1]]
+    assert numbers == sorted(numbers, reverse=True)  # newest first
     assert kiriban.endswith("回")  # the next kiriban always shows
