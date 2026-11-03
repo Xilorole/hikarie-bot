@@ -438,7 +438,7 @@ Badges = [
     ),
     BadgeData(
         id=1806,
-        message="今夜は:yakiniku:",
+        message="今夜は焼肉",
         condition="11:29に出社した",
         level=3,
         score=4,

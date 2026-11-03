@@ -53,3 +53,12 @@ def test_last_full_week_is_the_monday_before_this_week() -> None:
     """On any day, the report covers the previous Monday to Sunday."""
     assert last_full_week(date(2025, 6, 16)) == WEEK
     assert last_full_week(date(2025, 6, 22)) == WEEK
+
+
+def test_a_week_without_arrivals_still_draws_one_cell() -> None:
+    """A bar of spaces renders as an empty inline code in Slack, so an empty week keeps one cell."""
+    engine = compute_in_order(("U1", at(WEEK)))
+
+    text = describe_usage(usage_report(engine, WEEK, weeks=2))
+
+    assert f"`{WEEK - timedelta(weeks=1):%m/%d}` `█         ` 0回 / 0人" in text

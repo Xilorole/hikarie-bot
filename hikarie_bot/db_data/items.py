@@ -36,11 +36,6 @@ class ItemData:
     effect: str
     duration_bizdays: int | None = None
 
-    @property
-    def label(self) -> str:
-        """Return the emoji and the name."""
-        return f"{self.emoji} {self.name}"
-
 
 OMAMORI = "omamori"
 ID_CARD = "id_card"

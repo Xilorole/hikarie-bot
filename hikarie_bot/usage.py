@@ -88,12 +88,14 @@ def describe_usage(report: UsageReport) -> str:
     week, previous = report.week, report.previous
     end = week.start + timedelta(days=6)
     peak = max((usage.arrivals for usage in report.trend), default=0) or 1
+    # at least one cell: a bar of spaces only renders as an empty inline code in Slack
     trend = "\n".join(
-        f"`{usage.start:%m/%d}` `{'█' * round(10 * usage.arrivals / peak):<10}` {usage.arrivals}回 / {usage.users}人"
+        f"`{usage.start:%m/%d}` `{'█' * max(1, round(10 * usage.arrivals / peak)):<10}`"
+        f" {usage.arrivals}回 / {usage.users}人"
         for usage in report.trend
     )
     return (
-        f":bar_chart: *利用状況 {week.start:%Y-%m-%d} 〜 {end:%m-%d}*\n"
+        f"*利用状況 {week.start:%Y-%m-%d} 〜 {end:%m-%d}*\n"
         f"• 出社登録: *{week.arrivals}回* (前週比 {_change(week.arrivals, previous.arrivals)})\n"
         f"• 利用した人: *{week.users}人* (前週比 {_change(week.users, previous.users)})"
         f" · 1人あたり {week.per_user:.1f}回\n"
