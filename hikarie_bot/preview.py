@@ -10,14 +10,13 @@ import random
 import sys
 import urllib.parse
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
 import asyncclick as click
 from loguru import logger
-from slack_sdk import WebClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
@@ -25,22 +24,27 @@ from sqlalchemy.orm import Session
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import JST
 from hikarie_bot.db_data.items import WEEKLY_PASS, offers
-from hikarie_bot.engine import BadgeEngine
+from hikarie_bot.engine import ArrivalResult, BadgeEngine, Outlook, TeamProgress
 from hikarie_bot.modals import (
     achievement_view,
+    goals_message,
+    goals_text,
     initial_message,
     item_pick_view,
     item_picked_message,
     item_review_view,
+    notice_view,
     point_get_message,
     registry_message,
     render,
 )
 from hikarie_bot.picks import held_notice, picked_notice
 from hikarie_bot.settings import get_settings
+from hikarie_bot.usage import describe_usage, last_full_week, usage_report
 from hikarie_bot.utils import is_jp_bizday, leveled_up
 
-BLOCK_KIT_BUILDER_URL = "https://app.slack.com/block-kit-builder/{workspace_id}#{payload}"
+# Without a workspace ID the builder opens in the workspace the browser is signed in to; an unknown ID fails.
+BLOCK_KIT_BUILDER_URL = "https://app.slack.com/block-kit-builder"
 
 SYNTHETIC_START = datetime(2025, 4, 7, tzinfo=JST)
 SYNTHETIC_MIN_DAYS = 15
@@ -50,10 +54,11 @@ SYNTHETIC_ATTENDANCE_RATE = 0.7
 LEVEL_UP_USER = "U0PREVIEWL"
 
 
-def create_block_kit_url(payload: dict[str, Any], workspace_id: str) -> str:
+def create_block_kit_url(payload: dict[str, Any], workspace_id: str | None = None) -> str:
     """Create a Block Kit Builder URL for a message (``{"blocks": ...}``) or a view payload."""
     encoded = urllib.parse.quote(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
-    return BLOCK_KIT_BUILDER_URL.format(workspace_id=workspace_id, payload=encoded)
+    workspace = f"/{workspace_id}" if workspace_id else ""
+    return f"{BLOCK_KIT_BUILDER_URL}{workspace}#{encoded}"
 
 
 def create_clickable_link(url: str, display_text: str) -> str:
@@ -81,13 +86,32 @@ class Preview:
     render: Callable[[PreviewContext], dict[str, Any] | None]
 
 
+def _team(context: PreviewContext, hour: int = 23) -> TeamProgress:
+    """Return the week's progress at an hour of the reference day, shown even before the team goal applies."""
+    return context.engine.week_progress(context.reference.replace(hour=hour, minute=0))
+
+
+def _point_get_blocks(_context: PreviewContext, arrival: ArrivalResult) -> dict[str, Any]:
+    return {"blocks": render(point_get_message(arrival))}
+
+
+def _outlook(context: PreviewContext, arrival: ArrivalResult) -> Outlook:
+    """Return the arrival's outlook with the week's progress, shown even before the team goal applies."""
+    return replace(context.engine.outlook(arrival), team=context.engine.week_progress(arrival.time))
+
+
+def _arrival_goals(context: PreviewContext) -> dict[str, Any] | None:
+    arrival = context.engine.arrival_of(context.user_id, context.reference.date())
+    return None if arrival is None else {"blocks": render(goals_message(_outlook(context, arrival)))}
+
+
 def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
     arrival = None if user_id is None else context.engine.arrival_of(user_id, context.reference.date())
-    return None if arrival is None else {"blocks": render(point_get_message(arrival))}
+    return None if arrival is None else _point_get_blocks(context, arrival)
 
 
 def _registry(context: PreviewContext) -> dict[str, Any]:
-    return {"blocks": render(registry_message(context.engine.arrivals_on(context.reference.date())))}
+    return {"blocks": render(registry_message(context.engine.arrivals_on(context.reference.date()), _team(context)))}
 
 
 def _point_get_item(context: PreviewContext) -> dict[str, Any] | None:
@@ -99,7 +123,7 @@ def _point_get_item(context: PreviewContext) -> dict[str, Any] | None:
         ),
         None,
     )
-    return None if arrival is None else {"blocks": render(point_get_message(arrival))}
+    return None if arrival is None else _point_get_blocks(context, arrival)
 
 
 def _item_pick(context: PreviewContext) -> dict[str, Any]:
@@ -124,11 +148,30 @@ def _item_picked(context: PreviewContext) -> dict[str, Any]:
 
 
 def _achievement(context: PreviewContext) -> dict[str, Any]:
-    return achievement_view(context.engine, context.user_id, jst_datetime=context.reference).to_dict()
+    now = context.reference.replace(hour=18)
+    outlook = replace(context.engine.status_outlook(context.user_id, now), team=context.engine.week_progress(now))
+    return achievement_view(context.engine, context.user_id, jst_datetime=now, outlook=outlook)
+
+
+def _arrive_shortcut(context: PreviewContext) -> dict[str, Any]:
+    text = "出社登録しました。<#C0PREVIEW> の今日の投稿のスレッドに記録しています"
+    arrival = context.engine.arrival_of(context.user_id, context.reference.date())
+    if arrival is not None:
+        text += f"\n\n*つぎのもくひょう*\n{goals_text(_outlook(context, arrival))}"
+    return notice_view(text)
+
+
+def _weekly_usage(context: PreviewContext) -> dict[str, Any]:
+    text = describe_usage(usage_report(context.engine, last_full_week(context.reference.date())))
+    return {"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]}
 
 
 PREVIEWS = [
-    Preview("initial_message", "毎朝の出社確認メッセージ", lambda _: {"blocks": render(initial_message())}),
+    Preview(
+        "initial_message",
+        "毎朝の出社確認メッセージ",
+        lambda context: {"blocks": render(initial_message(_team(context, hour=6)))},
+    ),
     Preview("registry_message", "出社登録後に更新される出社確認メッセージ", _registry),
     Preview(
         "point_get_fastest",
@@ -146,10 +189,13 @@ PREVIEWS = [
         lambda context: _point_get(context, context.level_up_user_id),
     ),
     Preview("point_get_item", "アイテム効果つきのポイント獲得メッセージ", _point_get_item),
-    Preview("achievement_view", "実績確認モーダル", _achievement),
+    Preview("arrival_goals", "出社登録の直後に本人にだけ送る、つぎのもくひょう (ephemeral)", _arrival_goals),
+    Preview("achievement_view", "ステータスモーダル (旧: 実績確認モーダル)", _achievement),
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
     Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
     Preview("item_review_held", "期限付きアイテムを持っていて選べない日のモーダル", _item_review_held),
+    Preview("arrive_shortcut", "ショートカットから出社登録したときのモーダル", _arrive_shortcut),
+    Preview("weekly_usage", "ログチャンネルに毎週送る利用状況", _weekly_usage),
     Preview("item_picked_message", "アイテム獲得をスレッドに知らせるメッセージ", _item_picked),
 ]
 PREVIEW_NAMES = [preview.name for preview in PREVIEWS]
@@ -229,20 +275,17 @@ def _read_only_url(database_url: str) -> str:
     return database_url
 
 
-def resolve_workspace_id(workspace_id: str | None) -> str:
-    """Resolve the team ID from the option, the environment, or auth.test (read-only)."""
-    settings = get_settings()
-    if workspace_id := workspace_id or settings.slack_workspace_id:
-        return workspace_id
-    if settings.slack_bot_token:
-        return WebClient(token=settings.slack_bot_token).auth_test()["team_id"]
-    msg = "Pass --workspace-id, or set SLACK_WORKSPACE_ID or SLACK_BOT_TOKEN"
-    raise click.ClickException(msg)
+def resolve_workspace_id(workspace_id: str | None) -> str | None:
+    """Return the team ID from the option or SLACK_WORKSPACE_ID, or None to leave it out of the URLs."""
+    return workspace_id or get_settings().slack_workspace_id or None
 
 
 @click.command()
 @click.argument("names", nargs=-1, type=click.Choice(PREVIEW_NAMES))
-@click.option("--workspace-id", help="Slack team ID used in the Block Kit Builder URL (e.g. T0123456).")
+@click.option(
+    "--workspace-id",
+    help="Slack team ID to put in the Block Kit Builder URLs (default: none, which opens the signed-in workspace).",
+)
 @click.option("--database-url", help="Render from this database (read-only) instead of synthetic data.")
 @click.option("--user-id", help="With --database-url: the user to render user-specific messages for.")
 @click.option(

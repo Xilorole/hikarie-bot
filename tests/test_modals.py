@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import date, datetime, timedelta
 from textwrap import dedent
@@ -5,12 +6,15 @@ from textwrap import dedent
 from freezegun import freeze_time
 
 from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, JST, NOT_ACHIEVED_BADGE_IMAGE_URL
-from hikarie_bot.db_data import Badges
-from hikarie_bot.engine import ArrivalResult
+from hikarie_bot.db_data.items import ITEMS, TREAT
+from hikarie_bot.engine import ArrivalResult, ItemEffect, Outlook, TeamProgress
 from hikarie_bot.modals import (
     achievement_view,
     attendance_by_day,
+    goals_message,
     initial_message,
+    item_picked_text,
+    outlook_lines,
     point_get_message,
     registry_message,
     render,
@@ -46,7 +50,7 @@ def test_initial_message() -> None:
                     "action_id": "CHECK_ACHIEVEMENT",
                     "text": {
                         "emoji": True,
-                        "text": "実績を確認",
+                        "text": "ステータス",
                         "type": "plain_text",
                     },
                     "type": "button",
@@ -87,7 +91,7 @@ def test_registry_message() -> None:
                     "action_id": "CHECK_ACHIEVEMENT",
                     "text": {
                         "emoji": True,
-                        "text": "実績を確認",
+                        "text": "ステータス",
                         "type": "plain_text",
                     },
                     "type": "button",
@@ -141,7 +145,7 @@ def test_registry_message_2() -> None:
                     "action_id": "CHECK_ACHIEVEMENT",
                     "text": {
                         "emoji": True,
-                        "text": "実績を確認",
+                        "text": "ステータス",
                         "type": "plain_text",
                     },
                     "type": "button",
@@ -250,80 +254,50 @@ def test_point_get_message_zero_progress() -> None:
     assert "しんこうど: `█         ` | *  0%* (*+22%*)\n" in message[2]["elements"][0]["text"]
 
 
-@only_badge_types(1)
-def test_achievement_view() -> None:
-    """Test the achievement view."""
-    engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
+def cards(view: dict) -> dict[str, dict]:
+    """Return the badge cards of a status view by their title."""
+    return {block["title"]["text"]: block for block in view["blocks"] if block["type"] == "card"}
 
-    view = achievement_view(
-        engine,
-        user_id="test_user",
+
+@only_badge_types(1, 3)
+def test_badge_card_lists_earned_with_first_date_then_unearned() -> None:
+    """Earned badges come first as "*name* @<first date>; <score>pt x<count>"; the unearned follow by name only."""
+    engine = compute_in_order(*(("test_user", datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST)) for i in range(5)))
+
+    view = achievement_view(engine, user_id="test_user", jst_datetime=datetime(2024, 1, 5, 18, 0, tzinfo=JST))
+
+    by_title = cards(view)
+    assert view["title"]["text"] == "ステータス"
+    assert set(by_title) == {"*出社登録BOTを初めて利用した*", "*たくさん出社登録をした*"}
+    count = by_title["*たくさん出社登録をした*"]
+    assert count["subtitle"]["text"] == "1 / 3 獲得・計 3pt"
+    assert (
+        count["body"]["text"] == "*出社登録ビギナー* @2024/01/05; 3pt x1\n\n未獲得: 出社登録マスター / 出社登録フリーク"
     )
-    expected_blocks = [
-        {"text": {"text": "*1系 : 出社登録BOTを初めて利用した*", "type": "mrkdwn"}, "type": "section"},
-        {
-            "elements": [
-                {
-                    "alt_text": "【はじめての出社登録】出社登録BOTを初めて利用した @ 2024-01-01",
-                    "image_url": "https://gist.github.com/user-attachments/assets/d9bddfb0-199c-4252-b821-52a62954811f",
-                    "type": "image",
-                }
-            ],
-            "type": "context",
-        },
-    ]
-    rendered_blocks = [block.to_dict() for block in view.blocks]
-    for expected_block in expected_blocks:
-        assert expected_block in rendered_blocks
+    assert "icon" not in count
+    assert by_title["*出社登録BOTを初めて利用した*"]["body"]["text"] == "*はじめての出社登録* @2024/01/01; 2pt x1"
+
+
+@only_badge_types(5)
+def test_badge_card_counts_a_badge_earned_again() -> None:
+    """A badge earned on several days shows its first date and how often it was earned."""
+    engine = compute_in_order(*(("test_user", datetime(2024, 1, 1 + i, 8, 0, 0, tzinfo=JST)) for i in range(3)))
+
+    card = cards(achievement_view(engine, user_id="test_user"))["*時間帯による出社登録*"]
+
+    assert card["body"]["text"].startswith("*朝型出社* @2024/01/01; 3pt x3\n\n未獲得: ")
+    assert card["subtitle"]["text"] == "1 / 4 獲得・計 9pt"
 
 
 @only_badge_types(6)
-def test_achievement_message_type_6() -> None:
-    """Test the achievement message with badge_types_to_check patched to [6]."""
-    engine = compute_in_order(("test_user", datetime(2024, 1, 1, 7, 0, 0, tzinfo=JST)))
-
-    view = achievement_view(
-        engine,
-        user_id="test_user",
-    )
-
-    rendered = [block.to_dict() for block in view.blocks]
-    badge_type_sections = [
-        block
-        for block in rendered
-        if block.get("type") == "section" and "*6系" in block.get("text", {}).get("text", "")
-    ]
-    assert badge_type_sections, "Badge type 6 section should be present"
-    badge_type_1_sections = [
-        block
-        for block in rendered
-        if block.get("type") == "section" and "*1系" in block.get("text", {}).get("text", "")
-    ]
-    assert not badge_type_1_sections, "Badge type 1 section should not be present"
-
-
-@only_badge_types(6)
-def test_achievement_message_6xxx_taken_logic() -> None:
-    """Test 6XXX badge logic: taken icon if any user has it, not achieved if none."""
-    badge_6xxx = next(badge for badge in Badges if badge.badge_type_id == 6 and 6000 <= badge.id < 7000)
-    assert badge_6xxx is not None, "Test requires a 6XXX badge of type 6"
-
-    # at least 10 arrivals to get the 6XXX badge
+def test_kiriban_card_lists_only_the_taken_ones_and_the_next() -> None:
+    """Kiribans have no fixed total: the card lists the taken ones and how far the next one is."""
     engine = compute_in_order(*(("test_user", datetime(2024, 1, 1 + i, 7, 0, 0, tzinfo=JST)) for i in range(10)))
 
-    # 取得したバッジが表示されていることのテスト
-    view = achievement_view(engine, user_id="test_user")
-    rendered = [block.to_dict() for block in view.blocks]
-    found = False
-    for block in rendered:
-        if block.get("type") == "context":
-            for element in block.get("elements", []):
-                if element.get("type") == "image" and element.get("alt_text", "").startswith(
-                    f"【{badge_6xxx.message}】"
-                ):
-                    assert element["image_url"] == ACHIEVED_BADGE_IMAGE_URL
-                    found = True
-    assert found, "Should find taken icon for 6XXX badge when another user has it"
+    card = cards(achievement_view(engine, user_id="test_user"))["*特定の出社登録の回数で付与される*"]
+
+    assert card["subtitle"]["text"] == "1個 獲得・計 4pt"
+    assert card["body"]["text"] == "*10番目のお客様* @2024/01/10; 4pt x1\n\n次のキリ番 11回目まで あと1回"
 
 
 def test_achievement_view_attendance_history() -> None:
@@ -359,7 +333,7 @@ def test_achievement_view_attendance_history() -> None:
         view = achievement_view(engine, user_id=test_user_id)
 
         # Get the rendered blocks
-        rendered_blocks = [block.to_dict() for block in view.blocks]
+        rendered_blocks = view["blocks"]
 
         # Check that attendance history header exists
         header_blocks = [block for block in rendered_blocks if block.get("type") == "header"]
@@ -460,7 +434,7 @@ def test_create_github_style_display() -> None:
         view = achievement_view(engine, user_id=test_user_id)
 
         # Check that blocks were created
-        rendered_blocks = [block.to_dict() for block in view.blocks]
+        rendered_blocks = view["blocks"]
 
         context_blocks = [
             block
@@ -515,10 +489,10 @@ def test_achievement_view_attendance_history_simple() -> None:
         view = achievement_view(engine, user_id=test_user_id)
 
         # Check that blocks were created
-        assert len(view.blocks) > 0, "View should have blocks"
+        assert len(view["blocks"]) > 0, "View should have blocks"
 
         # Convert to dict for easier testing
-        rendered_blocks = [block.to_dict() for block in view.blocks]
+        rendered_blocks = view["blocks"]
 
         # Check for header block containing attendance history
         header_found = any(
@@ -569,7 +543,7 @@ def test_attendance_data_generation() -> None:
 
 
 @only_badge_types(6)
-def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals() -> None:
+def test_kiriban_card_shows_the_next_kiriban_of_all_arrivals() -> None:
     """Someone without kiribans still sees the next kiriban to be reached by everyone's arrivals."""
     # the 10th and 11th arrivals are kiribans, taken by other users
     engine = compute_in_order(
@@ -577,12 +551,10 @@ def test_unachieved_list_shows_the_next_kiriban_of_all_arrivals() -> None:
         ("test_user", datetime(2024, 1, 13, 8, 0, 0, tzinfo=JST)),
     )
 
-    view = achievement_view(engine, user_id="test_user")
+    card = cards(achievement_view(engine, user_id="test_user"))["*特定の出社登録の回数で付与される*"]
 
-    texts = [block.to_dict().get("text", {}).get("text", "") for block in view.blocks]
-    assert any("[6003] 20番目のお客様" in text for text in texts)  # 13 arrivals so far: 20 is next
-    assert not any("[6001]" in text or "[6002]" in text for text in texts)
-    assert "次のキリ番まで: あと *7回* (20回目)" in texts
+    assert card["subtitle"]["text"] == "0個 獲得・計 0pt"
+    assert card["body"]["text"] == "次のキリ番 20回目まで あと7回"
 
 
 def test_registry_message_lists_arrivals_by_time() -> None:
@@ -604,3 +576,98 @@ def test_attendance_history_counts_the_first_monday_of_the_window() -> None:
 
     assert min(attendance) == date(2024, 1, 15)
     assert attendance[date(2024, 1, 15)] is True
+
+
+def arrival_with(badge_ids: list[int], rank: int = 2, previous_score: int = 30, score_sum: int = 3) -> ArrivalResult:
+    """Return a hand-built arrival (lv2 throughout unless the scores say otherwise)."""
+    return ArrivalResult(
+        id=100,
+        user_id="test_user",
+        time=datetime(2026, 11, 10, 9, 0, tzinfo=JST),
+        rank=rank,
+        badge_ids=badge_ids,
+        score_sum=score_sum,
+        previous_score=previous_score,
+        current_score=previous_score + score_sum,
+    )
+
+
+def test_point_get_message_has_no_goals() -> None:
+    """The thread post has no goals (they go to the user alone) and no rank of the day."""
+    message = render(point_get_message(arrival_with([501])))
+
+    assert "人目" not in message[0]["text"]["text"]
+    assert "つぎのもくひょう" not in json.dumps(message, ensure_ascii=False)
+
+
+def test_goals_message_lists_what_to_aim_for() -> None:
+    """The ephemeral message lists the straight flash, the next count badge and the week; no kiriban, no emoji."""
+    outlook = Outlook(
+        streak=3, next_count_badge=(302, 4), next_kiriban=(3443, 12), team=TeamProgress(date(2026, 11, 9), 12, 20)
+    )
+
+    assert render(goals_message(outlook))[0]["text"]["text"] == (
+        "*つぎのもくひょう*\n"
+        "ストレートフラッ出社まで あと2日（3日連続）\n"
+        "「出社登録マスター」まで あと4回\n"
+        "今週のみんなの出社 *12* / 20回。届いたら、そのあとの出社は +1pt"
+    )
+    assert goals_message(Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=None)) == []
+
+
+def test_status_streak_before_todays_arrival() -> None:
+    """Before arriving today the status shows the streak as still alive and what arriving today makes it."""
+    outlook = Outlook(streak=2, next_count_badge=None, next_kiriban=None, team=None, streak_pending=True)
+
+    assert outlook_lines(outlook) == ["ストレートフラッ出社まで あと3日（2日連続）"]
+
+
+def test_outlook_lines_leave_out_a_streak_with_nothing_to_reach() -> None:
+    """A streak shows from its second day (or its first, before today's arrival) until the straight flash."""
+    assert outlook_lines(Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=None)) == []
+    assert outlook_lines(Outlook(streak=7, next_count_badge=None, next_kiriban=None, team=None)) == []
+    pending = Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=None, streak_pending=True)
+    assert outlook_lines(pending) == ["ストレートフラッ出社まで あと4日（1日連続）"]
+
+
+def test_daily_post_shows_the_team_progress() -> None:
+    """The morning post and the updated post end with the week's progress; without it they are unchanged."""
+    team = TeamProgress(date(2026, 11, 9), 21, 20)
+    text = "今週のみんなの出社 *21* / 20回。達成したので、今週これからの出社は +1pt"
+
+    assert render(initial_message(team))[-1] == {
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": text}],
+    }
+    assert render(registry_message([], team))[-1]["elements"][0]["text"] == text
+    assert len(initial_message()) == 2
+
+
+def test_item_names_are_shown_without_emoji() -> None:
+    """The breakdown and the pick announcement name the item without its emoji."""
+    arrival = arrival_with([501])
+    arrival.item_effects = [ItemEffect(TREAT, 1, giver="U2")]
+    text = render(point_get_message(arrival))[2]["elements"][0]["text"]
+
+    assert f" - {ITEMS[TREAT].name} (<@U2>さんから):*+1pt*" in text
+    assert ITEMS[TREAT].emoji not in text
+    assert ITEMS[TREAT].emoji not in item_picked_text("U1", ITEMS[TREAT])
+
+
+def test_status_top_is_one_list_with_the_goals_indented() -> None:
+    """Level, points and the goals heading are list items; the goals sit one level below, the count in bold."""
+    engine = compute_in_order(("test_user", datetime(2026, 11, 9, 9, 0, tzinfo=JST)))
+
+    view = achievement_view(engine, user_id="test_user", jst_datetime=datetime(2026, 11, 9, 18, 0, tzinfo=JST))
+
+    top = view["blocks"][0]
+    assert top["type"] == "rich_text"
+    items = [(item["indent"], item["elements"][0]["elements"]) for item in top["elements"]]
+    assert [indent for indent, _ in items] == [0, 0, 0, 1, 1]
+    assert items[2][1] == [{"type": "text", "text": "つぎのもくひょう", "style": {"bold": True}}]
+    team = items[4][1]
+    assert team[:3] == [
+        {"type": "text", "text": "今週のみんなの出社 "},
+        {"type": "text", "text": "1", "style": {"bold": True}},
+        {"type": "text", "text": " / 20回。届いたら、そのあとの出社は +1pt"},
+    ]

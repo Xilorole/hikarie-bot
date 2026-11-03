@@ -43,6 +43,7 @@ APPLY_START = {
     badge_type.id: badge_type.apply_start for badge_type in db_data.BadgeTypes if badge_type.apply_start is not None
 }
 KIRIBAN_BADGES = {kiriban.number: kiriban.id for kiriban in KIRIBANS}
+ARRIVAL_COUNT_BADGES = {5: 301, 20: 302, 100: 303}  # a user's arrival count -> its badge
 STRAIGHT_FLASH_LENGTH = 5
 STRAIGHT_FLASH, ROYAL_STRAIGHT_FLASH, ULTRA_ROYAL_STRAIGHT_FLASH = 401, 402, 403
 TAKANAWA_OFFICE_START = datetime(2026, 1, 19, tzinfo=JST)
@@ -51,6 +52,8 @@ ALARM_CLOCK_POINTS = 3
 DASH_SHOES_POINTS = 2
 WEEKLY_PASS_MAX_USES = 3
 TREAT_RECIPIENTS = 3
+TEAM_GOAL_PER_BIZDAY = 4  # the week's goal for everyone's arrivals, per business day of the week
+TEAM_GOAL_BADGE = 2001
 
 
 @dataclass(frozen=True)
@@ -101,6 +104,14 @@ class HeldItem:
         return day <= self.last_day
 
 
+def previous_bizday(day: date) -> date:
+    """Return the business day before a JST day."""
+    current = day - timedelta(days=1)
+    while not is_jp_bizday(current):
+        current -= timedelta(days=1)
+    return current
+
+
 @dataclass
 class Treat:
     """A treat given on a day: the later arrivals that day get a point each, up to TREAT_RECIPIENTS."""
@@ -118,6 +129,44 @@ def next_bizdays(day: date, count: int) -> list[date]:
         if is_jp_bizday(current):
             days.append(current)
     return days
+
+
+def week_start(day: date) -> date:
+    """Return the Monday of a JST day's week."""
+    return day - timedelta(days=day.weekday())
+
+
+def team_goal(monday: date) -> int:
+    """Return the goal for everyone's arrivals in the week from this Monday (scaled by its business days)."""
+    return TEAM_GOAL_PER_BIZDAY * sum(is_jp_bizday(monday + timedelta(days=i)) for i in range(7))
+
+
+@dataclass(frozen=True)
+class TeamProgress:
+    """Everyone's arrivals in a week (Monday to Sunday, JST) so far, against the week's goal."""
+
+    week_start: date
+    count: int
+    goal: int
+
+    @property
+    def reached(self) -> bool:
+        """Whether the goal is reached; every arrival from then on in the week gets the team goal badge."""
+        return self.goal > 0 and self.count >= self.goal
+
+
+@dataclass(frozen=True)
+class Outlook:
+    """What a user can aim for after an arrival: the streak, the next count badge, the next kiriban, the week.
+
+    next_count_badge and next_kiriban are (badge ID or kiriban number, arrivals still to go).
+    """
+
+    streak: int
+    next_count_badge: tuple[int, int] | None
+    next_kiriban: tuple[int, int] | None
+    team: TeamProgress | None
+    streak_pending: bool = False  # a business day not arrived yet: arriving today extends the streak
 
 
 @dataclass
@@ -290,6 +339,61 @@ class BadgeEngine:
         """Return the user's counted arrival on a JST day, if any."""
         return next((result for result in self.arrivals_on(day) if result.user_id == user_id), None)
 
+    def team_progress(self, until: datetime) -> TeamProgress | None:
+        """Return everyone's arrivals in the week of `until` up to and including it, or None before the team goal.
+
+        `until` is an aware datetime; the week runs Monday to Sunday in JST.
+        """
+        return None if until < APPLY_START[20] else self.week_progress(until)
+
+    def week_progress(self, until: datetime) -> TeamProgress:
+        """Return everyone's arrivals in the week of `until` up to and including it, whether or not the goal applies."""
+        until = until.astimezone(JST)
+        monday = week_start(until.date())
+        start = datetime.combine(monday, datetime.min.time(), tzinfo=JST)
+        count = bisect_right(self.times, until) - bisect_left(self.times, start)
+        return TeamProgress(week_start=monday, count=count, goal=team_goal(monday))
+
+    def outlook(self, result: ArrivalResult) -> Outlook:
+        """Return what the user can aim for right after this arrival (later arrivals are not looked at)."""
+        # result.id numbers the arrivals of all users, as the kiribans do
+        return self._outlook(result.user_id, result.time, result.id)
+
+    def status_outlook(self, user_id: str, now: datetime) -> Outlook:
+        """Return what the user can aim for at `now` (an aware datetime), arrived today or not.
+
+        Before today's arrival the streak counts up to the previous business day, as it is still alive.
+        """
+        now = now.astimezone(JST)
+        return self._outlook(user_id, now, bisect_right(self.times, now))
+
+    def _outlook(self, user_id: str, until: datetime, everyone: int) -> Outlook:
+        """Build the outlook from the user's arrivals up to `until` and everyone's arrival count."""
+        user = self.users.get(user_id)
+        times = user.times if user else []
+        own_count = bisect_right(times, until)
+        days = {time.date() for time in times[:own_count]}
+        day = until.date()
+        pending = day not in days and is_jp_bizday(day)
+        if day not in days:
+            day = previous_bizday(day)
+        streak = 0
+        while day in days:
+            streak += 1
+            day = previous_bizday(day)
+        next_count = next(
+            ((badge_id, count - own_count) for count, badge_id in ARRIVAL_COUNT_BADGES.items() if count > own_count),
+            None,
+        )
+        kiriban = next((kiriban for kiriban in KIRIBANS if kiriban.number > everyone), None)
+        return Outlook(
+            streak=streak,
+            next_count_badge=next_count,
+            next_kiriban=(kiriban.number, kiriban.number - everyone) if kiriban else None,
+            team=self.team_progress(until),
+            streak_pending=pending and streak > 0,
+        )
+
     # --- badge rules ---
 
     @staticmethod
@@ -309,7 +413,7 @@ class BadgeEngine:
 
     def _arrival_count(self, user_id: str, time: datetime) -> list[int]:
         count = len(self._before(user_id, self._start_of_day(time) + timedelta(days=1)))
-        return {5: [301], 20: [302], 100: [303]}.get(count, [])
+        return [ARRIVAL_COUNT_BADGES[count]] if count in ARRIVAL_COUNT_BADGES else []
 
     def _straight_flash(self, user_id: str, time: datetime) -> list[int]:
         user = self.users[user_id]
@@ -427,6 +531,11 @@ class BadgeEngine:
             return []
         return [1901] if not self._since(user_id, TAKANAWA_OFFICE_START, time) else []
 
+    def _team_goal(self, _user_id: str, time: datetime) -> list[int]:
+        # this arrival is already counted: the one that reaches the goal gets the badge, as do later ones
+        progress = self.team_progress(time)
+        return [TEAM_GOAL_BADGE] if progress is not None and progress.reached else []
+
     # The badge types the bot awards, by type ID, in evaluation order.
     CHECKERS: ClassVar[dict[int, Callable[[Self, str, datetime], list[int]]]] = {
         1: _welcome,
@@ -442,6 +551,7 @@ class BadgeEngine:
         17: _yearly_specific_day,
         18: _specific_time,
         19: _takanawa_welcome,
+        20: _team_goal,
     }
 
 

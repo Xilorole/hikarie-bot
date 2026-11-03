@@ -112,6 +112,7 @@ async def test_fastest_comes_from_the_rank_not_the_button(database: Engine, cloc
     post = client.chat_postMessage.await_args.kwargs
     assert post["reply_broadcast"] is False
     assert "最速" not in post["text"]
+    assert "人目" not in post["text"]
 
 
 @pytest.mark.asyncio
@@ -129,7 +130,8 @@ async def test_press_again_retries_an_arrival_that_was_not_announced(
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
-    client.chat_postEphemeral.assert_not_awaited()
+    # no refusal: the only ephemeral message is the next goals
+    assert "つぎのもくひょう" in client.chat_postEphemeral.await_args.kwargs["text"]
     with Session(database) as session:
         event = session.query(ArrivalEvent).one()
         assert (event.occurred_at, event.slack_ts) == (PRESSED, "1748822999.000100")
@@ -170,4 +172,97 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
         bot.handle_item_submission,
         bot.handle_item_review,
         bot.handle_reboot,
+        bot.handle_arrive_shortcut,
     }
+
+
+def daily_post(ts: datetime = DAILY_POST) -> dict:
+    """Return the daily post as conversations.history lists it."""
+    return {
+        "ts": f"{ts.timestamp():.6f}",
+        "bot_id": "B0BOT",
+        "blocks": [{"type": "actions", "block_id": "FASTEST_ARRIVAL"}],
+    }
+
+
+def shortcut_client(messages: list[dict]) -> AsyncMock:
+    """Return a client whose channel history holds these messages."""
+    client = AsyncMock()
+    client.views_open.return_value = {"ok": True, "view": {"id": "V1"}}
+    client.conversations_history.return_value = {"ok": True, "messages": messages}
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
+    return client
+
+
+@pytest.mark.asyncio
+async def test_shortcut_records_the_arrival_on_todays_post(database: Engine, settings: Settings) -> None:
+    """The global shortcut announces the arrival in the daily post's thread and says so in its modal."""
+    settings.output_channel = "C0OUT"
+    # a broadcast thread reply is listed in the history too, but is not the daily post
+    broadcast = {**daily_post(PRESSED), "thread_ts": f"{DAILY_POST.timestamp():.6f}", "blocks": []}
+    client = shortcut_client([broadcast, daily_post()])
+
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T1"}, client)
+
+    post = client.chat_postMessage.await_args.kwargs
+    assert (post["channel"], post["thread_ts"]) == ("C0OUT", f"{DAILY_POST.timestamp():.6f}")
+    client.chat_update.assert_awaited_once()
+    reply = client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"]
+    assert reply.startswith("出社登録しました")
+    assert "*つぎのもくひょう*\n「出社登録ビギナー」まで あと4回" in reply
+    client.chat_postEphemeral.assert_not_awaited()  # the modal says it all
+    with Session(database) as session:
+        assert session.query(ArrivalEvent).one().user_id == "U1"
+
+
+@pytest.mark.asyncio
+async def test_shortcut_without_a_daily_post_records_nothing(database: Engine, settings: Settings) -> None:
+    """Before the daily post (or on a day off) the modal says so and nothing is stored."""
+    settings.output_channel = "C0OUT"
+    client = shortcut_client([])
+
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T1"}, client)
+
+    assert client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"] == bot.NO_DAILY_POST
+    client.chat_postMessage.assert_not_awaited()
+    with Session(database) as session:
+        assert session.query(ArrivalEvent).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_shortcut_tells_a_second_arrival_it_is_already_recorded(database: Engine, settings: Settings) -> None:
+    """A press after the day's arrival gets the same reply as the button, in the modal."""
+    settings.output_channel = "C0OUT"
+    client = shortcut_client([daily_post()])
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T1"}, client)
+
+    await bot.handle_arrive_shortcut(AsyncMock(), {"user": {"id": "U1"}, "trigger_id": "T2"}, client)
+
+    assert client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"] == bot.ALREADY_ARRIVED
+    assert client.chat_postMessage.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_next_goals_go_to_the_user_alone_not_the_thread(database: Engine) -> None:
+    """The thread post has no goals; the user gets them in an ephemeral message after the announcement."""
+    client = AsyncMock()
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
+
+    await bot.handle_button_click(AsyncMock(), click("U1"), client)
+
+    assert "つぎのもくひょう" not in client.chat_postMessage.await_args.kwargs["text"]
+    ephemeral = client.chat_postEphemeral.await_args.kwargs
+    assert (ephemeral["channel"], ephemeral["user"]) == ("C0OUT", "U1")
+    assert "「出社登録ビギナー」まで あと4回" in ephemeral["text"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_goals_message_does_not_fail_the_press(database: Engine) -> None:
+    """The arrival is announced before the goals, so a failure to send them is only logged."""
+    client = AsyncMock()
+    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
+    client.chat_postEphemeral.side_effect = RuntimeError("slack is down")
+
+    await bot.handle_button_click(AsyncMock(), click("U1"), client)
+
+    client.chat_update.assert_awaited_once()

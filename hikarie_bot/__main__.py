@@ -12,23 +12,25 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.context.ack.async_ack import AsyncAck
 from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
-from slack_sdk.models.views import View
 from slack_sdk.web.async_client import AsyncWebClient
 
 from hikarie_bot.arrivals import attach_slack_ts, compute_arrivals, record_button_arrival
 from hikarie_bot.constants import JST
 from hikarie_bot.database import get_db
-from hikarie_bot.engine import ArrivalResult
+from hikarie_bot.engine import ArrivalResult, Outlook, TeamProgress
 from hikarie_bot.modals import (
     ActionID,
     BlockID,
     CallbackID,
     ShortcutID,
     achievement_view,
+    goals_message,
+    goals_text,
     item_pick_view,
     item_picked_message,
     item_picked_text,
     item_review_view,
+    notice_view,
     point_get_message,
     registry_message,
     render,
@@ -37,7 +39,7 @@ from hikarie_bot.modals import (
 from hikarie_bot.picks import PickGate, StoredPick, attach_pick_ts, pick_gate, record_pick
 from hikarie_bot.preview import preview
 from hikarie_bot.settings import REQUIRED, get_settings
-from hikarie_bot.slack_helper import schedule_daily_message, send_daily_message
+from hikarie_bot.slack_helper import find_daily_post, schedule_daily_message, schedule_weekly_usage, send_daily_message
 from hikarie_bot.startup import StartupReporter, current_revision, prepare
 from hikarie_bot.sync import (
     CachedSlackSource,
@@ -47,6 +49,7 @@ from hikarie_bot.sync import (
     item_pick_metadata,
     sync_channel,
 )
+from hikarie_bot.usage import describe_usage, last_full_week, usage_report
 
 
 def create_client() -> AsyncWebClient:
@@ -82,6 +85,7 @@ async def start(*, dev: bool = False) -> None:
     if dev:
         await send_daily_message(app.client, settings.output_channel)  # post right away to try the buttons
     schedule_daily_message(app.client, settings.output_channel)
+    schedule_weekly_usage(app.client, settings.log_channel)
 
     await reporter.post(reporter.summary())
 
@@ -118,6 +122,22 @@ async def sync(cache_dir: Path | None, record_dir: Path | None) -> None:
         click.echo(f"synced: {result}")
 
 
+@cli.command()
+@click.option(
+    "--week-of",
+    "week_of",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    help="A day in the week to report (default: last full week).",
+)
+@click.option("--weeks", default=8, show_default=True, help="Weeks in the trend.")
+async def stats(week_of: datetime | None, weeks: int) -> None:
+    """Print the usage of a week from the database (counts only; no Slack token needed)."""
+    with get_db() as session:
+        engine = compute_arrivals(session)
+    week = week_of.date() if week_of else last_full_week(datetime.now(JST).date())
+    click.echo(describe_usage(usage_report(engine, week, weeks)))
+
+
 ARRIVAL_LOCK = asyncio.Lock()
 
 
@@ -128,6 +148,8 @@ class Registration(NamedTuple):
     occurred_at: datetime
     arrival: ArrivalResult
     arrivals_today: list[ArrivalResult]
+    outlook: Outlook
+    team: TeamProgress | None  # the week so far, for the daily post
 
 
 def register_arrival(user_id: str, now: datetime) -> Registration | None:
@@ -143,34 +165,30 @@ def register_arrival(user_id: str, now: datetime) -> Registration | None:
     if arrival is None:  # the day's first event is the one just found, so the engine counts it
         msg = f"no counted arrival for event {event_id}"
         raise RuntimeError(msg)
-    return Registration(event_id, occurred_at, arrival, engine.arrivals_on(today))
+    return Registration(
+        event_id, occurred_at, arrival, engine.arrivals_on(today), engine.outlook(arrival), engine.team_progress(now)
+    )
 
 
-async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Handle the button click event."""
-    await ack()
-    user_id = body["user"]["id"]
-    channel_id = body["channel"]["id"]
-    action_id = body["actions"][0]["action_id"]
-    message_ts = body["message"]["ts"]
-    jst_message_datetime = datetime.fromtimestamp(float(message_ts), JST)
+OUTSIDE_WINDOW = "出社申告は当日の6時から18時までの間にしてください"
+ALREADY_ARRIVED = "本日は既に出社申告を済ませています"
+NO_DAILY_POST = "今日の出社確認の投稿がまだありません（営業日の6時から18時まで）"
 
-    logger.debug(f"user_id: {user_id}, action_id: {action_id}, jst_message_datetime: {jst_message_datetime}")
+
+class Arrival(NamedTuple):
+    """How a press went: why it was refused, or what the user can aim for after the announced arrival."""
+
+    refusal: str | None
+    outlook: Outlook | None = None
+
+
+async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts: str) -> Arrival:
+    """Record and announce an arrival on the daily post; return why it was refused, or its outlook."""
     now = datetime.now(JST)
-
-    # replace the message datetime at 6AM
-    jst_message_datetime_at6 = jst_message_datetime.replace(hour=6, minute=0, second=0, microsecond=0)
-
-    # check if the message was sent within a day
-    # the action is only valid from 6AM to 6PM JST
-    # if not, send a ephemeral message to the user
-    if not (jst_message_datetime_at6 < now < jst_message_datetime_at6 + timedelta(hours=12)):
-        await client.chat_postEphemeral(
-            channel=channel_id,
-            user=user_id,
-            text="出社申告は当日の6時から18時までの間にしてください",
-        )
-        return
+    # the action is only valid from 6AM to 6PM JST of the post's day
+    post_at6 = datetime.fromtimestamp(float(post_ts), JST).replace(hour=6, minute=0, second=0, microsecond=0)
+    if not (post_at6 < now < post_at6 + timedelta(hours=12)):
+        return Arrival(OUTSIDE_WINDOW)
 
     # One press at a time, until it is announced and the daily post is updated: a second press retries an
     # arrival only if it was not announced, and the updates must land in the order the lists were computed,
@@ -179,17 +197,12 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
     async with ARRIVAL_LOCK:
         registration = await asyncio.to_thread(register_arrival, user_id, now)
         if registration is None:
-            await client.chat_postEphemeral(
-                channel=channel_id,
-                user=user_id,
-                text="本日は既に出社申告を済ませています",
-            )
-            return
+            return Arrival(ALREADY_ARRIVED)
 
         point_get = point_get_message(registration.arrival)
         response = await client.chat_postMessage(
             channel=channel_id,
-            thread_ts=message_ts,
+            thread_ts=post_ts,
             text=to_text(point_get),
             blocks=render(point_get),
             reply_broadcast=registration.arrival.rank == 1,
@@ -199,11 +212,62 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
             attach_slack_ts(session, registration.event_id, response["ts"])
 
         # replace the message with the day's arrivals
-        registry = registry_message(registration.arrivals_today)
-        await client.chat_update(channel=channel_id, ts=message_ts, text=to_text(registry), blocks=render(registry))
+        registry = registry_message(registration.arrivals_today, registration.team)
+        await client.chat_update(channel=channel_id, ts=post_ts, text=to_text(registry), blocks=render(registry))
+    return Arrival(None, registration.outlook)
 
 
-def build_achievement_view(user_id: str) -> View:
+async def send_goals(client: AsyncWebClient, channel_id: str, user_id: str, outlook: Outlook) -> None:
+    """Tell the user alone what to aim for next; the arrival is announced already, so a failure only logs."""
+    message = goals_message(outlook)
+    if not message:
+        return
+    try:
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=to_text(message), blocks=render(message))
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not send the next goals")
+
+
+async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Handle a press of the arrival button on the daily post."""
+    await ack()
+    user_id = body["user"]["id"]
+    channel_id = body["channel"]["id"]
+    logger.debug(f"user_id: {user_id}, action_id: {body['actions'][0]['action_id']}")
+    arrival = await arrive(client, user_id, channel_id, body["message"]["ts"])
+    if arrival.refusal is not None:
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=arrival.refusal)
+    elif arrival.outlook is not None:
+        await send_goals(client, channel_id, user_id, arrival.outlook)
+
+
+async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Record an arrival from the global shortcut, on today's daily post, and reply in a modal.
+
+    The modal opens first (a trigger expires in 3 seconds) and shows the outcome, with the next goals,
+    when it is known.
+    """
+    await ack()
+    user_id = body["user"]["id"]
+    channel_id = get_settings().output_channel
+    opened = await client.views_open(trigger_id=body["trigger_id"], view=notice_view("出社登録しています…"))
+    view_id = opened["view"]["id"]
+    try:
+        post_ts = await find_daily_post(client, channel_id, datetime.now(JST))
+        arrival = Arrival(NO_DAILY_POST) if post_ts is None else await arrive(client, user_id, channel_id, post_ts)
+    except Exception:
+        await client.views_update(view_id=view_id, view=notice_view("出社登録に失敗しました。もう一度試してください"))
+        raise
+    if arrival.refusal is not None:
+        text = arrival.refusal
+    else:
+        text = f"出社登録しました。<#{channel_id}> の今日の投稿のスレッドに記録しています"
+        if arrival.outlook is not None and (goals := goals_text(arrival.outlook)):
+            text += f"\n\n*つぎのもくひょう*\n{goals}"
+    await client.views_update(view_id=view_id, view=notice_view(text))
+
+
+def build_achievement_view(user_id: str) -> dict:
     """Compute scores and render the user's achievements."""
     with get_db() as session:
         engine = compute_arrivals(session)
@@ -333,6 +397,7 @@ def create_app() -> AsyncApp:
     app.view(CallbackID.ITEM_PICK)(handle_item_submission)
     app.view(CallbackID.ITEM_REVIEW)(handle_item_review)
     app.shortcut(ShortcutID.REBOOT)(handle_reboot)
+    app.shortcut(ShortcutID.ARRIVE)(handle_arrive_shortcut)
     return app
 
 

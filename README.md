@@ -29,11 +29,12 @@ The CLI installs the dev app from `manifest.json` and injects its tokens. `scrip
 ### Message previews
 
 ```bash
-uv run python -m hikarie_bot preview --workspace-id <team ID>
+uv run python -m hikarie_bot preview
 ```
 
-renders every user-facing message from synthetic data and prints Block Kit Builder URLs for that workspace, without
-touching Slack (`--database-url` renders from an existing database, read-only).
+renders every user-facing message from synthetic data and prints Block Kit Builder URLs, without touching Slack
+(`--database-url` renders from an existing database, read-only). The URLs open in the workspace the browser is signed
+in to; `--workspace-id` puts a team ID in them, and a wrong one makes them fail to open.
 
 ## Running in production
 
