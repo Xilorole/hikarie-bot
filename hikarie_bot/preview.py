@@ -10,7 +10,7 @@ import random
 import sys
 import urllib.parse
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -24,11 +24,10 @@ from sqlalchemy.orm import Session
 from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import JST
 from hikarie_bot.db_data.items import WEEKLY_PASS, offers
-from hikarie_bot.engine import ArrivalResult, BadgeEngine, Outlook, TeamProgress
+from hikarie_bot.engine import ArrivalResult, BadgeEngine, TeamProgress
 from hikarie_bot.home import HomeTab, home_view
 from hikarie_bot.modals import (
     arrival_summary,
-    goals_message,
     initial_message,
     item_pick_view,
     item_picked_message,
@@ -95,11 +94,6 @@ def _point_get_blocks(_context: PreviewContext, arrival: ArrivalResult) -> dict[
     return {"blocks": render(point_get_message(arrival))}
 
 
-def _outlook(context: PreviewContext, arrival: ArrivalResult) -> Outlook:
-    """Return the arrival's outlook with the week's progress, shown even before the team goal applies."""
-    return replace(context.engine.outlook(arrival), team=context.engine.week_progress(arrival.time))
-
-
 def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
     arrival = None if user_id is None else context.engine.arrival_of(user_id, context.reference.date())
     return None if arrival is None else _point_get_blocks(context, arrival)
@@ -157,14 +151,9 @@ def _item_picked(context: PreviewContext) -> dict[str, Any]:
     return {"blocks": render(item_picked_message(context.user_id, item))}
 
 
-def _arrival_goals(context: PreviewContext) -> dict[str, Any] | None:
-    arrival = context.engine.arrival_of(context.user_id, context.reference.date())
-    return None if arrival is None else {"blocks": render(goals_message(_outlook(context, arrival)))}
-
-
 def _arrive_shortcut(context: PreviewContext) -> dict[str, Any] | None:
     arrival = context.engine.arrival_of(context.user_id, context.reference.date())
-    return None if arrival is None else notice_view(arrival_summary(arrival, _outlook(context, arrival), "C0PREVIEW"))
+    return None if arrival is None else notice_view(arrival_summary(arrival, "C0PREVIEW"))
 
 
 def _home(tab: str) -> Callable[[PreviewContext], dict[str, Any]]:
@@ -202,7 +191,6 @@ PREVIEWS = [
         lambda context: _point_get(context, context.level_up_user_id),
     ),
     Preview("point_get_item", "アイテム効果つきのポイント獲得メッセージ", _point_get_item),
-    Preview("arrival_goals", "出社登録の直後に本人にだけ送る、つぎのもくひょう (ephemeral)", _arrival_goals),
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
     Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
     Preview("item_review_not_arrived", "出社登録の前に今日のアイテムを見るモーダル", _item_review_not_arrived),

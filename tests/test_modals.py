@@ -507,28 +507,19 @@ def arrival_with(badge_ids: list[int], rank: int = 2, previous_score: int = 30, 
 
 
 def test_point_get_message_has_no_goals() -> None:
-    """The thread post has no goals (they go to the user alone) and no rank of the day."""
+    """The thread post has no goals (they are on my page) and no rank of the day."""
     message = render(point_get_message(arrival_with([501])))
 
     assert "人目" not in message[0]["text"]["text"]
     assert "つぎのもくひょう" not in json.dumps(message, ensure_ascii=False)
 
 
-def test_arrival_summary_lists_what_to_aim_for() -> None:
-    """The arrival's modal lists the straight flash, the next count badge and the week; no kiriban, no emoji."""
-    outlook = Outlook(
-        streak=3, next_count_badge=(302, 4), next_kiriban=(3443, 12), team=TeamProgress(date(2026, 11, 9), 12, 20)
+def test_arrival_summary_has_no_goals() -> None:
+    """The arrival's modal says when it was recorded, for how many points and where; the goals are on my page."""
+    assert arrival_summary(arrival_with([501]), "C0OUT") == (
+        f"*{arrival_with([501]).time:%H:%M}* に出社登録しました（+{arrival_with([501]).score_sum}pt）。"
+        "<#C0OUT> の今日の投稿のスレッドに記録しています"
     )
-    arrival = arrival_with([501])
-
-    assert arrival_summary(arrival, outlook, "C0OUT").split("\n\n")[1] == (
-        "*つぎのもくひょう*\n"
-        "ストレートフラッ出社まで あと2日（3日連続）\n"
-        "「出社登録マスター」まで あと4回\n"
-        "今週のみんなの出社 *12* / 20回。届いたら、そのあとの出社は +1pt"
-    )
-    nothing = Outlook(streak=1, next_count_badge=None, next_kiriban=None, team=None)
-    assert "つぎのもくひょう" not in arrival_summary(arrival, nothing, "C0OUT")
 
 
 def test_status_streak_before_todays_arrival() -> None:
