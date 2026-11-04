@@ -173,6 +173,9 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
         bot.handle_item_review,
         bot.handle_reboot,
         bot.handle_arrive_shortcut,
+        bot.handle_app_home_opened,
+        bot.handle_home_tab,
+        bot.handle_home_pick_item,
     }
 
 

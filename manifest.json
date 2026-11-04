@@ -7,6 +7,10 @@
       "display_name": "hikarie-bot-dev",
       "always_online": true
     },
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": false
+    },
     "shortcuts": [
       {
         "name": "出社した",
@@ -36,6 +40,11 @@
     }
   },
   "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_home_opened"
+      ]
+    },
     "interactivity": {
       "is_enabled": true
     },

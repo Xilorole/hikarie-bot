@@ -19,6 +19,7 @@ from hikarie_bot.arrivals import attach_slack_ts, compute_arrivals, record_butto
 from hikarie_bot.constants import JST
 from hikarie_bot.database import get_db
 from hikarie_bot.engine import ArrivalResult, Outlook, TeamProgress
+from hikarie_bot.home import HomeActionID, HomeTab, home_view
 from hikarie_bot.modals import (
     ActionID,
     BlockID,
@@ -240,10 +241,12 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
         await client.chat_postEphemeral(channel=channel_id, user=user_id, text=arrival.refusal)
     elif arrival.outlook is not None:
         await send_goals(client, channel_id, user_id, arrival.outlook)
+    if arrival.refusal is None:
+        await refresh_home(client, user_id)
 
 
 async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Record an arrival from the global shortcut, on today's daily post, and reply in a modal.
+    """Record an arrival from the global shortcut (or the Home's button), on today's daily post, and reply in a modal.
 
     The modal opens first (a trigger expires in 3 seconds) and shows the outcome, with the next goals,
     when it is known.
@@ -266,6 +269,8 @@ async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: As
         if arrival.outlook is not None and (goals := goals_text(arrival.outlook)):
             text += f"\n\n*つぎのもくひょう*\n{goals}"
     await client.views_update(view_id=view_id, view=notice_view(text))
+    if arrival.refusal is None:
+        await refresh_home(client, user_id)
 
 
 def build_achievement_view(user_id: str) -> dict:
@@ -329,31 +334,61 @@ async def announce_pick(client: AsyncWebClient, channel_id: str, thread_ts: str,
         attach_pick_ts(session, pick.id, response["ts"])
 
 
+ITEM_TITLE = "今日のアイテム"
+
+
+async def open_item_offers(
+    client: AsyncWebClient, trigger_id: str, user_id: str, channel_id: str, post_ts: str | None
+) -> str | None:
+    """Open today's item offers to pick from, or to look at; return why nothing opened, if the user should know.
+
+    post_ts is the day's daily post, which a pick is announced under; without it the offers can only be
+    looked at. A stored pick whose announcement failed is announced instead of opening anything.
+    """
+    now = datetime.now(JST)
+    async with ITEM_LOCK:
+        gate = await asyncio.to_thread(check_pick, user_id, now)
+        if gate.unannounced is not None:  # stored but its announcement failed: announce it now
+            if post_ts is None:
+                return NO_DAILY_POST
+            await announce_pick(client, channel_id, post_ts, gate.unannounced)
+            return None
+    if gate.refusal is not None:
+        return gate.refusal
+    if gate.notice is not None:  # not arrived, picked today, or holding an item: the offers to look at
+        view = item_review_view(gate.offers, gate.notice, gate.picked_item_id)
+    elif post_ts is None:
+        return NO_DAILY_POST
+    else:
+        view = item_pick_view(gate.offers, channel_id, post_ts, now.date())
+    logger.info(f"Opening item offers for user {user_id}")
+    await client.views_open(trigger_id=trigger_id, view=view)
+    return None
+
+
 async def handle_pick_item(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Open today's item offers to pick from, or to look at once picked or while an item is held."""
+    """Open today's item offers from the daily post; a refusal goes to the user alone."""
     await ack()
     user_id = body["user"]["id"]
     channel_id = body["channel"]["id"]
     message_ts = body["message"]["ts"]
-    now = datetime.now(JST)
-    if datetime.fromtimestamp(float(message_ts), JST).date() != now.date():
+    if datetime.fromtimestamp(float(message_ts), JST).date() != datetime.now(JST).date():
         await client.chat_postEphemeral(channel=channel_id, user=user_id, text="アイテムは今日の投稿から選んでください")
         return
+    refusal = await open_item_offers(client, body["trigger_id"], user_id, channel_id, message_ts)
+    if refusal is not None:
+        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=refusal)
 
-    async with ITEM_LOCK:
-        gate = await asyncio.to_thread(check_pick, user_id, now)
-        if gate.unannounced is not None:  # stored but its announcement failed: announce it now
-            await announce_pick(client, channel_id, message_ts, gate.unannounced)
-            return
-    if gate.refusal is not None:
-        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=gate.refusal)
-        return
-    if gate.notice is not None:  # picked today, or holding an item: the offers to look at
-        view = item_review_view(gate.offers, gate.notice, gate.picked_item_id)
-    else:
-        view = item_pick_view(gate.offers, channel_id, message_ts, now.date())
-    logger.info(f"Opening item offers for user {user_id}")
-    await client.views_open(trigger_id=body["trigger_id"], view=view)
+
+async def handle_home_pick_item(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Open today's item offers from the Home, a pick going under today's daily post; a refusal opens a modal."""
+    await ack()
+    user_id = body["user"]["id"]
+    channel_id = get_settings().output_channel
+    post_ts = await find_daily_post(client, channel_id, datetime.now(JST))
+    refusal = await open_item_offers(client, body["trigger_id"], user_id, channel_id, post_ts)
+    if refusal is not None:
+        await client.views_open(trigger_id=body["trigger_id"], view=notice_view(refusal, ITEM_TITLE))
 
 
 async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -378,11 +413,47 @@ async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: As
             return
         await ack()
         await announce_pick(client, metadata["channel"], metadata["thread_ts"], gate.unannounced)
+    await refresh_home(client, user_id)
 
 
 async def handle_item_review(ack: AsyncAck) -> None:
     """Close a read-only item modal opened before its OK button was removed: it submits nothing."""
     await ack()
+
+
+def build_home_view(user_id: str, tab: str) -> dict:
+    """Compute scores and render the user's Home on a tab."""
+    with get_db() as session:
+        engine = compute_arrivals(session)
+    return home_view(engine, user_id, datetime.now(JST), tab)
+
+
+async def publish_home(client: AsyncWebClient, user_id: str, tab: str = HomeTab.MY_PAGE) -> None:
+    """Render the user's Home on a tab and publish it."""
+    view = await asyncio.to_thread(build_home_view, user_id, tab)
+    await client.views_publish(user_id=user_id, view=view)
+
+
+async def refresh_home(client: AsyncWebClient, user_id: str) -> None:
+    """Show the user's Home with their latest arrival or pick; it is already announced, so a failure only logs."""
+    try:
+        await publish_home(client, user_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not refresh the Home")
+
+
+async def handle_app_home_opened(event: dict[str, Any], client: AsyncWebClient) -> None:
+    """Publish the Home when the user opens it, on the tab it was left on (my page the first time)."""
+    if event.get("tab") != "home":
+        return
+    tab = (event.get("view") or {}).get("private_metadata")
+    await publish_home(client, event["user"], tab if tab in HomeTab.LABELS else HomeTab.MY_PAGE)
+
+
+async def handle_home_tab(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Switch the Home to the pressed tab."""
+    await ack()
+    await publish_home(client, body["user"]["id"], body["actions"][0]["action_id"])
 
 
 async def handle_reboot(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -416,6 +487,11 @@ def create_app() -> AsyncApp:
     app.view(CallbackID.ITEM_REVIEW)(handle_item_review)
     app.shortcut(ShortcutID.REBOOT)(handle_reboot)
     app.shortcut(ShortcutID.ARRIVE)(handle_arrive_shortcut)
+    app.event("app_home_opened")(handle_app_home_opened)
+    for tab in HomeTab.LABELS:
+        app.action(tab)(handle_home_tab)
+    app.action(HomeActionID.ARRIVE)(handle_arrive_shortcut)  # the same flow: a modal tells the outcome
+    app.action(HomeActionID.PICK_ITEM)(handle_home_pick_item)
     return app
 
 

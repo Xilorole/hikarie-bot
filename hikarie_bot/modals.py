@@ -324,11 +324,11 @@ def _mrkdwn(text: str) -> dict:
     return {"type": "mrkdwn", "text": text}
 
 
-def notice_view(text: str) -> dict:
-    """Build a modal that only shows a message (the reply to the arrival shortcut)."""
+def notice_view(text: str, title: str = "出社登録") -> dict:
+    """Build a modal that only shows a message (the reply to the arrival shortcut, or a refusal from the Home)."""
     return {
         "type": "modal",
-        "title": _plain("出社登録"),
+        "title": _plain(title),
         "close": _plain("閉じる"),
         "blocks": [{"type": "section", "text": _mrkdwn(text)}],
     }
