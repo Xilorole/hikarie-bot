@@ -1,8 +1,8 @@
 """Decide whether a user may pick an item today, and record the pick.
 
 A user may pick once a JST day, after their arrival that day is announced, and only while they
-hold no item (db_data/items.py). After picking, or while holding an item, they can still look at
-the day's offers. The three items offered are derived from the user and the day, so only the
+hold no item (db_data/items.py). Before arriving, after picking, or while holding an item, they can
+still look at the day's offers. The three items offered are derived from the user and the day, so only the
 pick is stored. Like an arrival, a pick is stored before it is announced in the thread; one whose
 announcement was never posted is announced again on the next press.
 """
@@ -20,6 +20,7 @@ from hikarie_bot.db_data.items import ITEMS, ItemData, offers
 from hikarie_bot.models import ArrivalEvent, ItemPickEvent
 
 NOT_ARRIVED = "アイテムは、今日の出社登録のあとに選べます"
+NOT_ARRIVED_NOTICE = "今日の出社登録のあとに、この中から1つ選べます。今は見るだけです。"
 ALREADY_PICKED = "今日のアイテムは獲得済みです"
 NOT_OFFERED = "そのアイテムは今日の候補にありません。選び直してください"
 
@@ -44,9 +45,9 @@ class StoredPick:
 class PickGate:
     """What the user may do today.
 
-    - refusal: they may not even look (not arrived yet, or a pick that cannot be stored);
+    - refusal: a pick that cannot be stored;
     - unannounced: a stored pick whose announcement is still to be posted;
-    - notice: they may look at the offers but not pick (picked today, or holding an item);
+    - notice: they may look at the offers but not pick (not arrived yet, picked today, or holding an item);
     - otherwise they may pick one of the offers.
     """
 
@@ -85,9 +86,9 @@ def pick_gate(session: Session, user_id: str, now: datetime) -> PickGate:
         .where(ArrivalEvent.slack_ts.is_not(None))
         .limit(1)
     )
-    if announced is None:
-        return PickGate(refusal=NOT_ARRIVED)
     offered = offers(user_id, day)
+    if announced is None:
+        return PickGate(offers=offered, notice=NOT_ARRIVED_NOTICE)
     picked = session.scalar(select(ItemPickEvent).where(ItemPickEvent.user_id == user_id, ItemPickEvent.day == day))
     if picked is not None:
         if picked.slack_ts is None:
@@ -103,6 +104,8 @@ def pick_gate(session: Session, user_id: str, now: datetime) -> PickGate:
 def record_pick(session: Session, user_id: str, item_id: str, now: datetime) -> PickGate:
     """Store the pick if the user may pick it now; the gate holds the stored pick as unannounced."""
     gate = pick_gate(session, user_id, now)
+    if gate.notice == NOT_ARRIVED_NOTICE:
+        return PickGate(refusal=NOT_ARRIVED)
     if gate.refusal or gate.notice or gate.unannounced:
         return PickGate(
             refusal=gate.refusal or (ALREADY_PICKED if gate.picked_item_id or gate.unannounced else gate.notice)

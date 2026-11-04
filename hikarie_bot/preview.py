@@ -38,7 +38,7 @@ from hikarie_bot.modals import (
     registry_message,
     render,
 )
-from hikarie_bot.picks import held_notice, picked_notice
+from hikarie_bot.picks import NOT_ARRIVED_NOTICE, held_notice, picked_notice
 from hikarie_bot.settings import get_settings
 from hikarie_bot.usage import describe_usage, last_full_week, usage_report
 from hikarie_bot.utils import is_jp_bizday, leveled_up
@@ -142,6 +142,10 @@ def _item_review_held(context: PreviewContext) -> dict[str, Any]:
     return item_review_view(offered, notice)
 
 
+def _item_review_not_arrived(context: PreviewContext) -> dict[str, Any]:
+    return item_review_view(offers(context.user_id, context.reference.date()), NOT_ARRIVED_NOTICE)
+
+
 def _item_picked(context: PreviewContext) -> dict[str, Any]:
     item = offers(context.user_id, context.reference.date())[0]
     return {"blocks": render(item_picked_message(context.user_id, item))}
@@ -193,6 +197,7 @@ PREVIEWS = [
     Preview("achievement_view", "ステータスモーダル (旧: 実績確認モーダル)", _achievement),
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
     Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
+    Preview("item_review_not_arrived", "出社登録の前に今日のアイテムを見るモーダル", _item_review_not_arrived),
     Preview("item_review_held", "期限付きアイテムを持っていて選べない日のモーダル", _item_review_held),
     Preview("arrive_shortcut", "ショートカットから出社登録したときのモーダル", _arrive_shortcut),
     Preview("weekly_usage", "ログチャンネルに毎週送る利用状況", _weekly_usage),
