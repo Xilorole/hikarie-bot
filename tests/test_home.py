@@ -88,16 +88,16 @@ def test_ranking_tab_writes_each_ranking_as_a_table() -> None:
 
 
 def test_collection_hides_the_effect_of_an_item_never_picked() -> None:
-    """An item's effect shows in the collection only once the user has picked it; its story always shows."""
+    """An item's effect and story show in the collection only once the user has picked it."""
     context = build_synthetic_context()
     view = home_view(context.engine, context.user_id, context.reference.replace(hour=12), HomeTab.COLLECTION)
     picked = {held.pick.item_id for held in context.engine.users[context.user_id].items}
 
-    cards = {card["title"]["text"]: card for card in view["blocks"] if card["type"] == "card"}
+    texts = [block["text"]["text"] for block in view["blocks"] if block["type"] == "section" and "accessory" in block]
     for item in Items:
-        card = next(card for title, card in cards.items() if title.startswith(f"*{item.name}*"))
-        assert card["subtitle"]["text"] == item.flavor
-        assert (item.effect in card["body"]["text"]) == (item.id in picked)
+        text = next(text for text in texts if text.startswith(f"*{item.name}*"))
+        assert (item.flavor in text) == (item.id in picked)
+        assert (item.effect in text) == (item.id in picked)
     assert picked < {item.id for item in Items}  # the synthetic user has some never picked
 
 
@@ -121,7 +121,7 @@ def test_recent_badges_say_how_long_ago(day: date, text: str) -> None:
 
 
 def test_collection_tabulates_titles_reached_with_their_day_and_hides_the_rest() -> None:
-    """Reached titles show their name and the day first reached; the current one is marked; the rest are hidden."""
+    """Titles up to the next level: reached ones with their name and day, the current one marked, the next hidden."""
     context = build_synthetic_context()
     view = home_view(context.engine, context.user_id, context.reference.replace(hour=12), HomeTab.COLLECTION)
     current = get_level(context.engine.users[context.user_id].score).number
@@ -129,8 +129,10 @@ def test_collection_tabulates_titles_reached_with_their_day_and_hides_the_rest()
     table = next(block for block in view["blocks"] if block["type"] == "table")
     rows = [[cell["elements"][0]["elements"][0]["text"] for cell in row] for row in table["rows"]]
     assert rows[0] == ["Lv", "ポイント", "かたがき", "達成日"]
-    assert len(rows) == 1 + len(LEVELS)
-    for number, ((name, _), (level, _points, title, day)) in enumerate(zip(LEVELS, rows[1:], strict=True), start=1):
+    assert len(rows) == 1 + current + 1  # the header, the titles reached and the next one
+    for number, ((name, _), (level, _points, title, day)) in enumerate(
+        zip(LEVELS[: current + 1], rows[1:], strict=True), start=1
+    ):
         assert level == f"Lv{number}"
         assert (name in title) == (number <= current)
         assert title.endswith("（いま）") == (number == current)

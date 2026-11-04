@@ -26,7 +26,6 @@ from hikarie_bot.modals import (
     attendance_history_blocks,
     badge_types_to_show,
     bullet_list,
-    item_card,
     outlook_lines,
     render,
 )
@@ -249,16 +248,19 @@ BADGE_LEGEND = (
 )
 
 
+EARNED_MARK, UNEARNED_MARK = "white_check_mark", "white_large_square"  # Slack emoji names
+
+
 def badge_item(badge_id: int, engine: BadgeEngine, user_id: str, rarities: Rarity) -> dict:
     """Return a badge's list item: "[pt] name rarity", then for an earned badge (in bold) its count and first date."""
     badge = BADGES[badge_id]
     tally = engine.user_badges.get((user_id, badge_id))
     rate = f"  {rarities.rate(badge_id)}%"
     if tally is None:
-        elements = [_emoji("white_circle"), _text(f" [{badge.score}pt] {badge.message}{rate}")]
+        elements = [_emoji(UNEARNED_MARK), _text(f" [{badge.score}pt] {badge.message}{rate}")]
     else:
         elements = [
-            _emoji("large_green_circle"),
+            _emoji(EARNED_MARK),
             _text(f" [{badge.score}pt] "),
             _text(badge.message, bold=True),
             _text(f"{rate}  ×{tally.count} @{tally.first:%y/%m/%d}"),
@@ -297,14 +299,14 @@ def level_reached_on(engine: BadgeEngine, user_id: str) -> dict[int, date]:
 
 
 def title_table(engine: BadgeEngine, user_id: str) -> dict:
-    """Tabulate every level's title: its level, the points it starts at, the title and the day first reached.
+    """Tabulate the titles up to the next level: the level, its starting points, the title and the day first reached.
 
-    A title not reached yet is hidden; the current one is bold and marked.
+    The next title is hidden and later ones are left out; the current one is bold and marked.
     """
     reached = level_reached_on(engine, user_id)
     current = max(reached, default=0)
     rows = [[_cell(_text(label, bold=True)) for label in ("Lv", "ポイント", "かたがき", "達成日")]]
-    for number, (name, _) in enumerate(LEVELS, start=1):
+    for number, (name, _) in enumerate(LEVELS[: current + 1], start=1):
         start = LEVELS[number - 2][1] if number > 1 else 0
         if number in reached:
             title = _text(f"{name}（いま）" if number == current else name, bold=number == current)
@@ -352,25 +354,23 @@ def kiriban_text(engine: BadgeEngine, user_id: str) -> str:
 
 
 def item_collection_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
-    """Show every item as a card: its image and story, and once picked its effect, pick count and points."""
+    """Show every item beside its image: its name, and once picked how often, its effect and its story.
+
+    Until the user picks an item, its effect and story read UNKNOWN_EFFECT. The story is an italic block quote.
+    Items are divided by lines.
+    """
     user = engine.users.get(user_id)
     picks = Counter(held.pick.item_id for held in user.items) if user else Counter()
-    points = Counter()
-    for result in user.results if user else []:
-        for effect in result.item_effects:
-            if effect.giver is None:
-                points[effect.item_id] += effect.points
-    cards = []
+    blocks = []
     for item in Items:
-        card = item_card(item, ITEM_IMAGE_URLS.get(item.id))
-        if picks[item.id]:
-            card["title"] = _mrkdwn(f"*{item.name}*  （{picks[item.id]}回獲得）")
-            card["subtext"] = _mrkdwn(f"このアイテムで +{points[item.id]}pt")
-        else:
-            card["title"] = _mrkdwn(f"*{item.name}*")
-            card["body"] = _mrkdwn(f"効果: {UNKNOWN_EFFECT}")  # the story hints; the effect shows once picked
-        cards.append(card)
-    return cards
+        picked = picks[item.id] > 0
+        title = f"*{item.name}*  （{picks[item.id]}回獲得）" if picked else f"*{item.name}*"
+        effect = item.effect if picked else UNKNOWN_EFFECT
+        told = item.flavor if picked else UNKNOWN_EFFECT
+        flavor = f">_{told}_"
+        image = {"type": "image", "image_url": ITEM_IMAGE_URLS[item.id], "alt_text": item.name}
+        blocks += [*([DIVIDER] if blocks else []), _section(f"{title}\n効果: {effect}\n{flavor}", image)]
+    return blocks
 
 
 def collection_blocks(engine: BadgeEngine, user_id: str, _now: datetime) -> list[dict]:
