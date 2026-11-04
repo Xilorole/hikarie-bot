@@ -25,6 +25,7 @@ from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import JST
 from hikarie_bot.db_data.items import WEEKLY_PASS, offers
 from hikarie_bot.engine import ArrivalResult, BadgeEngine, Outlook, TeamProgress
+from hikarie_bot.home import HomeTab, home_view
 from hikarie_bot.modals import (
     achievement_view,
     goals_message,
@@ -38,7 +39,7 @@ from hikarie_bot.modals import (
     registry_message,
     render,
 )
-from hikarie_bot.picks import held_notice, picked_notice
+from hikarie_bot.picks import NOT_ARRIVED_NOTICE, held_notice, picked_notice
 from hikarie_bot.settings import get_settings
 from hikarie_bot.usage import describe_usage, last_full_week, usage_report
 from hikarie_bot.utils import is_jp_bizday, leveled_up
@@ -142,6 +143,21 @@ def _item_review_held(context: PreviewContext) -> dict[str, Any]:
     return item_review_view(offered, notice)
 
 
+def _absent_user(context: PreviewContext) -> str | None:
+    """Return a user who has arrived before but not on the reference day."""
+    arrived = {arrival.user_id for arrival in context.engine.arrivals_on(context.reference.date())}
+    return next((user_id for user_id in sorted(context.engine.users) if user_id not in arrived), None)
+
+
+def _item_review_not_arrived(context: PreviewContext) -> dict[str, Any]:
+    return item_review_view(offers(context.user_id, context.reference.date()), NOT_ARRIVED_NOTICE)
+
+
+def _home_not_arrived(context: PreviewContext) -> dict[str, Any] | None:
+    user_id = _absent_user(context)
+    return None if user_id is None else home_view(context.engine, user_id, context.reference.replace(hour=8))
+
+
 def _item_picked(context: PreviewContext) -> dict[str, Any]:
     item = offers(context.user_id, context.reference.date())[0]
     return {"blocks": render(item_picked_message(context.user_id, item))}
@@ -159,6 +175,13 @@ def _arrive_shortcut(context: PreviewContext) -> dict[str, Any]:
     if arrival is not None:
         text += f"\n\n*つぎのもくひょう*\n{goals_text(_outlook(context, arrival))}"
     return notice_view(text)
+
+
+def _home(tab: str) -> Callable[[PreviewContext], dict[str, Any]]:
+    def render_home(context: PreviewContext) -> dict[str, Any]:
+        return home_view(context.engine, context.user_id, context.reference.replace(hour=12), tab)
+
+    return render_home
 
 
 def _weekly_usage(context: PreviewContext) -> dict[str, Any]:
@@ -193,10 +216,16 @@ PREVIEWS = [
     Preview("achievement_view", "ステータスモーダル (旧: 実績確認モーダル)", _achievement),
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
     Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
+    Preview("item_review_not_arrived", "出社登録の前に今日のアイテムを見るモーダル", _item_review_not_arrived),
     Preview("item_review_held", "期限付きアイテムを持っていて選べない日のモーダル", _item_review_held),
     Preview("arrive_shortcut", "ショートカットから出社登録したときのモーダル", _arrive_shortcut),
     Preview("weekly_usage", "ログチャンネルに毎週送る利用状況", _weekly_usage),
     Preview("item_picked_message", "アイテム獲得をスレッドに知らせるメッセージ", _item_picked),
+    Preview("home_my_page", "App Home: マイページ", _home(HomeTab.MY_PAGE)),
+    Preview("home_my_page_not_arrived", "App Home: マイページ（今日まだ出社登録していない）", _home_not_arrived),
+    Preview("home_collection", "App Home: 図鑑", _home(HomeTab.COLLECTION)),
+    Preview("home_ranking", "App Home: ランキング", _home(HomeTab.RANKING)),
+    Preview("home_how_to_play", "App Home: あそびかた", _home(HomeTab.HOW_TO_PLAY)),
 ]
 PREVIEW_NAMES = [preview.name for preview in PREVIEWS]
 

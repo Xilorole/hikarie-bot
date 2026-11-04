@@ -34,7 +34,7 @@ from hikarie_bot.db_data.items import (
 from hikarie_bot.engine import BadgeEngine, ItemPick, compute
 from hikarie_bot.modals import ActionID, BlockID, CallbackID, registry_message
 from hikarie_bot.models import ItemPickEvent
-from hikarie_bot.picks import ALREADY_PICKED, NOT_ARRIVED, NOT_OFFERED
+from hikarie_bot.picks import ALREADY_PICKED, NOT_ARRIVED, NOT_ARRIVED_NOTICE, NOT_OFFERED, record_pick
 from hikarie_bot.settings import Settings
 from hikarie_bot.sync import parse_item_pick, sync_channel
 from tests.helpers import only_badge_types
@@ -280,14 +280,20 @@ def picks(database: Engine) -> list[tuple[str, date, str, str | None]]:
 
 
 @pytest.mark.asyncio
-async def test_no_item_before_arriving(database: Engine) -> None:
-    """The modal does not open before the user's arrival is announced."""
+async def test_offers_can_be_looked_at_but_not_picked_before_arriving(database: Engine) -> None:
+    """Before the arrival is announced the day's offers open read-only, and a pick is refused."""
     client = slack()
 
     await bot.handle_pick_item(AsyncMock(), press("U1", 2, ActionID.PICK_ITEM), client)
 
-    assert client.chat_postEphemeral.await_args.kwargs["text"] == NOT_ARRIVED
-    client.views_open.assert_not_awaited()
+    view = client.views_open.await_args.kwargs["view"]
+    assert view["callback_id"] == CallbackID.ITEM_REVIEW
+    assert NOT_ARRIVED_NOTICE in json.dumps(view, ensure_ascii=False)
+    client.chat_postEphemeral.assert_not_awaited()
+    with Session(database) as session:
+        gate = record_pick(session, "U1", offers("U1", date(2025, 6, 2))[0].id, datetime(2025, 6, 2, 9, tzinfo=JST))
+    assert gate.refusal == NOT_ARRIVED
+    assert picks(database) == []
 
 
 @pytest.mark.asyncio
@@ -334,7 +340,7 @@ async def test_one_pick_a_day_and_then_the_offers_are_read_only(database: Engine
 
     view = client.views_open.await_args.kwargs["view"]
     assert view["callback_id"] == CallbackID.ITEM_REVIEW
-    assert view["submit"]["text"] == "OK"
+    assert "submit" not in view  # nothing to submit: "閉じる" is the only button
     assert not any(block["type"] == "input" for block in view["blocks"])
     titles = [block["title"]["text"] for block in view["blocks"] if block["type"] == "card"]
     assert [title.endswith("獲得済み") for title in titles] == [True, False, False]

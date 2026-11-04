@@ -381,7 +381,7 @@ async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: As
 
 
 async def handle_item_review(ack: AsyncAck) -> None:
-    """Close the read-only item modal: its OK button submits nothing."""
+    """Close a read-only item modal opened before its OK button was removed: it submits nothing."""
     await ack()
 
 
