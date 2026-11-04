@@ -1,14 +1,11 @@
 name: Docker Build Test
 
+# Pull requests only: on main, Release builds, checks and pushes the image in one job.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main, rebuild]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   RELEASE_TEST_TAG: user/release:test
 permissions:
   contents: read
@@ -55,23 +52,8 @@ jobs:
           cache-from: type=gha,scope=release
           cache-to: type=gha,scope=release,mode=max
 
-      - name: Verify offline runtime
-        run: |
-          docker run --rm --network none -e ENV=test \
-            --entrypoint /opt/.venv/bin/python \
-            "${{ env.RELEASE_TEST_TAG }}" -c \
-            'import importlib.util, os; import hikarie_bot, aiohttp, slack_bolt; from dateutil.relativedelta import relativedelta; from sqlalchemy import create_engine, text; assert os.getuid() == 10001; assert importlib.util.find_spec("pytest") is None; assert importlib.util.find_spec("ruff") is None; engine = create_engine("sqlite:////opt/.db/smoke.db"); connection = engine.connect(); connection.execute(text("CREATE TABLE smoke (id INTEGER)")); connection.close(); engine.dispose()'
-          docker run --rm --network none -e ENV=test -e SLACK_BOT_TOKEN=xoxb-test \
-            "${{ env.RELEASE_TEST_TAG }}" /opt/.venv/bin/python -m hikarie_bot --help
-
-      - name: Verify the image knows its commit
-        run: |
-          docker run --rm --network none -e ENV=test --entrypoint /opt/.venv/bin/python \
-            "${{ env.RELEASE_TEST_TAG }}" -c \
-            'from hikarie_bot.startup import current_revision; assert current_revision() == "${{ github.sha }}"[:7], current_revision()'
-
-      - name: Verify offline database migration
-        run: |
-          docker run --rm --network none -e ENV=test -e DATABASE_URL=sqlite:////opt/.db/data.db \
-            --entrypoint /opt/.venv/bin/python "${{ env.RELEASE_TEST_TAG }}" -c \
-            'from sqlalchemy import create_engine, inspect; from hikarie_bot.migrations import init_database; engine = create_engine("sqlite:////opt/.db/data.db"); init_database(engine); init_database(engine); tables = set(inspect(engine).get_table_names()); assert tables == {"alembic_version", "arrival_event", "item_pick_event"}, tables'
+      - name: Verify the image
+        uses: ./.github/actions/verify-image
+        with:
+          image: ${{ env.RELEASE_TEST_TAG }}
+          revision: ${{ github.sha }}
