@@ -367,7 +367,7 @@ async def test_holding_an_item_shows_the_offers_without_a_pick(database: Engine,
     view = client.views_open.await_args.kwargs["view"]
     assert view["callback_id"] == CallbackID.ITEM_REVIEW
     notice = view["blocks"][0]["text"]["text"]
-    assert "週間パス" in notice
+    assert "ウィークリーパス" in notice
     assert "06/09まで" in notice
     assert len([block for block in view["blocks"] if block["type"] == "card"]) == 3
     # nor can a submission get around it
