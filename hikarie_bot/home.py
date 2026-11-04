@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import ClassVar
 
+from dateutil.relativedelta import relativedelta
+
 from hikarie_bot.db_data.badges import KIRIBANS
 from hikarie_bot.db_data.items import ITEM_IMAGE_URLS, ITEM_POINT_CAP, Items
 from hikarie_bot.engine import TEAM_GOAL_PER_BIZDAY, BadgeEngine, Outlook, TeamProgress
@@ -24,8 +26,8 @@ from hikarie_bot.modals import (
     attendance_history_blocks,
     badge_types_to_show,
     bullet_list,
-    goals_text,
     item_card,
+    outlook_lines,
     render,
 )
 from hikarie_bot.utils import LEVELS, get_level, is_jp_bizday
@@ -33,6 +35,7 @@ from hikarie_bot.utils import LEVELS, get_level, is_jp_bizday
 HOME_BLOCK_MAX = 100  # Slack refuses a Home view with more blocks
 RANKING_SIZE = 5
 RECENT_BADGES = 3
+DAYS_AGO_MAX = 7  # up to this many days ago a badge says days; then weeks within a month, then months
 
 
 class HomeTab:
@@ -106,14 +109,8 @@ def home_view(engine: BadgeEngine, user_id: str, now: datetime, tab: str = HomeT
 
 
 # --- my page ---
-
-
-def level_text(score: int) -> str:
-    """Describe the level, its progress bar and the points to the next level."""
-    level = get_level(score)
-    rate = int(100 * level.progress_points / level.span)
-    rest = "最高レベル" if level.is_max else f"lv{level.number + 1}まで あと *{level.points_to_next}pt*"
-    return f"*{level.name}*  lv{level.number}\n`{_progress_bar(rate)}` {rate}%  ·  {rest}  ·  累計 *{score}pt*"
+# Every part of my page is a header with one kind of content below it: today, status, next goals,
+# attendance history and recent badges, in that order.
 
 
 def today_blocks(engine: BadgeEngine, user_id: str, now: datetime) -> list[dict]:
@@ -122,65 +119,95 @@ def today_blocks(engine: BadgeEngine, user_id: str, now: datetime) -> list[dict]
     item_button = _button("今日のアイテム", HomeActionID.PICK_ITEM)
     arrival = engine.arrival_of(user_id, today)
     if arrival is not None:
-        text = f"*今日* {arrival.time:%H:%M} に出社登録済み（{arrival.rank}番目・+{arrival.score_sum}pt）"
+        text = f"{arrival.time:%H:%M} に出社登録済み（{arrival.rank}番目・+{arrival.score_sum}pt）"
         return [_section(text, item_button)]
     if not is_jp_bizday(today):
-        return [_section("*今日* はお休みの日です。次の営業日にまた会いましょう")]
+        return [_section("お休みの日です。次の営業日にまた会いましょう")]
     if not 6 <= now.hour < 18:  # noqa: PLR2004
-        return [_section("*今日* の出社登録は 6:00〜18:00 にできます", item_button)]
+        return [_section("出社登録は 6:00〜18:00 にできます", item_button)]
     return [
-        _section("*今日* はまだ出社登録していません。アイテムは登録のあとに選べます（候補は今も見られます）"),
+        _section("まだ出社登録していません。アイテムは登録のあとに選べます（候補は今も見られます）"),
         {"type": "actions", "elements": [_button("出社した", HomeActionID.ARRIVE, primary=True), item_button]},
     ]
 
 
-def held_item_blocks(engine: BadgeEngine, user_id: str, today: date) -> list[dict]:
-    """Show the item the user holds with its image, or nothing."""
+def status_fields(engine: BadgeEngine, user_id: str, today: date) -> dict:
+    """Show the level, the points, the progress to the next level and the held item, two to a row."""
+    user = engine.users.get(user_id)
+    score = user.score if user else 0
+    level = get_level(score)
+    rate = int(100 * level.progress_points / level.span)
+    progress = "最高レベル" if level.is_max else f"`{_progress_bar(rate)}` {rate}%（あと{level.points_to_next}pt）"
     held = engine.held_item(user_id, today)
     if held is None:
-        return []
-    item = ITEMS[held.pick.item_id]
-    until = f"{held.last_day:%-m/%-d}まで" if held.last_day else "次の出社で使う"
-    image = {"type": "image", "image_url": ITEM_IMAGE_URLS[item.id], "alt_text": item.name}
-    return [_section(f"*所持アイテム* {item.name}（{until}）\n{item.effect}", image)]
+        item = "なし"
+    else:
+        until = f"{held.last_day:%-m/%-d}まで" if held.last_day else "次の出社で使う"
+        item = f"{ITEMS[held.pick.item_id].name}（{until}）"
+    return {
+        "type": "section",
+        "fields": [
+            _mrkdwn(f"*かたがき*\n{level.name}（Lv{level.number}）"),
+            _mrkdwn(f"*ポイント*\n累計 {score}pt"),
+            _mrkdwn(f"*つぎのレベルまで*\n{progress}"),
+            _mrkdwn(f"*所持アイテム*\n{item}"),
+        ],
+    }
 
 
 def team_progress_text(team: TeamProgress) -> str:
     """Describe everyone's arrivals this week as a bar against the goal."""
     rate = min(100, int(100 * team.count / team.goal)) if team.goal else 0
     state = "達成！" if team.reached else f"あと{team.goal - team.count}回"
-    return f"*今週のみんなの出社* `{_progress_bar(rate)}` {team.count} / {team.goal}回（{state}）"
+    return f"今週のみんなの出社 `{_progress_bar(rate)}` {team.count} / {team.goal}回（{state}）"
 
 
-def recent_badges_text(engine: BadgeEngine, user_id: str) -> str | None:
-    """List the badges the user earned most recently, newest first."""
+def goal_lines(engine: BadgeEngine, outlook: Outlook, now: datetime) -> list[str]:
+    """List the user's next goals and the week's team progress (shown even before the team goal applies)."""
+    team = engine.week_progress(now)
+    return [*outlook_lines(outlook), *([team_progress_text(team)] if team.goal else [])]
+
+
+def when(day: date, today: date) -> str:
+    """Say how long ago a day was, coarser the older it is.
+
+    今日, 昨日 or N日前 up to DAYS_AGO_MAX days, N週前 within a month, Nヶ月前 within a year, else 1年以上前.
+    """
+    days = (today - day).days
+    if days <= DAYS_AGO_MAX:
+        return {0: "今日", 1: "昨日"}.get(days, f"{days}日前")
+    ago = relativedelta(today, day)
+    if ago.years:
+        return "1年以上前"
+    return f"{days // 7}週前" if ago.months == 0 else f"{ago.months}ヶ月前"
+
+
+def recent_badge_lines(engine: BadgeEngine, user_id: str, today: date) -> list[str]:
+    """List the badges the user earned most recently, newest first, with when they were earned."""
     tallies = sorted(
         ((tally.last, badge_id) for (owner, badge_id), tally in engine.user_badges.items() if owner == user_id),
         reverse=True,
     )[:RECENT_BADGES]
-    if not tallies:
-        return None
-    return "*最近のバッジ*  " + "  ·  ".join(
-        f"{BADGES[badge_id].message}（{last:%-m/%-d}）" for last, badge_id in tallies
-    )
+    return [
+        f"[{BADGES[badge_id].score}pt] {BADGES[badge_id].message}  {when(last.date(), today)}"
+        for last, badge_id in tallies
+    ]
 
 
 def my_page_blocks(engine: BadgeEngine, user_id: str, now: datetime, outlook: Outlook | None = None) -> list[dict]:
-    """Build my page: level, today, held item, next goals, the week, attendance history and recent badges."""
+    """Build my page: today, status, next goals, attendance history and recent badges, each under a header."""
     today = now.date()
-    user = engine.users.get(user_id)
-    score = user.score if user else 0
     outlook = outlook or engine.status_outlook(user_id, now)
-    blocks: list[dict] = [_section(level_text(score)), *today_blocks(engine, user_id, now)]
-    blocks += held_item_blocks(engine, user_id, today)
-    if goals := goals_text(outlook):
-        blocks += [DIVIDER, _section("*つぎのもくひょう*"), bullet_list([(line, 0) for line in goals.split("\n")])]
-    team = engine.week_progress(now)
-    if outlook.team is None and team.goal:  # before the team goal applies, the week is still shown
-        blocks.append(_context(team_progress_text(team)))
-    blocks += [DIVIDER, *render(attendance_history_blocks(attendance_by_day(engine, user_id, today)))]
-    if recent := recent_badges_text(engine, user_id):
-        blocks += [DIVIDER, _section(recent)]
+    parts: list[list[dict]] = [
+        [_header("今日"), *today_blocks(engine, user_id, now)],
+        [_header("ステータス"), status_fields(engine, user_id, today)],
+    ]
+    if goals := goal_lines(engine, outlook, now):
+        parts.append([_header("つぎのもくひょう"), bullet_list([(line, 0) for line in goals])])
+    parts.append(render(attendance_history_blocks(attendance_by_day(engine, user_id, today))))
+    if recent := recent_badge_lines(engine, user_id, today):
+        parts.append([_header("最近のバッジ"), bullet_list([(line, 0) for line in recent])])
+    blocks = [block for index, part in enumerate(parts) for block in ([DIVIDER] if index else []) + part]
     blocks.append(_context("バッジとアイテムの集まり具合は「図鑑」で見られます"))
     return blocks
 
@@ -240,7 +267,7 @@ def badge_item(badge_id: int, engine: BadgeEngine, user_id: str, rarities: Rarit
 
 
 def collection_summary(engine: BadgeEngine, user_id: str) -> str:
-    """Describe how much of the badges (kiribans aside) and the items the user has collected."""
+    """Describe how many titles the user has reached and how much of the badges (kiribans aside) and items."""
     badge_ids = [
         badge.id
         for badge_type in badge_types_to_show()
@@ -251,10 +278,45 @@ def collection_summary(engine: BadgeEngine, user_id: str) -> str:
     rate = int(100 * earned / len(badge_ids))
     user = engine.users.get(user_id)
     picked = {held.pick.item_id for held in user.items} if user else set()
+    level = max(level_reached_on(engine, user_id), default=0)
     return (
+        f"*かたがき* {level} / {len(LEVELS)}\n"
         f"*バッジ* `{_progress_bar(rate)}` {earned} / {len(badge_ids)}（{rate}%）\n"
         f"*アイテム* {len(picked & set(ITEMS))} / {len(ITEMS)} 種類を獲得"
     )
+
+
+def level_reached_on(engine: BadgeEngine, user_id: str) -> dict[int, date]:
+    """Return the day the user first reached each level they have reached."""
+    user = engine.users.get(user_id)
+    reached: dict[int, date] = {}
+    for result in user.results if user else []:
+        for number in range(1, get_level(result.current_score).number + 1):
+            reached.setdefault(number, result.time.date())
+    return reached
+
+
+def title_table(engine: BadgeEngine, user_id: str) -> dict:
+    """Tabulate every level's title: its level, the points it starts at, the title and the day first reached.
+
+    A title not reached yet is hidden; the current one is bold and marked.
+    """
+    reached = level_reached_on(engine, user_id)
+    current = max(reached, default=0)
+    rows = [[_cell(_text(label, bold=True)) for label in ("Lv", "ポイント", "かたがき", "達成日")]]
+    for number, (name, _) in enumerate(LEVELS, start=1):
+        start = LEVELS[number - 2][1] if number > 1 else 0
+        if number in reached:
+            title = _text(f"{name}（いま）" if number == current else name, bold=number == current)
+            day = f"{reached[number]:%y/%m/%d}"
+        else:
+            title, day = _text(UNKNOWN_EFFECT), "-"
+        rows.append([_cell(_text(f"Lv{number}")), _cell(_text(f"{start}pt〜")), _cell(title), _cell(_text(day))])
+    return {
+        "type": "table",
+        "column_settings": [{"align": "center"}, {"align": "right"}, {"is_wrapped": True}, {"align": "center"}],
+        "rows": rows,
+    }
 
 
 def badge_collection_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
@@ -290,7 +352,7 @@ def kiriban_text(engine: BadgeEngine, user_id: str) -> str:
 
 
 def item_collection_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
-    """Show every item as a card: its image, story and effect, how often the user picked it and its points."""
+    """Show every item as a card: its image and story, and once picked its effect, pick count and points."""
     user = engine.users.get(user_id)
     picks = Counter(held.pick.item_id for held in user.items) if user else Counter()
     points = Counter()
@@ -302,19 +364,24 @@ def item_collection_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
     for item in Items:
         card = item_card(item, ITEM_IMAGE_URLS.get(item.id))
         if picks[item.id]:
-            card["title"] = _mrkdwn(f"*{item.name}*  :white_check_mark: {picks[item.id]}回 獲得")
+            card["title"] = _mrkdwn(f"*{item.name}*  （{picks[item.id]}回獲得）")
             card["subtext"] = _mrkdwn(f"このアイテムで +{points[item.id]}pt")
         else:
-            card["title"] = _mrkdwn(f"*{item.name}*  未獲得")
+            card["title"] = _mrkdwn(f"*{item.name}*")
+            card["body"] = _mrkdwn(f"効果: {UNKNOWN_EFFECT}")  # the story hints; the effect shows once picked
         cards.append(card)
     return cards
 
 
 def collection_blocks(engine: BadgeEngine, user_id: str, _now: datetime) -> list[dict]:
-    """Build the collection: the totals, every badge by type, the kiribans and every item."""
+    """Build the collection: the totals, every title, every badge by type, the kiribans and every item."""
     return [
         _header("図鑑"),
         _section(collection_summary(engine, user_id)),
+        DIVIDER,
+        _header("かたがき"),
+        _context("達成日: はじめて届いた日 ／ まだのかたがきは、届くと名前がわかります"),
+        title_table(engine, user_id),
         DIVIDER,
         _header("バッジ"),
         _context(BADGE_LEGEND),
@@ -360,6 +427,7 @@ def ranking(title: str, totals: Counter, user_id: str, unit: str) -> Ranking:
     return Ranking(title, unit, top, own)
 
 
+UNKNOWN_EFFECT = "？？？？？"
 MEDALS = {1: "\N{FIRST PLACE MEDAL}", 2: "\N{SECOND PLACE MEDAL}", 3: "\N{THIRD PLACE MEDAL}"}
 EMPTY_RANKING = "まだ記録がありません"
 
@@ -419,7 +487,7 @@ def how_to_play_blocks(_engine: BadgeEngine, _user_id: str, _now: datetime) -> l
     """Build the rules: how to register, how points come, the items, the team goal and the levels."""
     windows = [(504, "6時台"), (501, "7〜9時"), (502, "9〜11時"), (503, "11〜18時")]
     window_text = "  ·  ".join(f"{label} +{BADGES[badge_id].score}pt" for badge_id, label in windows)
-    levels = "  ".join(f"lv{number} {threshold}" for number, (_, threshold) in enumerate(LEVELS, start=1))
+    levels = "  ".join(f"Lv{number} {threshold}" for number, (_, threshold) in enumerate(LEVELS, start=1))
     return [
         _header("あそびかた"),
         _section(

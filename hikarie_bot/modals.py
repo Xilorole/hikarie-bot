@@ -213,7 +213,7 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
     context = (
         dedent(
             f"""\
-            かたがき: *{level.name}* (lv{level.number})
+            かたがき: *{level.name}* (Lv{level.number})
             つぎのレベルまで: {next_level_text}
             しんこうど: {progress_text}
             うちわけ:
@@ -324,11 +324,11 @@ def _mrkdwn(text: str) -> dict:
     return {"type": "mrkdwn", "text": text}
 
 
-def notice_view(text: str) -> dict:
-    """Build a modal that only shows a message (the reply to the arrival shortcut)."""
+def notice_view(text: str, title: str = "出社登録") -> dict:
+    """Build a modal that only shows a message (the reply to the arrival shortcut, or a refusal from the Home)."""
     return {
         "type": "modal",
-        "title": _plain("出社登録"),
+        "title": _plain(title),
         "close": _plain("閉じる"),
         "blocks": [{"type": "section", "text": _mrkdwn(text)}],
     }
@@ -420,8 +420,8 @@ def status_blocks(engine: BadgeEngine, user_id: str, today: date, outlook: Outlo
     if level.is_max:
         points = f"{score}pt（最高レベル）"
     else:
-        points = f"{score}pt（lv{level.number + 1}まで あと{level.points_to_next}pt）"
-    items = [(f"*かたがき* {level.name}（lv{level.number}）", 0), (f"*ポイント* {points}", 0)]
+        points = f"{score}pt（Lv{level.number + 1}まで あと{level.points_to_next}pt）"
+    items = [(f"*かたがき* {level.name}（Lv{level.number}）", 0), (f"*ポイント* {points}", 0)]
     held = engine.held_item(user_id, today)
     if held is not None:
         until = f"{held.last_day:%-m/%-d}まで" if held.last_day else "次の出社で使う"
