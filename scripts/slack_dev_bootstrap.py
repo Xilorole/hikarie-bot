@@ -4,9 +4,11 @@ Uses the dev app's bot token injected by the Slack CLI to resolve BOT_ID / SLACK
 and to find or create the output / log channels, join them and invite ADMIN.
 """
 
+import json
 import os
 import shlex
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from slack_sdk import WebClient
@@ -45,6 +47,15 @@ def ensure_channel(client: WebClient, name: str, admin: str) -> str:
     return channel["id"]
 
 
+def dev_app_id(team_id: str) -> str | None:
+    """Return the dev app's ID in the workspace from the Slack CLI's .slack/apps.dev.json, if it is there."""
+    try:
+        apps = json.loads(Path(".slack/apps.dev.json").read_text())
+    except OSError, ValueError:
+        return None
+    return apps.get(team_id, {}).get("app_id")
+
+
 def main() -> None:
     """Print `export KEY=value` lines for the dev settings."""
     load_dotenv(os.environ.get("DOTENV_PATH", ".env.dev"), override=True)
@@ -52,6 +63,8 @@ def main() -> None:
     auth = client.auth_test()
 
     exports = {"BOT_ID": auth["bot_id"], "SLACK_WORKSPACE_ID": auth["team_id"]}
+    if app_id := dev_app_id(auth["team_id"]):
+        exports["SLACK_APP_ID"] = app_id
     for key, name in CHANNEL_NAMES.items():
         exports[key] = ensure_channel(client, name, os.environ.get("ADMIN", ""))
 

@@ -51,6 +51,7 @@ def arrival_click(user_id: str = "U1") -> dict:
     return {
         "user": {"id": user_id},
         "channel": {"id": "C0OUT"},
+        "trigger_id": "T1",
         "actions": [{"action_id": ActionID.ARRIVED_OFFICE}],
         "message": {"ts": POST_TS},
     }
@@ -110,7 +111,9 @@ async def test_home_arrival_is_announced_on_the_daily_post_and_refreshes_the_hom
     await bot.handle_arrive_shortcut(AsyncMock(), home_action(HomeActionID.ARRIVE), client)
 
     assert client.chat_postMessage.await_args.kwargs["thread_ts"] == POST_TS
-    assert client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"].startswith("出社登録しました")
+    assert client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"].startswith(
+        "*09:10* に出社登録しました"
+    )
     with Session(database) as session:
         assert session.query(ArrivalEvent).one().user_id == "U1"
     user_id, view = published(client)

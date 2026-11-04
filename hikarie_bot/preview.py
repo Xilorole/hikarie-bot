@@ -27,9 +27,8 @@ from hikarie_bot.db_data.items import WEEKLY_PASS, offers
 from hikarie_bot.engine import ArrivalResult, BadgeEngine, Outlook, TeamProgress
 from hikarie_bot.home import HomeTab, home_view
 from hikarie_bot.modals import (
-    achievement_view,
+    arrival_summary,
     goals_message,
-    goals_text,
     initial_message,
     item_pick_view,
     item_picked_message,
@@ -101,11 +100,6 @@ def _outlook(context: PreviewContext, arrival: ArrivalResult) -> Outlook:
     return replace(context.engine.outlook(arrival), team=context.engine.week_progress(arrival.time))
 
 
-def _arrival_goals(context: PreviewContext) -> dict[str, Any] | None:
-    arrival = context.engine.arrival_of(context.user_id, context.reference.date())
-    return None if arrival is None else {"blocks": render(goals_message(_outlook(context, arrival)))}
-
-
 def _point_get(context: PreviewContext, user_id: str | None) -> dict[str, Any] | None:
     arrival = None if user_id is None else context.engine.arrival_of(user_id, context.reference.date())
     return None if arrival is None else _point_get_blocks(context, arrival)
@@ -163,18 +157,14 @@ def _item_picked(context: PreviewContext) -> dict[str, Any]:
     return {"blocks": render(item_picked_message(context.user_id, item))}
 
 
-def _achievement(context: PreviewContext) -> dict[str, Any]:
-    now = context.reference.replace(hour=18)
-    outlook = replace(context.engine.status_outlook(context.user_id, now), team=context.engine.week_progress(now))
-    return achievement_view(context.engine, context.user_id, jst_datetime=now, outlook=outlook)
-
-
-def _arrive_shortcut(context: PreviewContext) -> dict[str, Any]:
-    text = "出社登録しました。<#C0PREVIEW> の今日の投稿のスレッドに記録しています"
+def _arrival_goals(context: PreviewContext) -> dict[str, Any] | None:
     arrival = context.engine.arrival_of(context.user_id, context.reference.date())
-    if arrival is not None:
-        text += f"\n\n*つぎのもくひょう*\n{goals_text(_outlook(context, arrival))}"
-    return notice_view(text)
+    return None if arrival is None else {"blocks": render(goals_message(_outlook(context, arrival)))}
+
+
+def _arrive_shortcut(context: PreviewContext) -> dict[str, Any] | None:
+    arrival = context.engine.arrival_of(context.user_id, context.reference.date())
+    return None if arrival is None else notice_view(arrival_summary(arrival, _outlook(context, arrival), "C0PREVIEW"))
 
 
 def _home(tab: str) -> Callable[[PreviewContext], dict[str, Any]]:
@@ -213,12 +203,11 @@ PREVIEWS = [
     ),
     Preview("point_get_item", "アイテム効果つきのポイント獲得メッセージ", _point_get_item),
     Preview("arrival_goals", "出社登録の直後に本人にだけ送る、つぎのもくひょう (ephemeral)", _arrival_goals),
-    Preview("achievement_view", "ステータスモーダル (旧: 実績確認モーダル)", _achievement),
     Preview("item_pick_view", "今日のアイテムを選ぶモーダル", _item_pick),
     Preview("item_review_view", "獲得後に今日のアイテムを見返すモーダル", _item_review),
     Preview("item_review_not_arrived", "出社登録の前に今日のアイテムを見るモーダル", _item_review_not_arrived),
     Preview("item_review_held", "期限付きアイテムを持っていて選べない日のモーダル", _item_review_held),
-    Preview("arrive_shortcut", "ショートカットから出社登録したときのモーダル", _arrive_shortcut),
+    Preview("arrive_shortcut", "ショートカットやホームから出社登録したときのモーダル", _arrive_shortcut),
     Preview("weekly_usage", "ログチャンネルに毎週送る利用状況", _weekly_usage),
     Preview("item_picked_message", "アイテム獲得をスレッドに知らせるメッセージ", _item_picked),
     Preview("home_my_page", "App Home: マイページ", _home(HomeTab.MY_PAGE)),

@@ -11,7 +11,6 @@ from loguru import logger
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.app.async_app import AsyncApp
 from slack_bolt.context.ack.async_ack import AsyncAck
-from slack_sdk.errors import SlackApiError
 from slack_sdk.http_retry.builtin_async_handlers import AsyncRateLimitErrorRetryHandler
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -21,13 +20,14 @@ from hikarie_bot.database import get_db
 from hikarie_bot.engine import ArrivalResult, Outlook, TeamProgress
 from hikarie_bot.home import HomeActionID, HomeTab, home_view
 from hikarie_bot.modals import (
+    ITEM_TITLE,
     ActionID,
     BlockID,
     CallbackID,
     ShortcutID,
-    achievement_view,
+    arrival_summary,
     goals_message,
-    goals_text,
+    home_url,
     item_pick_view,
     item_picked_message,
     item_picked_text,
@@ -178,10 +178,11 @@ NO_DAILY_POST = "今日の出社確認の投稿がまだありません（営業
 
 
 class Arrival(NamedTuple):
-    """How a press went: why it was refused, or what the user can aim for after the announced arrival."""
+    """How a press went: why it was refused, or the announced arrival and what the user can aim for after it."""
 
     refusal: str | None
     outlook: Outlook | None = None
+    result: ArrivalResult | None = None
 
 
 async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts: str) -> Arrival:
@@ -214,9 +215,11 @@ async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts:
             attach_slack_ts(session, registration.event_id, response["ts"])
 
         # replace the message with the day's arrivals
-        registry = registry_message(registration.arrivals_today, registration.team)
+        settings = get_settings()
+        url = home_url(settings.slack_workspace_id, settings.slack_app_id)
+        registry = registry_message(registration.arrivals_today, registration.team, url)
         await client.chat_update(channel=channel_id, ts=post_ts, text=to_text(registry), blocks=render(registry))
-    return Arrival(None, registration.outlook)
+    return Arrival(None, registration.outlook, registration.arrival)
 
 
 async def send_goals(client: AsyncWebClient, channel_id: str, user_id: str, outlook: Outlook) -> None:
@@ -231,7 +234,7 @@ async def send_goals(client: AsyncWebClient, channel_id: str, user_id: str, outl
 
 
 async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Handle a press of the arrival button on the daily post."""
+    """Handle a press of the arrival button on the daily post: a refusal or the next goals go to the user alone."""
     await ack()
     user_id = body["user"]["id"]
     channel_id = body["channel"]["id"]
@@ -239,10 +242,10 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
     arrival = await arrive(client, user_id, channel_id, body["message"]["ts"])
     if arrival.refusal is not None:
         await client.chat_postEphemeral(channel=channel_id, user=user_id, text=arrival.refusal)
-    elif arrival.outlook is not None:
+        return
+    if arrival.outlook is not None:
         await send_goals(client, channel_id, user_id, arrival.outlook)
-    if arrival.refusal is None:
-        await refresh_home(client, user_id)
+    await refresh_home(client, user_id)
 
 
 async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
@@ -263,47 +266,29 @@ async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: As
         await client.views_update(view_id=view_id, view=notice_view("出社登録に失敗しました。もう一度試してください"))
         raise
     if arrival.refusal is not None:
-        text = arrival.refusal
-    else:
-        text = f"出社登録しました。<#{channel_id}> の今日の投稿のスレッドに記録しています"
-        if arrival.outlook is not None and (goals := goals_text(arrival.outlook)):
-            text += f"\n\n*つぎのもくひょう*\n{goals}"
-    await client.views_update(view_id=view_id, view=notice_view(text))
-    if arrival.refusal is None:
-        await refresh_home(client, user_id)
+        await client.views_update(view_id=view_id, view=notice_view(arrival.refusal))
+        return
+    await client.views_update(
+        view_id=view_id, view=notice_view(arrival_summary(arrival.result, arrival.outlook, channel_id))
+    )
+    await refresh_home(client, user_id)
 
 
-def build_achievement_view(user_id: str) -> dict:
-    """Compute scores and render the user's achievements."""
-    with get_db() as session:
-        engine = compute_arrivals(session)
-    return achievement_view(engine, user_id)
+STATUS_MOVED = "ステータスはアプリのホームの「マイページ」に移りました"
 
 
-def describe_error(error: Exception) -> str:
-    """Describe an error for the user who hit it: Slack's error code and its messages, or the exception type."""
-    if isinstance(error, SlackApiError):
-        messages = error.response.get("response_metadata", {}).get("messages", [])
-        return "; ".join([error.response.get("error", "slack_error"), *messages])
-    return type(error).__name__
-
-
-async def handle_check_achievement(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Open the status modal; if it fails, tell the user why in an ephemeral message instead of nothing."""
+async def handle_status_moved(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Answer the status button of a daily post from before the Home: show my page there and say where it went."""
     await ack()
     user_id = body["user"]["id"]
-    try:
-        view = await asyncio.to_thread(build_achievement_view, user_id)
-        logger.info(f"Opening achievement view for user {user_id}")
-        await client.views_open(trigger_id=body["trigger_id"], view=view)
-    except Exception as error:
-        logger.exception("Could not open the status modal")
-        channel = body.get("channel", {}).get("id")
-        if channel is None:
-            raise
-        await client.chat_postEphemeral(
-            channel=channel, user=user_id, text=f"ステータスを開けませんでした（{describe_error(error)}）"
-        )
+    settings = get_settings()
+    url = home_url(settings.slack_workspace_id, settings.slack_app_id)
+    await client.chat_postEphemeral(
+        channel=body["channel"]["id"],
+        user=user_id,
+        text=STATUS_MOVED + (f"（<{url}|マイページを開く>）" if url else ""),
+    )
+    await refresh_home(client, user_id)
 
 
 ITEM_LOCK = asyncio.Lock()
@@ -332,9 +317,6 @@ async def announce_pick(client: AsyncWebClient, channel_id: str, thread_ts: str,
     )
     with get_db() as session:
         attach_pick_ts(session, pick.id, response["ts"])
-
-
-ITEM_TITLE = "今日のアイテム"
 
 
 async def open_item_offers(
@@ -391,6 +373,9 @@ async def handle_home_pick_item(ack: AsyncAck, body: dict[str, Any], client: Asy
         await client.views_open(trigger_id=body["trigger_id"], view=notice_view(refusal, ITEM_TITLE))
 
 
+DAY_CHANGED = "日付が変わりました。今日の投稿から選び直してください"
+
+
 async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Store the picked item if the user still may pick it, and announce it in the thread."""
     user_id = body["user"]["id"]
@@ -399,10 +384,7 @@ async def handle_item_submission(ack: AsyncAck, body: dict[str, Any], client: As
     selected = view["state"]["values"][BlockID.ITEM_CHOICE][ActionID.ITEM_CHOICE]["selected_option"]
     now = datetime.now(JST)
     if metadata["day"] != now.date().isoformat():
-        await ack(
-            response_action="errors",
-            errors={BlockID.ITEM_CHOICE: "日付が変わりました。今日の投稿から選び直してください"},
-        )
+        await ack(response_action="errors", errors={BlockID.ITEM_CHOICE: DAY_CHANGED})
         return
 
     # one pick at a time: the gate is checked again here, as the modal may have stayed open
@@ -450,6 +432,12 @@ async def handle_app_home_opened(event: dict[str, Any], client: AsyncWebClient) 
     await publish_home(client, event["user"], tab if tab in HomeTab.LABELS else HomeTab.MY_PAGE)
 
 
+async def handle_open_my_page(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Show my page on the Home that the daily post's link button opens (the link itself opens the Home tab)."""
+    await ack()
+    await publish_home(client, body["user"]["id"], HomeTab.MY_PAGE)
+
+
 async def handle_home_tab(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Switch the Home to the pressed tab."""
     await ack()
@@ -481,7 +469,8 @@ def create_app() -> AsyncApp:
     app = AsyncApp(client=create_client())
     app.action(ActionID.ARRIVED_OFFICE)(handle_button_click)
     app.action(ActionID.FASTEST_ARRIVAL)(handle_button_click)
-    app.action(ActionID.CHECK_ACHIEVEMENT)(handle_check_achievement)
+    app.action(ActionID.CHECK_ACHIEVEMENT)(handle_status_moved)
+    app.action(ActionID.OPEN_MY_PAGE)(handle_open_my_page)
     app.action(ActionID.PICK_ITEM)(handle_pick_item)
     app.view(CallbackID.ITEM_PICK)(handle_item_submission)
     app.view(CallbackID.ITEM_REVIEW)(handle_item_review)
