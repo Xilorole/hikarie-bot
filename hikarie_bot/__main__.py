@@ -17,7 +17,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 from hikarie_bot.arrivals import attach_slack_ts, compute_arrivals, record_button_arrival
 from hikarie_bot.constants import JST
 from hikarie_bot.database import get_db
-from hikarie_bot.engine import ArrivalResult, Outlook, TeamProgress
+from hikarie_bot.engine import ArrivalResult, TeamProgress
 from hikarie_bot.home import HomeActionID, HomeTab, home_view
 from hikarie_bot.modals import (
     ITEM_TITLE,
@@ -26,7 +26,6 @@ from hikarie_bot.modals import (
     CallbackID,
     ShortcutID,
     arrival_summary,
-    goals_message,
     home_url,
     item_pick_view,
     item_picked_message,
@@ -150,7 +149,6 @@ class Registration(NamedTuple):
     occurred_at: datetime
     arrival: ArrivalResult
     arrivals_today: list[ArrivalResult]
-    outlook: Outlook
     team: TeamProgress | None  # the week so far, for the daily post
 
 
@@ -167,9 +165,7 @@ def register_arrival(user_id: str, now: datetime) -> Registration | None:
     if arrival is None:  # the day's first event is the one just found, so the engine counts it
         msg = f"no counted arrival for event {event_id}"
         raise RuntimeError(msg)
-    return Registration(
-        event_id, occurred_at, arrival, engine.arrivals_on(today), engine.outlook(arrival), engine.team_progress(now)
-    )
+    return Registration(event_id, occurred_at, arrival, engine.arrivals_on(today), engine.team_progress(now))
 
 
 OUTSIDE_WINDOW = "出社申告は当日の6時から18時までの間にしてください"
@@ -178,15 +174,14 @@ NO_DAILY_POST = "今日の出社確認の投稿がまだありません（営業
 
 
 class Arrival(NamedTuple):
-    """How a press went: why it was refused, or the announced arrival and what the user can aim for after it."""
+    """How a press went: why it was refused, or the announced arrival."""
 
     refusal: str | None
-    outlook: Outlook | None = None
     result: ArrivalResult | None = None
 
 
 async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts: str) -> Arrival:
-    """Record and announce an arrival on the daily post; return why it was refused, or its outlook."""
+    """Record and announce an arrival on the daily post; return why it was refused, or the arrival."""
     now = datetime.now(JST)
     # the action is only valid from 6AM to 6PM JST of the post's day
     post_at6 = datetime.fromtimestamp(float(post_ts), JST).replace(hour=6, minute=0, second=0, microsecond=0)
@@ -219,22 +214,11 @@ async def arrive(client: AsyncWebClient, user_id: str, channel_id: str, post_ts:
         url = home_url(settings.slack_workspace_id, settings.slack_app_id)
         registry = registry_message(registration.arrivals_today, registration.team, url)
         await client.chat_update(channel=channel_id, ts=post_ts, text=to_text(registry), blocks=render(registry))
-    return Arrival(None, registration.outlook, registration.arrival)
-
-
-async def send_goals(client: AsyncWebClient, channel_id: str, user_id: str, outlook: Outlook) -> None:
-    """Tell the user alone what to aim for next; the arrival is announced already, so a failure only logs."""
-    message = goals_message(outlook)
-    if not message:
-        return
-    try:
-        await client.chat_postEphemeral(channel=channel_id, user=user_id, text=to_text(message), blocks=render(message))
-    except Exception:  # noqa: BLE001
-        logger.exception("Could not send the next goals")
+    return Arrival(None, registration.arrival)
 
 
 async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
-    """Handle a press of the arrival button on the daily post: a refusal or the next goals go to the user alone."""
+    """Handle a press of the arrival button on the daily post: a refusal goes to the user alone."""
     await ack()
     user_id = body["user"]["id"]
     channel_id = body["channel"]["id"]
@@ -243,16 +227,13 @@ async def handle_button_click(ack: AsyncAck, body: dict[str, Any], client: Async
     if arrival.refusal is not None:
         await client.chat_postEphemeral(channel=channel_id, user=user_id, text=arrival.refusal)
         return
-    if arrival.outlook is not None:
-        await send_goals(client, channel_id, user_id, arrival.outlook)
     await refresh_home(client, user_id)
 
 
 async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
     """Record an arrival from the global shortcut (or the Home's button), on today's daily post, and reply in a modal.
 
-    The modal opens first (a trigger expires in 3 seconds) and shows the outcome, with the next goals,
-    when it is known.
+    The modal opens first (a trigger expires in 3 seconds) and shows the outcome when it is known.
     """
     await ack()
     user_id = body["user"]["id"]
@@ -268,9 +249,7 @@ async def handle_arrive_shortcut(ack: AsyncAck, body: dict[str, Any], client: As
     if arrival.refusal is not None:
         await client.views_update(view_id=view_id, view=notice_view(arrival.refusal))
         return
-    await client.views_update(
-        view_id=view_id, view=notice_view(arrival_summary(arrival.result, arrival.outlook, channel_id))
-    )
+    await client.views_update(view_id=view_id, view=notice_view(arrival_summary(arrival.result, channel_id)))
     await refresh_home(client, user_id)
 
 

@@ -183,29 +183,12 @@ def outlook_lines(outlook: Outlook) -> list[str]:
     return lines
 
 
-def goals_text(outlook: Outlook) -> str:
-    """Describe what to aim for next and the week's team progress, one per line (empty if nothing)."""
-    lines = outlook_lines(outlook)
-    if outlook.team is not None:
-        lines.append(team_text(outlook.team))
-    return "\n".join(lines)
-
-
-def goals_message(outlook: Outlook) -> list[Block]:
-    """Build the ephemeral message that tells the user, right after their arrival, what to aim for next."""
-    text = goals_text(outlook)
-    return [blocks.SectionBlock(text=f"*つぎのもくひょう*\n{text}")] if text else []
-
-
-def arrival_summary(arrival: ArrivalResult, outlook: Outlook | None, channel_id: str) -> str:
-    """Describe a registered arrival: its time and points, where it is recorded, and what to aim for next."""
-    text = (
+def arrival_summary(arrival: ArrivalResult, channel_id: str) -> str:
+    """Describe a registered arrival: its time and points, and where it is recorded."""
+    return (
         f"*{arrival.time:%H:%M}* に出社登録しました（+{arrival.score_sum}pt）。"
         f"<#{channel_id}> の今日の投稿のスレッドに記録しています"
     )
-    if outlook is not None and (goals := goals_text(outlook)):
-        text += f"\n\n*つぎのもくひょう*\n{goals}"
-    return text
 
 
 def point_get_message(arrival: ArrivalResult) -> list[Block]:
