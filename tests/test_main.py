@@ -27,7 +27,7 @@ async def test_check_achievement_opens_the_users_view(app_database: Engine) -> N
     lists = [block for block in view["blocks"] if block["type"] == "rich_text"]
     lines = ["".join(part["text"] for part in item["elements"][0]["elements"]) for item in lists[0]["elements"]]
     assert view["title"]["text"] == "ステータス"
-    assert lines[:2] == ["かたがき かけだしのかいしゃいん（lv1）", "ポイント 7pt（lv2まで あと13pt）"]
+    assert lines[:2] == ["かたがき かけだしのかいしゃいん（Lv1）", "ポイント 7pt（Lv2まで あと13pt）"]
     assert any(
         "総出社回数: 1回" in "".join(p["text"] for p in i["elements"][0]["elements"]) for i in lists[1]["elements"]
     )
