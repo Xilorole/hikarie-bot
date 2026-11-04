@@ -28,10 +28,10 @@ uv run alembic upgrade head && uv run alembic revision --autogenerate --rev-id <
 ## Running
 
 - Importing the package needs no configuration: settings (`settings.get_settings()`), the engine (`database.get_engine()`) and the Slack app (`__main__.create_app()`) are created on first use. Read settings where they are used instead of copying them into module constants.
-- `start` checks `settings.REQUIRED` (skipped under `ENV=dev` / `ENV=test`); a database must be a file outside dev/test. pytest sets `ENV=test`; the `settings` fixture gives each test fresh settings to assign to, and `app_database` a fresh database behind `get_db`.
+- `start` checks `settings.REQUIRED` (skipped under `ENV=dev` / `ENV=test`); a database must be a file outside dev/test. It then reads `BOT_ID`, `SLACK_WORKSPACE_ID` and `SLACK_APP_ID` from Slack (`startup.resolve_slack_ids`: `auth.test`, `bots.info`); a value set in the environment wins. pytest sets `ENV=test`; the `settings` fixture gives each test fresh settings to assign to, and `app_database` a fresh database behind `get_db`.
 - Offline commands need no Slack token:
   - `uv run python -m hikarie_bot preview`: message mocks from synthetic data, as Block Kit Builder URLs (without `--workspace-id` they open in the signed-in workspace; a wrong ID makes them fail).
-  - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and `OUTPUT_CHANNEL`).
+  - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and `OUTPUT_CHANNEL` as env vars: offline, nothing reads them from Slack).
   - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot stats`: the weekly usage (counts only) that the bot posts to the log channel on Mondays.
 - Never run the bot locally with the production app's tokens: Socket Mode would take button presses away from production. Use `slack run` (dev app, `.env.dev`).
 - CI runs `uv run pytest -n auto`, `uv run ruff check .` and `uv run ruff format --check .`. pyright is installed but not enforced and has existing errors.

@@ -10,7 +10,6 @@ from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
 REQUIRED = [
     "output_channel",
     "log_channel",
-    "bot_id",
     "admin",
     "slack_bot_token",
     "slack_app_token",
@@ -33,7 +32,7 @@ class Settings(BaseSettings):
     output_channel: str = ""
     log_channel: str = ""
 
-    # slack.user
+    # slack.user (bot_id, and the workspace and app IDs below, are read from Slack at startup unless set)
     bot_id: str = ""
     admin: str = ""
 

@@ -133,6 +133,24 @@ def describe_items(session: Session, engine: BadgeEngine) -> str:
     return f"{picks} item picks · items {share:.1f}% of points"
 
 
+async def resolve_slack_ids(client: AsyncWebClient) -> None:
+    """Fill the bot, workspace and app IDs from Slack with the bot token; a value that is already set wins.
+
+    auth.test gives the bot and workspace IDs and bots.info the app ID. The app ID only builds the link to
+    the Home, so if bots.info fails (it needs the users:read scope) the link is left out and startup goes on.
+    """
+    settings = get_settings()
+    if not (settings.bot_id and settings.slack_workspace_id):
+        auth = await client.auth_test()
+        settings.bot_id = settings.bot_id or auth["bot_id"]
+        settings.slack_workspace_id = settings.slack_workspace_id or auth["team_id"]
+    if not settings.slack_app_id:
+        try:
+            settings.slack_app_id = (await client.bots_info(bot=settings.bot_id))["bot"]["app_id"]
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not read the app ID from Slack (bots.info needs users:read); no link to the Home")
+
+
 async def prepare(reporter: StartupReporter, source: SlackSource, channel: str) -> None:
     """Migrate, read Slack into an empty database and compute scores once (a check), reporting each step.
 

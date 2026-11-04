@@ -22,9 +22,9 @@ production. Use the dev app instead:
 2. Copy `.env.dev.template` to `.env.dev` and set `ADMIN` to your user ID.
 3. `slack run`
 
-The CLI installs the dev app from `manifest.json` and injects its tokens. `scripts/slack_dev_start.sh` derives
-`BOT_ID` and the workspace from them, creates the `#prd` / `#log` channels if needed, and starts the bot with
-`--dev`, which posts the daily message right away.
+The CLI installs the dev app from `manifest.json` and injects its tokens. `scripts/slack_dev_start.sh`
+creates the `#prd` / `#log` channels if needed, and starts the bot with
+`--dev` (the bot reads its own IDs from Slack), which posts the daily message right away.
 
 ### Message previews
 

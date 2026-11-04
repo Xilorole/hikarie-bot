@@ -41,7 +41,7 @@ from hikarie_bot.picks import PickGate, StoredPick, attach_pick_ts, pick_gate, r
 from hikarie_bot.preview import preview
 from hikarie_bot.settings import REQUIRED, get_settings
 from hikarie_bot.slack_helper import find_daily_post, schedule_daily_message, schedule_weekly_usage, send_daily_message
-from hikarie_bot.startup import StartupReporter, current_revision, prepare
+from hikarie_bot.startup import StartupReporter, current_revision, prepare, resolve_slack_ids
 from hikarie_bot.sync import (
     CachedSlackSource,
     LiveSlackSource,
@@ -77,6 +77,10 @@ async def start(*, dev: bool = False) -> None:
     settings = get_settings()
     settings.require(*REQUIRED)
     app = create_app()
+
+    # the bot, workspace and app IDs: before anything reads the channel (the sync filters on the bot ID)
+    # or builds the daily post (its link to the Home)
+    await resolve_slack_ids(app.client)
 
     # migrate, read arrivals posted while the bot was stopped (the whole channel on first start)
     # and recompute scores before any task touches the database; each step goes to the log channel
