@@ -98,32 +98,10 @@ kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -c "import sqlite3; c =
 bot は `rebooting...` と返してプロセスを終了し、Kubernetes がコンテナを起動し直す（PVC のデータを使い、Slack は読まないので数秒）。
 同じイメージで起動し直すだけなので、新しいバージョンにするにはイメージのタグを変える。
 
-### 出社登録ショートカット
+### Slack アプリの設定
 
-利用者は Slack の **グローバルショートカット「出社した」**（検索欄の左の「+」や `/` メニュー）から、当日の投稿を探さずに出社登録できる。
-本番の Slack アプリには、アプリ設定の **Interactivity & Shortcuts → Shortcuts** で次を一度だけ追加する（dev アプリは `manifest.json` から入る）。
-
-| 項目 | 値 |
-|---|---|
-| 種類 | Global |
-| Name | 出社した |
-| Short Description | 今日の出社を登録する |
-| Callback ID | `arrive` |
-
-追加のスコープは要らない（`commands` と `channels:history` は付与済み）。登録は当日の投稿のスレッドに記録され、結果はモーダルで返る。
-
-### App Home
-
-アプリの「ホーム」タブに、マイページ・図鑑・ランキング・あそびかたを出す（開くたびに計算し直す。保存するものはない）。
-本番の Slack アプリには、アプリ設定で次を一度だけ有効にする（dev アプリは `manifest.json` から入る）。
-
-| 画面 | 設定 |
-|---|---|
-| **App Home → Show Tabs** | **Home Tab** をオン |
-| **Event Subscriptions** | **Enable Events** をオンにし、**Subscribe to bot events** に `app_home_opened` を追加 |
-
-Socket Mode なので Request URL は要らず、追加のスコープも要らない。設定を保存したら、アプリの再インストールを求められれば従う。
-設定する前にデプロイしても、ホームタブが出ないだけでほかの機能は変わらない。
+ショートカットや App Home のように Slack アプリ側で有効にするものは、動かす場所によらないので
+[slack-app.md](slack-app.md) にまとめている。
 
 ### 利用状況の週次レポート
 

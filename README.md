@@ -43,6 +43,9 @@ volume; add `--build` to run the checkout instead of `ghcr.io/xilorole/hikarie-b
 
 On Rancher, see [docs/deploy/rancher.md](docs/deploy/rancher.md) (Japanese).
 
+The production Slack app is configured by hand (the dev app gets its settings from `manifest.json`): what each feature
+needs enabled once is in [docs/deploy/slack-app.md](docs/deploy/slack-app.md) (Japanese).
+
 ## Data
 
 `arrival_event` (one row per arrival) is the only stored data; scores, ranks and badges are recomputed from it on
