@@ -285,15 +285,15 @@ def item_review_view(
     picked_item_id: str | None = None,
     image_urls: Mapping[str, str] = ITEM_IMAGE_URLS,
 ) -> dict:
-    """Build the read-only modal of today's items: after the pick, or while another item is held.
+    """Build the read-only modal of today's items: before the arrival, after the pick, or while an item is held.
 
-    Slack shows a submit button anyway, so it reads "OK" and only closes the modal.
+    It has no inputs, so it needs no submit button: "閉じる" is its only button. (Block Kit Builder's
+    "Send to Slack" adds a submit button to every modal; views.open does not.)
     """
     return {
         "type": "modal",
         "callback_id": CallbackID.ITEM_REVIEW,
         "title": _plain("今日のアイテム"),
-        "submit": _plain("OK"),
         "close": _plain("閉じる"),
         "blocks": [
             {"type": "section", "text": _mrkdwn(notice)},

@@ -334,7 +334,7 @@ async def test_one_pick_a_day_and_then_the_offers_are_read_only(database: Engine
 
     view = client.views_open.await_args.kwargs["view"]
     assert view["callback_id"] == CallbackID.ITEM_REVIEW
-    assert view["submit"]["text"] == "OK"
+    assert "submit" not in view  # nothing to submit: "閉じる" is the only button
     assert not any(block["type"] == "input" for block in view["blocks"])
     titles = [block["title"]["text"] for block in view["blocks"] if block["type"] == "card"]
     assert [title.endswith("獲得済み") for title in titles] == [True, False, False]
