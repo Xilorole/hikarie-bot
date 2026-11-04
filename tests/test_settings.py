@@ -5,7 +5,7 @@ import pytest
 from hikarie_bot.exceptions import EnvironmentVariableNotFoundError
 from hikarie_bot.settings import REQUIRED, Settings, env_file
 
-REQUIRED_SLACK = ["OUTPUT_CHANNEL", "LOG_CHANNEL", "BOT_ID", "ADMIN"]
+REQUIRED_SLACK = ["OUTPUT_CHANNEL", "LOG_CHANNEL", "ADMIN"]
 
 
 def test_settings_require_database_url_outside_dev_and_test(monkeypatch: pytest.MonkeyPatch) -> None:

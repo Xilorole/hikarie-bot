@@ -29,16 +29,16 @@ dev アプリは `slack run` のときに `manifest.json` から設定される�
 | **App Home → Show Tabs** | **Home Tab** をオン |
 | **Event Subscriptions** | **Enable Events** をオンにし、**Subscribe to bot events** に `app_home_opened` を追加 |
 
-Socket Mode なので Request URL は要らず、追加のスコープも要らない。設定を保存したら、アプリの再インストールを求められれば従う。
+Socket Mode なので Request URL は要らない。設定を保存したら、アプリの再インストールを求められれば従う。
 
 ### 毎朝の投稿の「マイページを開く」
 
-毎朝の投稿のボタンからホームのマイページを開くには、ボットの環境変数に次の 2 つを入れる（Rancher では Secret）。
+毎朝の投稿のボタンからホームのマイページを開くリンクは、ボットが起動時に Slack から取得した値で作る。
+`BOT_ID` / `SLACK_WORKSPACE_ID` / `SLACK_APP_ID` は環境変数に入れなくてよい（入れた値は優先される）。
 
-| 環境変数 | 値 |
-|---|---|
-| `SLACK_WORKSPACE_ID` | ワークスペースの ID（`T` で始まる） |
-| `SLACK_APP_ID` | アプリの ID（アプリ設定の **Basic Information → App ID**、`A` で始まる） |
+- `auth.test` でボットとワークスペースの ID、`bots.info` でアプリの ID を取る。
+- `bots.info` には Bot Token Scope の `users:read` が要る（**OAuth & Permissions → Scopes** に追加して再インストール）。
+  足りなければ警告を出してボタンなしで起動する。
 
 ボタンは `slack://app?team=…&id=…&tab=home` でホームタブを開き、押した人のホームをマイページにする。
-2 つのどちらかがなければボタンは出ない。前の「ステータス」ボタンは、押すとマイページに移ったことを伝える。
+ワークスペースとアプリの ID のどちらかが取れなければボタンは出ない。前の「ステータス」ボタンは、押すとマイページに移ったことを伝える。
