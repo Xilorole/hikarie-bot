@@ -1,13 +1,15 @@
 import re
 from collections import Counter
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
 from hikarie_bot.constants import JST
+from hikarie_bot.db_data.items import Items
 from hikarie_bot.engine import BadgeEngine
-from hikarie_bot.home import HOME_BLOCK_MAX, HomeActionID, HomeTab, home_view, ranking
+from hikarie_bot.home import HOME_BLOCK_MAX, HomeActionID, HomeTab, home_view, ranking, when
 from hikarie_bot.preview import build_synthetic_context
+from hikarie_bot.utils import LEVELS, get_level
 
 
 @pytest.mark.parametrize("tab", list(HomeTab.LABELS))
@@ -83,3 +85,53 @@ def test_ranking_tab_writes_each_ranking_as_a_table() -> None:
     assert len(tables) == 3
     first_place = tables[0]["rows"][0][0]["elements"][0]["elements"][0]["text"]
     assert first_place == "\N{FIRST PLACE MEDAL}"
+
+
+def test_collection_hides_the_effect_of_an_item_never_picked() -> None:
+    """An item's effect shows in the collection only once the user has picked it; its story always shows."""
+    context = build_synthetic_context()
+    view = home_view(context.engine, context.user_id, context.reference.replace(hour=12), HomeTab.COLLECTION)
+    picked = {held.pick.item_id for held in context.engine.users[context.user_id].items}
+
+    cards = {card["title"]["text"]: card for card in view["blocks"] if card["type"] == "card"}
+    for item in Items:
+        card = next(card for title, card in cards.items() if title.startswith(f"*{item.name}*"))
+        assert card["subtitle"]["text"] == item.flavor
+        assert (item.effect in card["body"]["text"]) == (item.id in picked)
+    assert picked < {item.id for item in Items}  # the synthetic user has some never picked
+
+
+@pytest.mark.parametrize(
+    ("day", "text"),
+    [
+        (date(2026, 11, 4), "今日"),
+        (date(2026, 11, 3), "昨日"),
+        (date(2026, 10, 28), "7日前"),
+        (date(2026, 10, 27), "1週前"),
+        (date(2026, 10, 5), "4週前"),  # 30 days, still within a month
+        (date(2026, 10, 4), "1ヶ月前"),
+        (date(2025, 11, 5), "11ヶ月前"),
+        (date(2025, 11, 4), "1年以上前"),
+        (date(2023, 1, 4), "1年以上前"),
+    ],
+)
+def test_recent_badges_say_how_long_ago(day: date, text: str) -> None:
+    """Days up to a week, weeks within a month, months within a year, then just over a year."""
+    assert when(day, date(2026, 11, 4)) == text
+
+
+def test_collection_tabulates_titles_reached_with_their_day_and_hides_the_rest() -> None:
+    """Reached titles show their name and the day first reached; the current one is marked; the rest are hidden."""
+    context = build_synthetic_context()
+    view = home_view(context.engine, context.user_id, context.reference.replace(hour=12), HomeTab.COLLECTION)
+    current = get_level(context.engine.users[context.user_id].score).number
+
+    table = next(block for block in view["blocks"] if block["type"] == "table")
+    rows = [[cell["elements"][0]["elements"][0]["text"] for cell in row] for row in table["rows"]]
+    assert rows[0] == ["Lv", "ポイント", "かたがき", "達成日"]
+    assert len(rows) == 1 + len(LEVELS)
+    for number, ((name, _), (level, _points, title, day)) in enumerate(zip(LEVELS, rows[1:], strict=True), start=1):
+        assert level == f"Lv{number}"
+        assert (name in title) == (number <= current)
+        assert title.endswith("（いま）") == (number == current)
+        assert (day == "-") == (number > current)
