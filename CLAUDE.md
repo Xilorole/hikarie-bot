@@ -1,7 +1,7 @@
 # hikarie-bot
 
 Slack bot that records office arrivals (button presses in one channel) and awards badges and points.
-Why the data works the way it does: `docs/design/data-architecture.md` (Japanese). Deploy: `docs/deploy/rancher.md`.
+Why the data works the way it does: `docs/design/data-architecture.md` (Japanese). Deploy: `docs/deploy/rancher.md`; production Slack app settings (by hand, unlike the dev app's `manifest.json`): `docs/deploy/slack-app.md`.
 
 ## Data model
 
