@@ -39,6 +39,8 @@ class Settings(BaseSettings):
 
     # slack.workspace
     slack_workspace_id: str = ""
+    # the app's ID (Basic Information in the app settings): with the workspace ID, the daily post links to the Home
+    slack_app_id: str = ""
 
     # auth
     slack_bot_token: str = ""

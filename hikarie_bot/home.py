@@ -26,6 +26,8 @@ from hikarie_bot.modals import (
     attendance_history_blocks,
     badge_types_to_show,
     bullet_list,
+    divided,
+    item_section,
     outlook_lines,
     render,
 )
@@ -112,13 +114,26 @@ def home_view(engine: BadgeEngine, user_id: str, now: datetime, tab: str = HomeT
 # attendance history and recent badges, in that order.
 
 
+def picked_today(engine: BadgeEngine, user_id: str, today: date) -> str | None:
+    """Return the ID of the item the user picked today, if any."""
+    user = engine.users.get(user_id)
+    return next((held.pick.item_id for held in user.items if held.pick.day == today), None) if user else None
+
+
 def today_blocks(engine: BadgeEngine, user_id: str, now: datetime) -> list[dict]:
-    """Describe today's arrival with its buttons: register it, and look at (once arrived, pick) the day's items."""
+    """Describe today's arrival with its buttons: register it, and look at (once arrived, pick) the day's items.
+
+    Once today's item is picked, it shows as in the collection (without its story) instead of the item button.
+    """
     today = now.date()
     item_button = _button("今日のアイテム", HomeActionID.PICK_ITEM)
     arrival = engine.arrival_of(user_id, today)
     if arrival is not None:
         text = f"{arrival.time:%H:%M} に出社登録済み（{arrival.rank}番目・+{arrival.score_sum}pt）"
+        if (item_id := picked_today(engine, user_id, today)) in ITEMS:
+            item = ITEMS[item_id]
+            name = f"*今日のアイテム*  {item.name}（効果は次の出社から）"
+            return [_section(text), item_section(name, item.effect, None, ITEM_IMAGE_URLS.get(item.id), item.name)]
         return [_section(text, item_button)]
     if not is_jp_bizday(today):
         return [_section("お休みの日です。次の営業日にまた会いましょう")]
@@ -361,16 +376,14 @@ def item_collection_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
     """
     user = engine.users.get(user_id)
     picks = Counter(held.pick.item_id for held in user.items) if user else Counter()
-    blocks = []
+    sections = []
     for item in Items:
-        picked = picks[item.id] > 0
-        title = f"*{item.name}*  （{picks[item.id]}回獲得）" if picked else f"*{item.name}*"
-        effect = item.effect if picked else UNKNOWN_EFFECT
-        told = item.flavor if picked else UNKNOWN_EFFECT
-        flavor = f">_{told}_"
-        image = {"type": "image", "image_url": ITEM_IMAGE_URLS[item.id], "alt_text": item.name}
-        blocks += [*([DIVIDER] if blocks else []), _section(f"{title}\n効果: {effect}\n{flavor}", image)]
-    return blocks
+        if picks[item.id]:
+            name, effect, story = f"*{item.name}*  （{picks[item.id]}回獲得）", item.effect, item.flavor
+        else:
+            name, effect, story = f"*{item.name}*", UNKNOWN_EFFECT, UNKNOWN_EFFECT
+        sections.append(item_section(name, effect, story, ITEM_IMAGE_URLS.get(item.id), item.name))
+    return divided([[section] for section in sections])
 
 
 def collection_blocks(engine: BadgeEngine, user_id: str, _now: datetime) -> list[dict]:

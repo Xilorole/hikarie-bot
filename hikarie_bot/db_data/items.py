@@ -25,8 +25,8 @@ OFFER_COUNT = 3
 class ItemData:
     """An item: its stable ID (stored in item_pick_event), how it is shown and how long it lasts.
 
-    flavor is the item's story on its card, hinting at what it does; effect states exactly what it does
-    (in points, or that it gives none) and is shown with it, in the thread announcement and in notices.
+    flavor is the item's story, shown in the collection once picked; effect states exactly what it does (in
+    points, or that it gives none) and is shown in the item modals and the collection, never in the channel.
     """
 
     id: str

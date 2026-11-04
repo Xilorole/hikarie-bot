@@ -5,6 +5,7 @@ from datetime import date, datetime
 import pytest
 
 from hikarie_bot.constants import JST
+from hikarie_bot.db_data.items import ITEMS as ITEMS_BY_ID
 from hikarie_bot.db_data.items import Items
 from hikarie_bot.engine import BadgeEngine
 from hikarie_bot.home import HOME_BLOCK_MAX, HomeActionID, HomeTab, home_view, ranking, when
@@ -137,3 +138,22 @@ def test_collection_tabulates_titles_reached_with_their_day_and_hides_the_rest()
         assert (name in title) == (number <= current)
         assert title.endswith("（いま）") == (number == current)
         assert (day == "-") == (number > current)
+
+
+def test_my_page_shows_todays_pick_instead_of_the_item_button() -> None:
+    """Once today's item is picked, my page shows it beside its image and drops the button to open the offers."""
+    engine = BadgeEngine()
+    now = datetime(2025, 5, 7, 12, tzinfo=JST)
+    engine.add("U1", now.replace(hour=9))
+    before = home_view(engine, "U1", now)
+    engine.pick("U1", now.date(), "omamori")
+
+    after = home_view(engine, "U1", now)
+
+    assert HomeActionID.PICK_ITEM in str(before)
+    assert HomeActionID.PICK_ITEM not in str(after)
+    item = next(block for block in after["blocks"] if "accessory" in block and block["accessory"]["type"] == "image")
+    assert (
+        item["text"]["text"]
+        == f"*今日のアイテム*  {ITEMS_BY_ID['omamori'].name}（効果は次の出社から）\n効果: {ITEMS_BY_ID['omamori'].effect}"
+    )

@@ -80,7 +80,7 @@ async def test_second_press_on_the_same_day_is_rejected(database: Engine) -> Non
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
     assert client.chat_postMessage.await_count == 1
-    assert "既に出社申告" in client.chat_postEphemeral.await_args.kwargs["text"]
+    assert client.chat_postEphemeral.await_args.kwargs["text"] == bot.ALREADY_ARRIVED
     with Session(database) as session:
         assert session.query(ArrivalEvent).count() == 1
 
@@ -93,7 +93,7 @@ async def test_press_outside_the_window_is_rejected(database: Engine, clock: Fro
 
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
-    assert "6時から18時" in client.chat_postEphemeral.await_args.kwargs["text"]
+    assert client.chat_postEphemeral.await_args.kwargs["text"] == bot.OUTSIDE_WINDOW
     with Session(database) as session:
         assert session.query(ArrivalEvent).count() == 0
 
@@ -167,7 +167,8 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
     handlers = {listener.ack_function for listener in app._async_listeners}  # noqa: SLF001
     assert handlers == {
         bot.handle_button_click,
-        bot.handle_check_achievement,
+        bot.handle_status_moved,
+        bot.handle_open_my_page,
         bot.handle_pick_item,
         bot.handle_item_submission,
         bot.handle_item_review,
@@ -211,7 +212,7 @@ async def test_shortcut_records_the_arrival_on_todays_post(database: Engine, set
     assert (post["channel"], post["thread_ts"]) == ("C0OUT", f"{DAILY_POST.timestamp():.6f}")
     client.chat_update.assert_awaited_once()
     reply = client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"]
-    assert reply.startswith("出社登録しました")
+    assert reply.startswith("*09:10* に出社登録しました")
     assert "*つぎのもくひょう*\n「出社登録ビギナー」まで あと4回" in reply
     client.chat_postEphemeral.assert_not_awaited()  # the modal says it all
     with Session(database) as session:
@@ -257,6 +258,7 @@ async def test_next_goals_go_to_the_user_alone_not_the_thread(database: Engine) 
     ephemeral = client.chat_postEphemeral.await_args.kwargs
     assert (ephemeral["channel"], ephemeral["user"]) == ("C0OUT", "U1")
     assert "「出社登録ビギナー」まで あと4回" in ephemeral["text"]
+    client.views_open.assert_not_awaited()  # a press is all it takes
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 import json
 import re
 from collections.abc import Mapping
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from textwrap import dedent
 
 from slack_sdk.models.blocks import (
@@ -14,10 +14,9 @@ from slack_sdk.models.blocks import (
 from hikarie_bot import db_data
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
-    JST,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
-from hikarie_bot.db_data.badges import KIRIBANS, BadgeData, BadgeTypeData, Kiriban
+from hikarie_bot.db_data.badges import BadgeTypeData
 from hikarie_bot.db_data.items import ID_CARD, ITEM_IMAGE_URLS, ITEMS, ItemData
 from hikarie_bot.engine import (
     STRAIGHT_FLASH,
@@ -28,7 +27,6 @@ from hikarie_bot.engine import (
     ItemEffect,
     Outlook,
     TeamProgress,
-    UserBadgeTally,
 )
 from hikarie_bot.utils import (
     get_level,
@@ -55,7 +53,8 @@ class ActionID:
 
     ARRIVED_OFFICE = "ARRIVED_OFFICE"
     FASTEST_ARRIVAL = "FASTEST_ARRIVAL"
-    CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"
+    CHECK_ACHIEVEMENT = "CHECK_ACHIEVEMENT"  # the status button of daily posts from before the Home
+    OPEN_MY_PAGE = "OPEN_MY_PAGE"
     PICK_ITEM = "PICK_ITEM"
     ITEM_CHOICE = "ITEM_CHOICE"
 
@@ -108,14 +107,28 @@ def _team_context(team: TeamProgress | None) -> list[Block]:
     )
 
 
-def initial_message(team: TeamProgress | None = None) -> list[Block]:
+def home_url(team_id: str, app_id: str) -> str | None:
+    """Return the deep link that opens the app's Home tab, or None without both IDs."""
+    return f"slack://app?team={team_id}&id={app_id}&tab=home" if team_id and app_id else None
+
+
+def _my_page_button(url: str | None) -> list[block_elements.ButtonElement]:
+    """Return the button that opens my page on the Home, or none without a link to the Home."""
+    return (
+        []
+        if url is None
+        else [block_elements.ButtonElement(text="マイページを開く", action_id=ActionID.OPEN_MY_PAGE, url=url)]
+    )
+
+
+def initial_message(team: TeamProgress | None = None, my_page_url: str | None = None) -> list[Block]:
     """Build the daily question with its buttons, and the week's team progress once the team goal applies."""
     return [
         blocks.SectionBlock(text="高輪に出社してる？"),
         blocks.ActionsBlock(
             elements=[
                 block_elements.ButtonElement(text="最速出社した", action_id=ActionID.FASTEST_ARRIVAL, style="primary"),
-                block_elements.ButtonElement(text="ステータス", action_id=ActionID.CHECK_ACHIEVEMENT),
+                *_my_page_button(my_page_url),
                 block_elements.ButtonElement(text="今日のアイテム", action_id=ActionID.PICK_ITEM),
             ],
             block_id=BlockID.FASTEST_ARRIVAL,
@@ -124,14 +137,16 @@ def initial_message(team: TeamProgress | None = None) -> list[Block]:
     ]
 
 
-def registry_message(arrivals: list[ArrivalResult], team: TeamProgress | None = None) -> list[Block]:
+def registry_message(
+    arrivals: list[ArrivalResult], team: TeamProgress | None = None, my_page_url: str | None = None
+) -> list[Block]:
     """Build the question with its buttons, the day's arrivals in time order and the week's team progress."""
     return [
         blocks.SectionBlock(text="高輪に出社してる？"),
         blocks.ActionsBlock(
             elements=[
                 block_elements.ButtonElement(text="出社した", action_id=ActionID.ARRIVED_OFFICE),
-                block_elements.ButtonElement(text="ステータス", action_id=ActionID.CHECK_ACHIEVEMENT),
+                *_my_page_button(my_page_url),
                 block_elements.ButtonElement(text="今日のアイテム", action_id=ActionID.PICK_ITEM),
             ],
             block_id=BlockID.ARRIVED_OFFICE,
@@ -180,6 +195,17 @@ def goals_message(outlook: Outlook) -> list[Block]:
     """Build the ephemeral message that tells the user, right after their arrival, what to aim for next."""
     text = goals_text(outlook)
     return [blocks.SectionBlock(text=f"*つぎのもくひょう*\n{text}")] if text else []
+
+
+def arrival_summary(arrival: ArrivalResult, outlook: Outlook | None, channel_id: str) -> str:
+    """Describe a registered arrival: its time and points, where it is recorded, and what to aim for next."""
+    text = (
+        f"*{arrival.time:%H:%M}* に出社登録しました（+{arrival.score_sum}pt）。"
+        f"<#{channel_id}> の今日の投稿のスレッドに記録しています"
+    )
+    if outlook is not None and (goals := goals_text(outlook)):
+        text += f"\n\n*つぎのもくひょう*\n{goals}"
+    return text
 
 
 def point_get_message(arrival: ArrivalResult) -> list[Block]:
@@ -248,23 +274,29 @@ ITEM_PICK_GUIDE = (
 )
 
 
+ITEM_TITLE = "今日のアイテム"
+
+
 def item_pick_view(
     offered: list[ItemData], channel_id: str, thread_ts: str, day: date, image_urls: Mapping[str, str] = ITEM_IMAGE_URLS
 ) -> dict:
-    """Build the modal offering today's items as cards, picked with a radio button and submitted.
+    """Build the modal offering today's items as the collection shows them, picked with a radio button and submitted.
 
-    Views are built as dictionaries: slack_sdk has no model of the card block.
+    Submitting closes the modal (a button inside a modal cannot). The pick goes under the daily post (channel and
+    thread in the private metadata) on the day the modal opened.
     """
     return {
         "type": "modal",
         "callback_id": CallbackID.ITEM_PICK,
-        "title": _plain("今日のアイテム"),
+        "title": _plain(ITEM_TITLE),
         "submit": _plain("獲得"),
         "close": _plain("やめる"),
         "private_metadata": json.dumps({"channel": channel_id, "thread_ts": thread_ts, "day": day.isoformat()}),
         "blocks": [
             {"type": "section", "text": _mrkdwn(ITEM_PICK_GUIDE)},
-            *(item_card(item, image_urls.get(item.id)) for item in offered),
+            {"type": "divider"},
+            *divided([[offered_item(item, image_urls.get(item.id))] for item in offered]),
+            {"type": "divider"},
             {
                 "type": "input",
                 "block_id": BlockID.ITEM_CHOICE,
@@ -287,33 +319,67 @@ def item_review_view(
 ) -> dict:
     """Build the read-only modal of today's items: before the arrival, after the pick, or while an item is held.
 
-    It has no inputs, so it needs no submit button: "閉じる" is its only button. (Block Kit Builder's
+    After a pick, the picked item comes first as usual and the others follow in small grey text, so it stands out
+    without a label. It has no inputs, so it needs no submit button: "閉じる" is its only button. (Block Kit Builder's
     "Send to Slack" adds a submit button to every modal; views.open does not.)
     """
     return {
         "type": "modal",
         "callback_id": CallbackID.ITEM_REVIEW,
-        "title": _plain("今日のアイテム"),
+        "title": _plain(ITEM_TITLE),
         "close": _plain("閉じる"),
         "blocks": [
             {"type": "section", "text": _mrkdwn(notice)},
-            *(item_card(item, image_urls.get(item.id), picked=item.id == picked_item_id) for item in offered),
+            {"type": "divider"},
+            *divided(
+                [
+                    offered_item_blocks(item, image_urls.get(item.id), dimmed=picked_item_id not in {None, item.id})
+                    # the picked one first; sorted keeps the offers' order otherwise
+                    for item in sorted(offered, key=lambda item: item.id != picked_item_id)
+                ]
+            ),
+            {"type": "divider"},
             {"type": "context", "elements": [_mrkdwn("アイテムは1日1つまで。出社した日に選べます。")]},
         ],
     }
 
 
-def item_card(item: ItemData, image_url: str | None, *, picked: bool = False) -> dict:
-    """Return an item's card: its image and name, its story as the subtitle and exactly what it does as the body."""
-    card = {
-        "type": "card",
-        "title": _mrkdwn(f"*{item.name}*" + ("  :white_check_mark: 獲得済み" if picked else "")),
-        "subtitle": _mrkdwn(item.flavor),
-        "body": _mrkdwn(f"効果: {item.effect}"),
-    }
-    if image_url:  # an item whose image is not hosted yet has no icon
-        card["icon"] = {"type": "image", "image_url": image_url, "alt_text": item.name}
-    return card
+def item_section(name: str, effect: str, story: str | None, image_url: str | None, alt_text: str) -> dict:
+    """Return an item as the collection and the item modals show it: name and effect beside a large image.
+
+    The collection adds the story below as an italic block quote; the modals leave it out. Cards were dropped: they
+    render narrow on a desktop Home and stack up in a modal.
+    """
+    text = f"{name}\n効果: {effect}" + (f"\n>_{story}_" if story is not None else "")
+    block = {"type": "section", "text": _mrkdwn(text)}
+    if image_url:  # an item whose image is not hosted yet has no image
+        block["accessory"] = {"type": "image", "image_url": image_url, "alt_text": alt_text}
+    return block
+
+
+def offered_item(item: ItemData, image_url: str | None) -> dict:
+    """Return an offered item without its story: its name and effect beside its image."""
+    return item_section(f"*{item.name}*", item.effect, None, image_url, item.name)
+
+
+def offered_item_blocks(item: ItemData, image_url: str | None, *, dimmed: bool = False) -> list[dict]:
+    """Return an offered item's blocks: as usual, or dimmed (an offer not picked) into small grey text.
+
+    Dimmed, it is two context blocks, the small image with the name and then the effect: one context block
+    with both would wrap the effect beside the image.
+    """
+    if not dimmed:
+        return [offered_item(item, image_url)]
+    image = [{"type": "image", "image_url": image_url, "alt_text": item.name}] if image_url else []
+    return [
+        {"type": "context", "elements": [*image, _mrkdwn(f"*{item.name}*")]},
+        {"type": "context", "elements": [_mrkdwn(f"効果: {item.effect}")]},
+    ]
+
+
+def divided(items: list[list[dict]]) -> list[dict]:
+    """Put a divider between items, each given as its blocks."""
+    return [block for index, item in enumerate(items) for block in ([{"type": "divider"}] if index else []) + item]
 
 
 def _plain(text: str) -> dict:
@@ -335,40 +401,16 @@ def notice_view(text: str, title: str = "出社登録") -> dict:
 
 
 def item_picked_text(user_id: str, item: ItemData) -> str:
-    """Return the announcement of a pick, kept small: one line in the thread."""
-    return f"<@{user_id}>さんが {item.name} を獲得しました（{item.effect}）"
+    """Return the announcement of a pick, kept small: one line in the thread, without the effect.
+
+    What an item does is for the picker's modals and the collection, not for the channel.
+    """
+    return f"<@{user_id}>さんが {item.name} を獲得しました"
 
 
 def item_picked_message(user_id: str, item: ItemData) -> list[Block]:
     """Build the thread post announcing a pick as one line of small text."""
     return [blocks.ContextBlock(elements=[basic_components.MarkdownTextObject(text=item_picked_text(user_id, item))])]
-
-
-def achievement_view(
-    engine: BadgeEngine, user_id: str, jst_datetime: datetime | None = None, outlook: Outlook | None = None
-) -> dict:
-    """Build the status modal: level, points, held item and next goals, then statistics, history and badges.
-
-    jst_datetime is "now" (default: the current time); outlook defaults to the engine's status at that time.
-    Built as a dictionary: slack_sdk has no model of the card block the badges use.
-    """
-    now = jst_datetime or datetime.now(JST)
-    today = now.date()
-    user_badges = {badge_id: tally for (owner, badge_id), tally in engine.user_badges.items() if owner == user_id}
-    # kiribans number the arrivals of all users
-    arrival_count = len(engine.results)
-    next_kiriban = next((kiriban for kiriban in KIRIBANS if arrival_count < kiriban.number), None)
-    return {
-        "type": "modal",
-        "title": _plain("ステータス"),
-        "close": _plain("閉じる"),
-        "blocks": [
-            *status_blocks(engine, user_id, today, outlook or engine.status_outlook(user_id, now)),
-            *statistics_blocks(engine, user_id),
-            *render(attendance_history_blocks(attendance_by_day(engine, user_id, today))),
-            *badge_blocks(user_badges, arrival_count, next_kiriban),
-        ],
-    }
 
 
 def _progress_bar(rate: int) -> str:
@@ -412,50 +454,6 @@ def bullet_list(items: list[tuple[str, int]]) -> dict:
     }
 
 
-def status_blocks(engine: BadgeEngine, user_id: str, today: date, outlook: Outlook) -> list[dict]:
-    """Build the top of the status modal as one list: level, points, held item, and the next goals indented."""
-    user = engine.users.get(user_id)
-    score = user.score if user else 0
-    level = get_level(score)
-    if level.is_max:
-        points = f"{score}pt（最高レベル）"
-    else:
-        points = f"{score}pt（Lv{level.number + 1}まで あと{level.points_to_next}pt）"
-    items = [(f"*かたがき* {level.name}（Lv{level.number}）", 0), (f"*ポイント* {points}", 0)]
-    held = engine.held_item(user_id, today)
-    if held is not None:
-        until = f"{held.last_day:%-m/%-d}まで" if held.last_day else "次の出社で使う"
-        items.append((f"*アイテム* {ITEMS[held.pick.item_id].name}（{until}）", 0))
-    if goals := goals_text(outlook):
-        items += [("*つぎのもくひょう*", 0), *((line, 1) for line in goals.split("\n"))]
-    return [bullet_list(items), {"type": "divider"}]
-
-
-def statistics_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
-    """Build the statistics as a list: counts and the first, earliest and latest arrival times."""
-    user = engine.users.get(user_id)
-    arrivals = user.results if user else []
-    if not arrivals:
-        body = _mrkdwn_section("まだ出社登録がありません。最初の出社登録をしてみましょう！")
-    else:
-        # "HH:MM" strings sort like the times of day
-        times = [f"{arrival.time:%H:%M}" for arrival in arrivals]
-        body = bullet_list(
-            [
-                (f"*総出社回数*: {len(arrivals)}回", 0),
-                (f"*最速出社*: {sum(arrival.rank == 1 for arrival in arrivals)}回", 0),
-                (f"*初回出社*: {arrivals[0].time:%Y-%m-%d}", 0),
-                (f"*最早出社*: `{min(times)}`", 0),
-                (f"*最遅出社*: `{max(times)}`", 0),
-            ]
-        )
-    return [*render([blocks.HeaderBlock(text="出社統計情報")]), body, {"type": "divider"}]
-
-
-def _mrkdwn_section(text: str) -> dict:
-    return {"type": "section", "text": _mrkdwn(text)}
-
-
 def attendance_by_day(engine: BadgeEngine, user_id: str, today: date) -> dict[date, bool]:
     """Return whether the user arrived, for each weekday of the past 10 weeks up to today."""
     # from the Monday 9 weeks back (this week included) to today
@@ -479,77 +477,7 @@ def attendance_history_blocks(attendance: dict[date, bool]) -> list[Block]:
     return [blocks.HeaderBlock(text="過去の出社履歴"), *(blocks.ContextBlock(elements=row) for row in rows)]
 
 
-def badge_blocks(
-    user_badges: dict[int, UserBadgeTally], arrival_count: int, next_kiriban: Kiriban | None
-) -> list[dict]:
-    """Build the badges: one card per badge type, the earned badges (with their first date) above the unearned."""
-    return [
-        render([blocks.HeaderBlock(text="バッジ")])[0],
-        *(
-            badge_type_card(badge_type, user_badges, arrival_count, next_kiriban)
-            for badge_type in badge_types_to_show()
-        ),
-    ]
-
-
-CARD_BODY_MAX = 200  # Slack refuses a card whose body text is longer
-
-
-def badge_type_card(
-    badge_type: BadgeTypeData, user_badges: dict[int, UserBadgeTally], arrival_count: int, next_kiriban: Kiriban | None
-) -> dict:
-    """Return a badge type's card.
-
-    The subtitle counts the earned badges and their points; the body lists the earned ones, newest first, as
-    "*name* <score>pt x<count>", and after a blank line the unearned names (never their conditions).
-    Kiribans have no fixed total: only the taken ones are listed, with how far the next one is.
-    A body holds at most CARD_BODY_MAX characters: the oldest earned badges that do not fit are folded into
-    one "ほかN個" line with their points, so the latest ones, the unearned and the next kiriban always show.
-    """
-    kiriban = badge_type.id == KIRIBAN_BADGE_TYPE_ID
-    badges = BADGES_BY_TYPE[badge_type.id]
-    earned = sorted(
-        (badge for badge in badges if badge.id in user_badges), key=lambda badge: user_badges[badge.id].first
-    )
-    unearned = [] if kiriban else [badge for badge in badges if badge.id not in user_badges]
-    points = sum(badge.score * user_badges[badge.id].count for badge in earned)
-    count = f"{len(earned)}個 獲得" if kiriban else f"{len(earned)} / {len(badges)} 獲得"
-
-    def line(badge: BadgeData) -> str:
-        return f"*{badge.message}* {badge.score}pt x{user_badges[badge.id].count}"
-
-    def body(folded: int) -> str:
-        older = earned[:folded]
-        older_points = sum(badge.score * user_badges[badge.id].count for badge in older)
-        summary = [f"ほか{len(older)}個（計 {older_points}pt）"] if older else []
-        groups = [
-            # newest first, so the folded older ones come last
-            [*(line(badge) for badge in reversed(earned[folded:])), *summary],
-            # " / " between them: some names contain 、 themselves
-            [f"未獲得: {' / '.join(badge.message for badge in unearned)}"] if unearned else [],
-            [_kiriban_status_text(arrival_count, next_kiriban)] if kiriban else [],
-        ]
-        return "\n\n".join("\n".join(group) for group in groups if group) or "未獲得"
-
-    folded = 0
-    while len(text := body(folded)) > CARD_BODY_MAX and folded < len(earned):
-        folded += 1
-    return {
-        "type": "card",
-        "title": _mrkdwn(f"*{badge_type.description}*"),
-        "subtitle": _mrkdwn(f"{count}・計 {points}pt"),
-        "body": _mrkdwn(text[:CARD_BODY_MAX]),
-    }
-
-
 def _icon(alt_text: str, *, achieved: bool) -> block_elements.ImageElement:
     """Return the image of an achieved (or attended) or an unachieved (or missed) item."""
     url = ACHIEVED_BADGE_IMAGE_URL if achieved else NOT_ACHIEVED_BADGE_IMAGE_URL
     return block_elements.ImageElement(image_url=url, alt_text=alt_text)
-
-
-def _kiriban_status_text(arrival_count: int, next_kiriban: Kiriban | None) -> str:
-    """Return how far the next kiriban is."""
-    if next_kiriban is None:
-        return "現在実装されているキリ番は全て達成可能範囲を超えています。今後の実装をお待ちください。"
-    return f"次のキリ番 {next_kiriban.number}回目まで あと{next_kiriban.number - arrival_count}回"

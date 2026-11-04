@@ -30,3 +30,15 @@ dev アプリは `slack run` のときに `manifest.json` から設定される�
 | **Event Subscriptions** | **Enable Events** をオンにし、**Subscribe to bot events** に `app_home_opened` を追加 |
 
 Socket Mode なので Request URL は要らず、追加のスコープも要らない。設定を保存したら、アプリの再インストールを求められれば従う。
+
+### 毎朝の投稿の「マイページを開く」
+
+毎朝の投稿のボタンからホームのマイページを開くには、ボットの環境変数に次の 2 つを入れる（Rancher では Secret）。
+
+| 環境変数 | 値 |
+|---|---|
+| `SLACK_WORKSPACE_ID` | ワークスペースの ID（`T` で始まる） |
+| `SLACK_APP_ID` | アプリの ID（アプリ設定の **Basic Information → App ID**、`A` で始まる） |
+
+ボタンは `slack://app?team=…&id=…&tab=home` でホームタブを開き、押した人のホームをマイページにする。
+2 つのどちらかがなければボタンは出ない。前の「ステータス」ボタンは、押すとマイページに移ったことを伝える。
