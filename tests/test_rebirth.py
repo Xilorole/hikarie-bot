@@ -301,3 +301,15 @@ def test_marks_follow_the_name_in_the_daily_post() -> None:
 
     assert text.endswith("<@U1> 🌟")
     assert [mark_text(n) for n in (0, 3, 4, 12)] == ["", "🌟🌟🌟", "🌟4", "🌟12"]
+
+
+def test_my_page_says_how_to_get_the_next_legend_mark() -> None:
+    """Without a mark my page says how to get one; once this lap has its mark, that the next one needs a rebirth."""
+    assert "まだなし（1400pt に届くと 🌟）" in str(home_view(with_points(100), "U1", at(MONDAY, 12)))
+
+    engine = compute([("U1", at(MONDAY, 9))])
+    engine.users["U1"].score = MAX_POINTS - 1
+    engine.add("U1", at(TUESDAY, 9))
+    view = str(home_view(engine, "U1", at(TUESDAY, 12)))
+    assert "🌟（1回 でんせつに到達）" in view
+    assert "次の 🌟 は、転生してもう一度 1400pt へ" in view

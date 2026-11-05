@@ -14,10 +14,11 @@ from typing import ClassVar
 from dateutil.relativedelta import relativedelta
 
 from hikarie_bot.db_data.badges import KIRIBANS
-from hikarie_bot.db_data.items import ITEM_IMAGE_URLS, ITEM_POINT_CAP, Items
+from hikarie_bot.db_data.items import ITEM_IMAGE_URLS, Items
 from hikarie_bot.engine import (
+    BASE_MULTIPLIER,
     FIRST_REBIRTH_LEVEL,
-    TEAM_GOAL_PER_BIZDAY,
+    MAX_POINTS,
     BadgeEngine,
     Outlook,
     RebirthStatus,
@@ -29,6 +30,7 @@ from hikarie_bot.modals import (
     BADGES_BY_TYPE,
     ITEMS,
     KIRIBAN_BADGE_TYPE_ID,
+    MARK_NAME,
     _mrkdwn,
     _progress_bar,
     attendance_by_day,
@@ -42,6 +44,7 @@ from hikarie_bot.modals import (
     outlook_lines,
     render,
 )
+from hikarie_bot.settings import get_settings
 from hikarie_bot.utils import LEVELS, get_level, is_jp_bizday
 
 HOME_BLOCK_MAX = 100  # Slack refuses a Home view with more blocks
@@ -179,12 +182,22 @@ def status_fields(engine: BadgeEngine, user_id: str, now: datetime) -> dict:
             _mrkdwn(f"*つぎのレベルまで*\n{progress}"),
             _mrkdwn(f"*所持アイテム*\n{item}"),
             _mrkdwn(f"*しゅうかい*\n{lap_name(len(status.rebirths))}（倍率 {format_multiplier(status.multiplier)}）"),
-            _mrkdwn(f"*上限のマーク*\n{mark_text(status.marks) or 'まだありません'}"),
+            _mrkdwn(f"*{MARK_NAME}*\n{marks_status(status)}"),
         ],
     }
 
 
-REBIRTH_RULE = "転生すると、ポイントとかたがきは0から。バッジ・図鑑・アイテム・マークは残ります"
+def marks_status(status: RebirthStatus) -> str:
+    """Say how many marks the user has and how to get the next one: reach the top, or be reborn and reach it again."""
+    if not status.marks:
+        return f"まだなし（{MAX_POINTS}pt に届くと {mark_text(1)}）"
+    text = f"{mark_text(status.marks)}（{status.marks}回 でんせつに到達）"
+    if status.points >= MAX_POINTS:  # this lap's mark is earned: the next one needs another lap
+        text += f"\n次の {mark_text(1)} は、転生してもう一度 {MAX_POINTS}pt へ"
+    return text
+
+
+REBIRTH_RULE = f"転生すると、ポイントとかたがきは0から。バッジ・図鑑・アイテム・{MARK_NAME}は残ります"
 
 
 def rebirth_blocks(status: RebirthStatus) -> list[dict]:
@@ -363,7 +376,7 @@ def collection_summary(engine: BadgeEngine, user_id: str) -> str:
     marks = (mark_text(user.marks) if user else "") or "なし"
     rebirths = len(user.rebirths) if user else 0
     return (
-        f"*かたがき* {level} / {len(LEVELS)}　*転生* {rebirths}回　*上限のマーク* {marks}\n"
+        f"*かたがき* {level} / {len(LEVELS)}　*転生* {rebirths}回　*{MARK_NAME}* {marks}\n"
         f"*バッジ* `{_progress_bar(rate)}` {earned} / {len(badge_ids)}（{rate}%）\n"
         f"*アイテム* {len(picked & set(ITEMS))} / {len(ITEMS)} 種類を獲得"
     )
@@ -595,46 +608,36 @@ def ranking_blocks(engine: BadgeEngine, user_id: str, now: datetime) -> list[dic
 # --- how to play ---
 
 
+def _topic(title: str, body: str) -> dict:
+    """Return a topic: a bold title over a body whose bold words alone tell the gist."""
+    return _section(f"*{title}*\n{body}")
+
+
 def how_to_play_blocks(_engine: BadgeEngine, _user_id: str, _now: datetime) -> list[dict]:
-    """Build the rules: how to register, how points come, the items, the team goal and the levels."""
-    windows = [(504, "6時台"), (501, "7〜9時"), (502, "9〜11時"), (503, "11〜18時")]
-    window_text = "  ·  ".join(f"{label} +{BADGES[badge_id].score}pt" for badge_id, label in windows)
-    levels = "  ".join(f"Lv{number} {threshold}" for number, (_, threshold) in enumerate(LEVELS, start=1))
-    return [
-        _header("あそびかた"),
-        _section(
-            "*1. 出社登録する*\n"
-            "営業日の 6:00〜18:00 に、毎朝の投稿の「出社した」ボタン、ショートカット「出社した」、"
-            "またはマイページのボタンで登録します。1日1回、その日はじめての登録だけが数えられます。"
+    """Build the rules as three topics: the core of the game, the ways to get more points, and what comes after.
+
+    Each topic is a section (cards looked good on mobile but not on desktop) holding a whole topic, not one rule.
+    The words that matter are bold, so they alone tell the gist; the details are in the collection.
+    """
+    channel_id = get_settings().output_channel
+    channel = f"<#{channel_id}>" if channel_id else "出社チャンネル"
+    topics = [
+        _topic(
+            "でんせつのかいしゃいんを目指そう",
+            f"毎朝、{channel} の投稿にある *「出社した」ボタン* を押して、 *ポイント* を集めよう。"
+            "たまるほど *かたがき* が上がっていくよ。",
         ),
-        _section(
-            "*2. バッジでポイントがたまる*\n"
-            f"出社した時間帯でバッジがもらえます: {window_text}\n"
-            "その日の一番乗り、5日連続、キリ番、ぞろ目の時刻など、ほかにもいろいろなバッジがあります。"
-            "条件は「図鑑」の名前から推理してみてください。"
+        _topic(
+            "もっとポイントを稼ごう",
+            "*早い時間* の出社や *連続出社* 、出社のあとに選ぶ *アイテム* で、ポイントが増えていくよ。"
+            "みんなで *今週の目標* を達成すると、ボーナスもつく。",
         ),
-        _section(
-            "*3. アイテムを使う*\n"
-            "出社登録のあと、その日の候補3つから1つ選べます。効果は次の出社から。"
-            f"持てるのは1つまでで、アイテムによる加点は1回の出社につき最大 +{ITEM_POINT_CAP}pt です。"
+        _topic(
+            "転生して、でんせつのその先へ",
+            f"Lv{FIRST_REBIRTH_LEVEL} から *転生* すると、ポイントは0に戻るけど、かわりに *倍率* がかかるよ"
+            f"（Lv{FIRST_REBIRTH_LEVEL} なら {format_multiplier(BASE_MULTIPLIER + FIRST_REBIRTH_LEVEL)}）。"
+            f" *{MAX_POINTS}pt* に届くたびに、名前の横の *{MARK_NAME}* {mark_text(1)} が増えていくよ。",
         ),
-        _section(
-            "*4. みんなで目標を目指す*\n"
-            f"今週の全員の出社が「営業日 × {TEAM_GOAL_PER_BIZDAY}回」に届くと、そのあとの出社にボーナスがつきます。"
-        ),
-        _section(
-            "*5. 転生する*\n"
-            f"Lv{FIRST_REBIRTH_LEVEL} から、マイページで転生できます。ポイントとかたがきは0に戻りますが、"
-            "そのあとの出社のポイントに倍率がかかります（転生したときの Lv × 0.1 だけ上がり、切り上げ）。"
-            "2回目からは前回より上のかたがきで転生できます（Lv12 なら何度でも）。"
-            "早めに転生して倍率を上げるか、育ててから大きく上げるかはあなた次第。"
-        ),
-        _section(
-            "*6. 上限のマークを集める*\n"
-            f"ポイントが上限（{LEVELS[-1][1]}pt）に届くたびに、名前の横に {mark_text(1)} が1つ増えます。"
-            "転生しても消えません。"
-        ),
-        DIVIDER,
-        _section("*レベル表*  ポイントがこの値に届くと次のレベル"),
-        _context(levels),
     ]
+    # a divider between the topics: sections alone sit too close together
+    return [_header("あそびかた"), *divided([[topic] for topic in topics])]
