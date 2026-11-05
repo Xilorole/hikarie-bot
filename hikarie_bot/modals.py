@@ -205,7 +205,7 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
         progress_text = f"`{point_rate_text}` | *100%*"
     else:
         next_level_text = f"*{level.points_to_next}pt*"
-        progress_text = f"`{point_rate_text}` | *{experience_rate:>3d}%* (*+{experience_add_up_rate}%*)"
+        progress_text = f"`{point_rate_text}` | *{experience_rate}%* (*+{experience_add_up_rate}%*)"
     if max_level_reached(arrival.previous_score, arrival.current_score):
         level_up_text = " *上限に到達!* :crown: "
     elif leveled_up(arrival.previous_score, arrival.current_score):
