@@ -169,7 +169,7 @@ def test_point_get_message() -> None:
                 {
                     "text": "かたがき: *かけだしのかいしゃいん* (Lv1)\n"
                     "つぎのレベルまで: *13pt*\n"
-                    "しんこうど: `████      ` | * 35%* (*+35%*)\n"
+                    "しんこうど: `████░░░░░░` | * 35%* (*+35%*)\n"
                     "うちわけ:\n"
                     " - はじめての出社登録:*+2pt*\n"
                     " - 最速出社:*+2pt*\n"
@@ -226,7 +226,7 @@ def test_point_get_message_zero_progress() -> None:
     message = point_get_after(2, 15)
 
     assert message[0]["text"]["text"].endswith("15 → *20* (*+5*) *LvUP!* :star2: ")
-    assert "しんこうど: `█         ` | *  0%* (*+22%*)\n" in message[2]["elements"][0]["text"]
+    assert "しんこうど: `░░░░░░░░░░` | *  0%* (*+22%*)\n" in message[2]["elements"][0]["text"]
 
 
 def test_my_page_attendance_history() -> None:

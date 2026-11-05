@@ -397,9 +397,13 @@ def item_picked_message(user_id: str, item: ItemData) -> list[Block]:
 
 
 def _progress_bar(rate: int) -> str:
-    """Return a 10-cell bar for a percentage, with at least one cell (a bar of spaces renders as empty code)."""
-    digits = max(1, (rate + 10 - 1) // 10)
-    return "█" * digits + " " * (10 - digits)
+    """Return a 10-cell bar for a percentage, rounded up.
+
+    Empty cells are light shade blocks, not spaces: on Slack's mobile app a space is narrower than a full block,
+    so a bar padded with spaces looked fuller than it was.
+    """
+    digits = min(10, max(0, (rate + 10 - 1) // 10))
+    return "█" * digits + "░" * (10 - digits)
 
 
 _INLINE = re.compile(r"\*([^*]+)\*|`([^`]+)`")
