@@ -490,10 +490,14 @@ def bullet_list(items: list[tuple[str, int]]) -> dict:
     }
 
 
+HISTORY_WEEKS = 9  # with the weekday's name, a row fills a context block's 10 elements
+WEEKDAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri")
+
+
 def attendance_by_day(engine: BadgeEngine, user_id: str, today: date) -> dict[date, bool]:
-    """Return whether the user arrived, for each weekday of the past 10 weeks up to today."""
-    # from the Monday 9 weeks back (this week included) to today
-    start_monday = today - timedelta(days=today.weekday(), weeks=9)
+    """Return whether the user arrived, for each weekday of the past HISTORY_WEEKS weeks up to today."""
+    # from the Monday HISTORY_WEEKS - 1 weeks back (this week included) to today
+    start_monday = today - timedelta(days=today.weekday(), weeks=HISTORY_WEEKS - 1)
     days = (start_monday + timedelta(days=offset) for offset in range((today - start_monday).days + 1))
     user = engine.users.get(user_id)
     arrival_dates = {time.date() for time in user.times} if user else set()
@@ -501,12 +505,21 @@ def attendance_by_day(engine: BadgeEngine, user_id: str, today: date) -> dict[da
 
 
 def attendance_history_blocks(attendance: dict[date, bool]) -> list[Block]:
-    """Build the attendance history: one row of up to 10 weeks per weekday, like a GitHub activity graph.
+    """Build the attendance history: one row per weekday, like a GitHub activity graph.
+
+    Each row starts with the weekday's name, then one square per week (a context block holds 10 elements).
 
     A weekday that is not a business day (a holiday) is greyed out, unless the user arrived on it.
     """
     rows = [
-        [_attendance_icon(day, attended=attended) for day, attended in attendance.items() if day.weekday() == weekday]
+        [
+            basic_components.MarkdownTextObject(text=f"`{WEEKDAY_NAMES[weekday]}`"),
+            *(
+                _attendance_icon(day, attended=attended)
+                for day, attended in attendance.items()
+                if day.weekday() == weekday
+            ),
+        ]
         for weekday in range(5)
     ]
     return [blocks.HeaderBlock(text="過去の出社履歴"), *(blocks.ContextBlock(elements=row) for row in rows)]

@@ -298,9 +298,12 @@ def test_my_page_attendance_history() -> None:
             elements = block.get("elements", [])
             assert len(elements) <= 10, f"Context block should have at most 10 elements, got {len(elements)}"
 
-            # Verify all elements are image elements with proper alt text
-            for element in elements:
-                assert element.get("type") == "image", "All elements should be image type"
+            # the weekday's name, then image elements with proper alt text
+            label, *squares = elements
+            assert label["type"] == "mrkdwn"
+            assert label["text"] in {"`Mon`", "`Tue`", "`Wed`", "`Thu`", "`Fri`"}
+            for element in squares:
+                assert element.get("type") == "image", "All squares should be image type"
                 alt_text = element.get("alt_text", "")
                 assert "出社" in alt_text or "休み" in alt_text, f"Alt text should contain attendance info: {alt_text}"
                 assert "/" in alt_text, f"Alt text should contain date with /: {alt_text}"
@@ -368,9 +371,10 @@ def test_create_github_style_display() -> None:
             block
             for block in rendered_blocks
             if block.get("type") == "context"
+            and block["elements"][0].get("text") in {"`Mon`", "`Tue`", "`Wed`", "`Thu`", "`Fri`"}
             and all(
                 re.match(r"\d{2}\/\d{2} (出社|未出社|休み)", element.get("alt_text", ""))
-                for element in block.get("elements", [])
+                for element in block.get("elements", [])[1:]  # after the weekday's name
             )
         ]
 
@@ -384,21 +388,21 @@ def test_create_github_style_display() -> None:
         attended_elements = [elem for elem in all_elements if elem.get("image_url") == ACHIEVED_BADGE_IMAGE_URL]
         not_attended_elements = [elem for elem in all_elements if elem.get("image_url") == NOT_ACHIEVED_BADGE_IMAGE_URL]
 
-        # M xxxxxxxxxo <- last monday
-        # T xxxxxxxxxx
-        # W xxxxxxxxxo <- last wednesday (today)
-        # T xxxxxxxxx-
-        # F xxxxxxxxx-
-        #            ^ the week of 2024-03-18
+        # Mon xxxxxxxxo <- last monday
+        # Tue xxxxxxxxx
+        # Wed xxxxxxxxo <- last wednesday (today)
+        # Thu xxxxxxxx-
+        # Fri xxxxxxxx-
+        #             ^ the week of 2024-03-18 (nine weeks from 01/22)
         # -> attended_elements: 2
         # -> days off: 2 (the holidays 02/12 and 02/23)
-        # -> not_attended_elements: 44 (5x9 + 1 - 2)
+        # -> not_attended_elements: 39 (5x8 + 3 - 2 - 2)
 
         day_off_elements = [elem for elem in all_elements if elem.get("image_url") == DAY_OFF_IMAGE_URL]
         assert len(attended_elements) == 2, f"Should have 2 attended elements, got {len(attended_elements)}"
         assert [elem["alt_text"] for elem in day_off_elements] == ["02/12 休み", "02/23 休み"]
-        assert len(not_attended_elements) == 44, (
-            f"Should have 44 not attended elements, got {len(not_attended_elements)}"
+        assert len(not_attended_elements) == 39, (
+            f"Should have 39 not attended elements, got {len(not_attended_elements)}"
         )
 
 
@@ -485,13 +489,13 @@ def test_registry_message_lists_arrivals_by_time() -> None:
 
 
 def test_attendance_history_counts_the_first_monday_of_the_window() -> None:
-    """An arrival on the first day shown (the Monday nine weeks back) is shown as attended."""
-    engine = compute_in_order(("test_user", datetime(2024, 1, 15, 9, 0, tzinfo=JST)))
+    """An arrival on the first day shown (the Monday eight weeks back: nine weeks in all) is shown as attended."""
+    engine = compute_in_order(("test_user", datetime(2024, 1, 22, 9, 0, tzinfo=JST)))
 
     attendance = attendance_by_day(engine, "test_user", date(2024, 3, 20))
 
-    assert min(attendance) == date(2024, 1, 15)
-    assert attendance[date(2024, 1, 15)] is True
+    assert min(attendance) == date(2024, 1, 22)
+    assert attendance[date(2024, 1, 22)] is True
 
 
 def arrival_with(badge_ids: list[int], rank: int = 2, previous_score: int = 30, score_sum: int = 3) -> ArrivalResult:
@@ -609,7 +613,8 @@ def test_attendance_history_greys_out_holidays() -> None:
 
     rows = render(attendance_history_blocks(attendance_by_day(engine, "test_user", date(2024, 3, 21))))[1:]
 
-    images = {element["alt_text"]: element["image_url"] for row in rows for element in row["elements"]}
+    assert [row["elements"][0]["text"] for row in rows] == ["`Mon`", "`Tue`", "`Wed`", "`Thu`", "`Fri`"]
+    images = {element["alt_text"]: element["image_url"] for row in rows for element in row["elements"][1:]}
     assert images["03/20 休み"] == DAY_OFF_IMAGE_URL
     assert images["02/12 出社"] == ACHIEVED_BADGE_IMAGE_URL
     assert images["03/19 未出社"] == NOT_ACHIEVED_BADGE_IMAGE_URL
