@@ -8,7 +8,7 @@ from freezegun import freeze_time
 from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, DAY_OFF_IMAGE_URL, JST, NOT_ACHIEVED_BADGE_IMAGE_URL
 from hikarie_bot.db_data.items import ITEMS, TREAT
 from hikarie_bot.engine import ArrivalResult, ItemEffect, Outlook, TeamProgress
-from hikarie_bot.home import home_view
+from hikarie_bot.home import HomeTab, home_view
 from hikarie_bot.modals import (
     arrival_summary,
     attendance_by_day,
@@ -23,6 +23,7 @@ from hikarie_bot.modals import (
     render,
     to_text,
 )
+from hikarie_bot.settings import Settings
 from tests.helpers import compute_in_order, only_badge_types
 
 
@@ -618,3 +619,20 @@ def test_attendance_history_greys_out_holidays() -> None:
     assert images["03/20 休み"] == DAY_OFF_IMAGE_URL
     assert images["02/12 出社"] == ACHIEVED_BADGE_IMAGE_URL
     assert images["03/19 未出社"] == NOT_ACHIEVED_BADGE_IMAGE_URL
+
+
+def test_how_to_play_is_three_topics_with_the_channel_first(settings: Settings) -> None:
+    """Three sections with a bold title each and no buttons (the tab bar is right above), the channel first."""
+    settings.output_channel = "C0OUT"
+    view = home_view(compute_in_order(), "test_user", datetime(2026, 11, 5, 9, tzinfo=JST), HomeTab.HOW_TO_PLAY)
+
+    types = [block["type"] for block in view["blocks"]]
+    assert types == ["actions", "header", "section", "divider", "section", "divider", "section"]
+    topics = [block for block in view["blocks"][2:] if block["type"] == "section"]
+    texts = [block["text"]["text"] for block in topics]
+    assert texts[0].startswith(
+        "*でんせつのかいしゃいんを目指そう*\n毎朝、<#C0OUT> の投稿にある *「出社した」ボタン* を押して"
+    )
+    assert not any("accessory" in block for block in topics)
+    for text in texts:
+        assert not re.search(r":[a-z0-9_+-]+:", text)  # no :emoji:
