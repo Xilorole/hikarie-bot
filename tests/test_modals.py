@@ -5,13 +5,14 @@ from textwrap import dedent
 
 from freezegun import freeze_time
 
-from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, JST, NOT_ACHIEVED_BADGE_IMAGE_URL
+from hikarie_bot.constants import ACHIEVED_BADGE_IMAGE_URL, DAY_OFF_IMAGE_URL, JST, NOT_ACHIEVED_BADGE_IMAGE_URL
 from hikarie_bot.db_data.items import ITEMS, TREAT
 from hikarie_bot.engine import ArrivalResult, ItemEffect, Outlook, TeamProgress
 from hikarie_bot.home import home_view
 from hikarie_bot.modals import (
     arrival_summary,
     attendance_by_day,
+    attendance_history_blocks,
     home_url,
     initial_message,
     item_picked_text,
@@ -301,9 +302,7 @@ def test_my_page_attendance_history() -> None:
             for element in elements:
                 assert element.get("type") == "image", "All elements should be image type"
                 alt_text = element.get("alt_text", "")
-                assert "出社" in alt_text or "未出社" in alt_text, (
-                    f"Alt text should contain attendance info: {alt_text}"
-                )
+                assert "出社" in alt_text or "休み" in alt_text, f"Alt text should contain attendance info: {alt_text}"
                 assert "/" in alt_text, f"Alt text should contain date with /: {alt_text}"
 
 
@@ -370,7 +369,7 @@ def test_create_github_style_display() -> None:
             for block in rendered_blocks
             if block.get("type") == "context"
             and all(
-                re.match(r"\d{2}\/\d{2} (出社|未出社)", element.get("alt_text", ""))
+                re.match(r"\d{2}\/\d{2} (出社|未出社|休み)", element.get("alt_text", ""))
                 for element in block.get("elements", [])
             )
         ]
@@ -392,11 +391,14 @@ def test_create_github_style_display() -> None:
         # F xxxxxxxxx-
         #            ^ the week of 2024-03-18
         # -> attended_elements: 2
-        # -> not_attended_elements: 46 (5x9 + 1)
+        # -> days off: 2 (the holidays 02/12 and 02/23)
+        # -> not_attended_elements: 44 (5x9 + 1 - 2)
 
+        day_off_elements = [elem for elem in all_elements if elem.get("image_url") == DAY_OFF_IMAGE_URL]
         assert len(attended_elements) == 2, f"Should have 2 attended elements, got {len(attended_elements)}"
-        assert len(not_attended_elements) == 46, (
-            f"Should have 46 not attended elements, got {len(not_attended_elements)}"
+        assert [elem["alt_text"] for elem in day_off_elements] == ["02/12 休み", "02/23 休み"]
+        assert len(not_attended_elements) == 44, (
+            f"Should have 44 not attended elements, got {len(not_attended_elements)}"
         )
 
 
@@ -598,3 +600,16 @@ def test_the_picked_offer_comes_first_and_the_others_are_dimmed() -> None:
         if block["type"] == "context" and block["elements"][0]["type"] == "image"
     ]
     assert names == [f"*{offered[0].name}*", f"*{offered[1].name}*"]
+
+
+def test_attendance_history_greys_out_holidays() -> None:
+    """A weekday holiday gets the day-off square; an arrival on a holiday still shows as attended."""
+    # 2024-03-20 (Wed) is 春分の日; 2024-02-12 (Mon) is a substitute holiday
+    engine = compute_in_order(("test_user", datetime(2024, 2, 12, 9, 0, tzinfo=JST)))
+
+    rows = render(attendance_history_blocks(attendance_by_day(engine, "test_user", date(2024, 3, 21))))[1:]
+
+    images = {element["alt_text"]: element["image_url"] for row in rows for element in row["elements"]}
+    assert images["03/20 休み"] == DAY_OFF_IMAGE_URL
+    assert images["02/12 出社"] == ACHIEVED_BADGE_IMAGE_URL
+    assert images["03/19 未出社"] == NOT_ACHIEVED_BADGE_IMAGE_URL

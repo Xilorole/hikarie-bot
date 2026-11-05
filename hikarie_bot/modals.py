@@ -14,6 +14,7 @@ from slack_sdk.models.blocks import (
 from hikarie_bot import db_data
 from hikarie_bot.constants import (
     ACHIEVED_BADGE_IMAGE_URL,
+    DAY_OFF_IMAGE_URL,
     NOT_ACHIEVED_BADGE_IMAGE_URL,
 )
 from hikarie_bot.db_data.badges import BadgeTypeData
@@ -33,6 +34,7 @@ from hikarie_bot.engine import (
 )
 from hikarie_bot.utils import (
     get_level,
+    is_jp_bizday,
     leveled_up,
     max_level_reached,
 )
@@ -499,16 +501,22 @@ def attendance_by_day(engine: BadgeEngine, user_id: str, today: date) -> dict[da
 
 
 def attendance_history_blocks(attendance: dict[date, bool]) -> list[Block]:
-    """Build the attendance history: one row of up to 10 weeks per weekday, like a GitHub activity graph."""
+    """Build the attendance history: one row of up to 10 weeks per weekday, like a GitHub activity graph.
+
+    A weekday that is not a business day (a holiday) is greyed out, unless the user arrived on it.
+    """
     rows = [
-        [
-            _icon(f"{day:%m/%d} {'出社' if attended else '未出社'}", achieved=attended)
-            for day, attended in attendance.items()
-            if day.weekday() == weekday
-        ]
+        [_attendance_icon(day, attended=attended) for day, attended in attendance.items() if day.weekday() == weekday]
         for weekday in range(5)
     ]
     return [blocks.HeaderBlock(text="過去の出社履歴"), *(blocks.ContextBlock(elements=row) for row in rows)]
+
+
+def _attendance_icon(day: date, *, attended: bool) -> block_elements.ImageElement:
+    """Return a day's square: attended, missed, or a day off."""
+    if not attended and not is_jp_bizday(day):
+        return block_elements.ImageElement(image_url=DAY_OFF_IMAGE_URL, alt_text=f"{day:%m/%d} 休み")
+    return _icon(f"{day:%m/%d} {'出社' if attended else '未出社'}", achieved=attended)
 
 
 def _icon(alt_text: str, *, achieved: bool) -> block_elements.ImageElement:
