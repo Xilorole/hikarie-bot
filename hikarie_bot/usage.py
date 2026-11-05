@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from hikarie_bot.engine import BadgeEngine, week_start
+from hikarie_bot.modals import _progress_bar
 
 LAPSE_WEEKS = 4  # a user active in the 4 weeks before a week but not in it has lapsed
 
@@ -90,7 +91,7 @@ def describe_usage(report: UsageReport) -> str:
     peak = max((usage.arrivals for usage in report.trend), default=0) or 1
     # at least one cell: a bar of spaces only renders as an empty inline code in Slack
     trend = "\n".join(
-        f"`{usage.start:%m/%d}` `{'█' * max(1, round(10 * usage.arrivals / peak)):<10}`"
+        f"`{usage.start:%m/%d}` `{_progress_bar(round(100 * usage.arrivals / peak))}`"
         f" {usage.arrivals}回 / {usage.users}人"
         for usage in report.trend
     )
