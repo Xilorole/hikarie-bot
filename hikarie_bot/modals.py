@@ -19,6 +19,7 @@ from hikarie_bot.constants import (
 from hikarie_bot.db_data.badges import BadgeTypeData
 from hikarie_bot.db_data.items import ID_CARD, ITEM_IMAGE_URLS, ITEMS, ItemData
 from hikarie_bot.engine import (
+    BASE_MULTIPLIER,
     STRAIGHT_FLASH,
     STRAIGHT_FLASH_LENGTH,
     TEAM_GOAL_BADGE,
@@ -26,7 +27,9 @@ from hikarie_bot.engine import (
     BadgeEngine,
     ItemEffect,
     Outlook,
+    Rebirth,
     TeamProgress,
+    format_multiplier,
 )
 from hikarie_bot.utils import (
     get_level,
@@ -154,10 +157,47 @@ def registry_message(
         blocks.DividerBlock(),
         blocks.SectionBlock(
             text="本日の出社ユーザー:\n"
-            + "\n".join(f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>{_id_card(arrival)}" for arrival in arrivals),
+            + "\n".join(
+                f"*{arrival.time:%H:%M}* : <@{arrival.user_id}>{_marks(arrival)}{_id_card(arrival)}"
+                for arrival in arrivals
+            ),
         ),
         *_team_context(team),
     ]
+
+
+MARK = "\N{GLOWING STAR}"
+MARKS_SHOWN = 3  # up to this many marks are repeated; more read "🌟4"
+
+
+def mark_text(marks: int) -> str:
+    """Return the marks earned by reaching the upper limit: stars repeated, or a count beyond MARKS_SHOWN."""
+    if marks <= 0:
+        return ""
+    return MARK * marks if marks <= MARKS_SHOWN else f"{MARK}{marks}"
+
+
+def _marks(arrival: ArrivalResult) -> str:
+    """Return the marks shown after the user's name."""
+    return f" {mark_text(arrival.marks)}" if arrival.marks else ""
+
+
+def lap_name(rebirths: int) -> str:
+    """Return the lap a user is on after this many rebirths, as "2しゅうめ"."""
+    return f"{rebirths + 1}しゅうめ"
+
+
+def rebirth_text(user_id: str, rebirth: Rebirth) -> str:
+    """Return the announcement of a rebirth in the daily post's thread."""
+    return (
+        f"<@{user_id}>さんが Lv{rebirth.level} で転生しました！ {lap_name(rebirth.number)}・"
+        f"倍率 {format_multiplier(rebirth.multiplier)}（次の営業日の出社から）"
+    )
+
+
+def rebirth_message(user_id: str, rebirth: Rebirth) -> list[Block]:
+    """Build the thread post announcing a rebirth."""
+    return [blocks.SectionBlock(text=f":hatching_chick: {rebirth_text(user_id, rebirth)}")]
 
 
 def _id_card(arrival: ArrivalResult) -> str:
@@ -206,7 +246,9 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
     else:
         next_level_text = f"*{level.points_to_next}pt*"
         progress_text = f"`{point_rate_text}` | *{experience_rate}%* (*+{experience_add_up_rate}%*)"
-    if max_level_reached(arrival.previous_score, arrival.current_score):
+    if arrival.earned_mark:
+        level_up_text = f" *上限に到達!* :crown: {MARK}を獲得 "
+    elif max_level_reached(arrival.previous_score, arrival.current_score):
         level_up_text = " *上限に到達!* :crown: "
     elif leveled_up(arrival.previous_score, arrival.current_score):
         level_up_text = " *LvUP!* :star2: "
@@ -214,6 +256,11 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
         level_up_text = ""
 
     is_first = arrival.rank == 1
+    multiplier_text = (
+        f"（合計に倍率 {format_multiplier(arrival.multiplier)}・切り上げ）"
+        if arrival.multiplier != BASE_MULTIPLIER
+        else ""
+    )
     badges = [BADGES[badge_id] for badge_id in sorted(arrival.badge_ids)]
     achievements_text = "\n".join(
         [f" - {badge.message}:*+{badge.score}pt*" for badge in badges]
@@ -225,7 +272,7 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
             かたがき: *{level.name}* (Lv{level.number})
             つぎのレベルまで: {next_level_text}
             しんこうど: {progress_text}
-            うちわけ:
+            うちわけ{multiplier_text}:
             """
         )
         + achievements_text
@@ -235,7 +282,7 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
         blocks.SectionBlock(
             text=f"*{arrival.time:%H:%M}* "
             f"{'最速' if is_first else ''}出社登録しました！"
-            f"\n<@{arrival.user_id}>さんのポイント "
+            f"\n<@{arrival.user_id}>{_marks(arrival)}さんのポイント "
             f"{arrival.previous_score} → *{arrival.current_score}* "
             f"(*+{arrival.score_sum}*){level_up_text}"
         ),

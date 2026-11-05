@@ -33,12 +33,15 @@ from hikarie_bot.modals import (
     item_review_view,
     notice_view,
     point_get_message,
+    rebirth_message,
+    rebirth_text,
     registry_message,
     render,
     to_text,
 )
 from hikarie_bot.picks import PickGate, StoredPick, attach_pick_ts, pick_gate, record_pick
 from hikarie_bot.preview import preview
+from hikarie_bot.rebirths import RebirthGate, StoredRebirth, attach_rebirth_ts, record_rebirth
 from hikarie_bot.settings import REQUIRED, get_settings
 from hikarie_bot.slack_helper import find_daily_post, schedule_daily_message, schedule_weekly_usage, send_daily_message
 from hikarie_bot.startup import StartupReporter, current_revision, prepare, resolve_slack_ids
@@ -48,6 +51,7 @@ from hikarie_bot.sync import (
     RecordingSlackSource,
     arrival_metadata,
     item_pick_metadata,
+    rebirth_metadata,
     sync_channel,
 )
 from hikarie_bot.usage import describe_usage, last_full_week, usage_report
@@ -386,6 +390,62 @@ async def handle_item_review(ack: AsyncAck) -> None:
     await ack()
 
 
+REBIRTH_LOCK = asyncio.Lock()
+REBIRTH_TITLE = "転生"
+
+
+def store_rebirth(user_id: str, now: datetime) -> RebirthGate:
+    """Store the user's rebirth if they may be reborn now."""
+    with get_db() as session:
+        return record_rebirth(session, user_id, now)
+
+
+def announcement_of(stored: StoredRebirth) -> tuple[str, list]:
+    """Return the text and blocks announcing a stored rebirth, with the level and multiplier the engine gives it."""
+    with get_db() as session:
+        engine = compute_arrivals(session)
+    rebirth = next(rebirth for rebirth in engine.users[stored.user_id].rebirths if rebirth.time.date() == stored.day)
+    return rebirth_text(stored.user_id, rebirth), render(rebirth_message(stored.user_id, rebirth))
+
+
+async def announce_rebirth(client: AsyncWebClient, channel_id: str, thread_ts: str, stored: StoredRebirth) -> None:
+    """Post the rebirth in the daily post's thread with its metadata, and link the post to the rebirth."""
+    text, blocks = await asyncio.to_thread(announcement_of, stored)
+    response = await client.chat_postMessage(
+        channel=channel_id,
+        thread_ts=thread_ts,
+        text=text,
+        blocks=blocks,
+        metadata=rebirth_metadata(stored.user_id, stored.day, stored.occurred_at),
+    )
+    with get_db() as session:
+        attach_rebirth_ts(session, stored.id, response["ts"])
+
+
+async def handle_home_rebirth(ack: AsyncAck, body: dict[str, Any], client: AsyncWebClient) -> None:
+    """Rebirth from my page (the button asks for confirmation): store it, announce it under today's daily post.
+
+    A refusal opens a modal; otherwise my page shows the new lap.
+    """
+    await ack()
+    user_id = body["user"]["id"]
+    channel_id = get_settings().output_channel
+    now = datetime.now(JST)
+    post_ts = await find_daily_post(client, channel_id, now)
+    if post_ts is None:
+        await client.views_open(trigger_id=body["trigger_id"], view=notice_view(NO_DAILY_POST, REBIRTH_TITLE))
+        return
+    async with REBIRTH_LOCK:
+        gate = await asyncio.to_thread(store_rebirth, user_id, now)
+        if gate.unannounced is not None:
+            await announce_rebirth(client, channel_id, post_ts, gate.unannounced)
+    if gate.refusal is not None:
+        await client.views_open(trigger_id=body["trigger_id"], view=notice_view(gate.refusal, REBIRTH_TITLE))
+        return
+    logger.info(f"User {user_id} was reborn")
+    await refresh_home(client, user_id)
+
+
 def build_home_view(user_id: str, tab: str) -> dict:
     """Compute scores and render the user's Home on a tab."""
     with get_db() as session:
@@ -464,6 +524,7 @@ def create_app() -> AsyncApp:
         app.action(tab)(handle_home_tab)
     app.action(HomeActionID.ARRIVE)(handle_arrive_shortcut)  # the same flow: a modal tells the outcome
     app.action(HomeActionID.PICK_ITEM)(handle_home_pick_item)
+    app.action(HomeActionID.REBIRTH)(handle_home_rebirth)
     return app
 
 

@@ -176,6 +176,7 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
         bot.handle_app_home_opened,
         bot.handle_home_tab,
         bot.handle_home_pick_item,
+        bot.handle_home_rebirth,
     }
 
 

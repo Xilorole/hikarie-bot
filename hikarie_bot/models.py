@@ -1,4 +1,4 @@
-"""The stored data: arrival events and item picks."""
+"""The stored data: arrival events, item picks and rebirths."""
 
 from datetime import UTC, date, datetime
 
@@ -77,3 +77,26 @@ class ItemPickEvent(BaseSchema):
     def __repr__(self) -> str:
         """Return the string representation of the ItemPickEvent class."""
         return f"<ItemPickEvent(user_id={self.user_id}, day={self.day}, item_id={self.item_id})>"
+
+
+class RebirthEvent(BaseSchema):
+    """Define the RebirthEvent table.
+
+    A user's rebirth (docs/design/rebirth.md) at a time; append-only, at most one per user and JST day.
+    Its level and multiplier are not stored: the engine computes them from the arrivals before it.
+    slack_ts identifies the thread post announcing it, from which a sync restores it.
+    """
+
+    __tablename__ = "rebirth_event"
+    __table_args__ = (UniqueConstraint("user_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    day: Mapped[date] = mapped_column(Date, nullable=False)  # the JST day of the rebirth
+    occurred_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    slack_ts: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    def __repr__(self) -> str:
+        """Return the string representation of the RebirthEvent class."""
+        return f"<RebirthEvent(user_id={self.user_id}, occurred_at={self.occurred_at})>"

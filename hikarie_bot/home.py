@@ -6,6 +6,7 @@ A Home view holds at most HOME_BLOCK_MAX blocks.
 """
 
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import ClassVar
@@ -14,7 +15,15 @@ from dateutil.relativedelta import relativedelta
 
 from hikarie_bot.db_data.badges import KIRIBANS
 from hikarie_bot.db_data.items import ITEM_IMAGE_URLS, ITEM_POINT_CAP, Items
-from hikarie_bot.engine import TEAM_GOAL_PER_BIZDAY, BadgeEngine, Outlook, TeamProgress
+from hikarie_bot.engine import (
+    FIRST_REBIRTH_LEVEL,
+    TEAM_GOAL_PER_BIZDAY,
+    BadgeEngine,
+    Outlook,
+    RebirthStatus,
+    TeamProgress,
+    format_multiplier,
+)
 from hikarie_bot.modals import (
     BADGES,
     BADGES_BY_TYPE,
@@ -28,6 +37,8 @@ from hikarie_bot.modals import (
     bullet_list,
     divided,
     item_section,
+    lap_name,
+    mark_text,
     outlook_lines,
     render,
 )
@@ -59,6 +70,7 @@ class HomeActionID:
 
     ARRIVE = "HOME_ARRIVE"
     PICK_ITEM = "HOME_PICK_ITEM"
+    REBIRTH = "HOME_REBIRTH"
 
 
 def _section(text: str, accessory: dict | None = None) -> dict:
@@ -145,10 +157,11 @@ def today_blocks(engine: BadgeEngine, user_id: str, now: datetime) -> list[dict]
     ]
 
 
-def status_fields(engine: BadgeEngine, user_id: str, today: date) -> dict:
-    """Show the level, the points, the progress to the next level and the held item, two to a row."""
-    user = engine.users.get(user_id)
-    score = user.score if user else 0
+def status_fields(engine: BadgeEngine, user_id: str, now: datetime) -> dict:
+    """Show the level, the points, the progress, the held item, the lap and the marks, two to a row."""
+    today = now.date()
+    status = engine.rebirth_status(user_id, now)
+    score = status.points
     level = get_level(score)
     rate = int(100 * level.progress_points / level.span)
     progress = "最高レベル" if level.is_max else f"`{_progress_bar(rate)}` {rate}%（あと{level.points_to_next}pt）"
@@ -162,11 +175,57 @@ def status_fields(engine: BadgeEngine, user_id: str, today: date) -> dict:
         "type": "section",
         "fields": [
             _mrkdwn(f"*かたがき*\n{level.name}（Lv{level.number}）"),
-            _mrkdwn(f"*ポイント*\n累計 {score}pt"),
+            _mrkdwn(f"*ポイント*\n{score}pt"),
             _mrkdwn(f"*つぎのレベルまで*\n{progress}"),
             _mrkdwn(f"*所持アイテム*\n{item}"),
+            _mrkdwn(f"*しゅうかい*\n{lap_name(len(status.rebirths))}（倍率 {format_multiplier(status.multiplier)}）"),
+            _mrkdwn(f"*上限のマーク*\n{mark_text(status.marks) or 'まだありません'}"),
         ],
     }
+
+
+REBIRTH_RULE = "転生すると、ポイントとかたがきは0から。バッジ・図鑑・アイテム・マークは残ります"
+
+
+def rebirth_blocks(status: RebirthStatus) -> list[dict]:
+    """Describe the next rebirth: the button (with a confirmation) once allowed, else what it needs."""
+    after = format_multiplier(status.next_multiplier)
+    if status.reborn_today:
+        return [_section(f"今日転生しました。倍率 {format_multiplier(status.multiplier)} は次の営業日の出社から")]
+    if not status.can:
+        return [
+            _section(
+                f"*Lv{status.required_level}* になると転生できます（あと {status.points_to_go}pt）。"
+                f"倍率は、転生したときの Lv × 0.1 だけ上がります"
+            ),
+            _context(REBIRTH_RULE),
+        ]
+    button = _button("転生する", HomeActionID.REBIRTH)
+    button["confirm"] = {
+        "title": {"type": "plain_text", "text": "転生しますか？"},
+        "text": _mrkdwn(
+            f"ポイントとかたがきが0に戻ります（取り消せません）。"
+            f"倍率は {format_multiplier(status.multiplier)} → {after} になり、次の営業日の出社から効きます。"
+        ),
+        "confirm": {"type": "plain_text", "text": "転生する"},
+        "deny": {"type": "plain_text", "text": "やめる"},
+        "style": "danger",
+    }
+    return [
+        _section(
+            f"いま *Lv{status.level}* で転生すると、"
+            f"倍率が *{format_multiplier(status.multiplier)} → {after}* になります",
+            button,
+        ),
+        _context(REBIRTH_RULE),
+    ]
+
+
+def rebirth_goal(status: RebirthStatus) -> list[str]:
+    """Return the goal line of the next rebirth while it is not allowed yet."""
+    if status.can or status.reborn_today:
+        return []
+    return [f"転生できる Lv{status.required_level} まで あと{status.points_to_go}pt"]
 
 
 def team_progress_text(team: TeamProgress) -> str:
@@ -176,10 +235,13 @@ def team_progress_text(team: TeamProgress) -> str:
     return f"今週のみんなの出社 `{_progress_bar(rate)}` {team.count} / {team.goal}回（{state}）"
 
 
-def goal_lines(engine: BadgeEngine, outlook: Outlook, now: datetime) -> list[str]:
-    """List the user's next goals and the week's team progress (shown even before the team goal applies)."""
+def goal_lines(engine: BadgeEngine, outlook: Outlook, now: datetime, own: Sequence[str] = ()) -> list[str]:
+    """List the user's next goals (with `own` ones after them) and the week's team progress.
+
+    The team progress is shown even before the team goal applies.
+    """
     team = engine.week_progress(now)
-    return [*outlook_lines(outlook), *([team_progress_text(team)] if team.goal else [])]
+    return [*outlook_lines(outlook), *own, *([team_progress_text(team)] if team.goal else [])]
 
 
 def when(day: date, today: date) -> str:
@@ -212,11 +274,13 @@ def my_page_blocks(engine: BadgeEngine, user_id: str, now: datetime, outlook: Ou
     """Build my page: today, status, next goals, attendance history and recent badges, each under a header."""
     today = now.date()
     outlook = outlook or engine.status_outlook(user_id, now)
+    status = engine.rebirth_status(user_id, now)
     parts: list[list[dict]] = [
         [_header("今日"), *today_blocks(engine, user_id, now)],
-        [_header("ステータス"), status_fields(engine, user_id, today)],
+        [_header("ステータス"), status_fields(engine, user_id, now)],
+        [_header("転生"), *rebirth_blocks(status)],
     ]
-    if goals := goal_lines(engine, outlook, now):
+    if goals := goal_lines(engine, outlook, now, rebirth_goal(status)):
         parts.append([_header("つぎのもくひょう"), bullet_list([(line, 0) for line in goals])])
     parts.append(render(attendance_history_blocks(attendance_by_day(engine, user_id, today))))
     if recent := recent_badge_lines(engine, user_id, today):
@@ -296,8 +360,10 @@ def collection_summary(engine: BadgeEngine, user_id: str) -> str:
     user = engine.users.get(user_id)
     picked = {held.pick.item_id for held in user.items} if user else set()
     level = max(level_reached_on(engine, user_id), default=0)
+    marks = (mark_text(user.marks) if user else "") or "なし"
+    rebirths = len(user.rebirths) if user else 0
     return (
-        f"*かたがき* {level} / {len(LEVELS)}\n"
+        f"*かたがき* {level} / {len(LEVELS)}　*転生* {rebirths}回　*上限のマーク* {marks}\n"
         f"*バッジ* `{_progress_bar(rate)}` {earned} / {len(badge_ids)}（{rate}%）\n"
         f"*アイテム* {len(picked & set(ITEMS))} / {len(ITEMS)} 種類を獲得"
     )
@@ -319,9 +385,11 @@ def title_table(engine: BadgeEngine, user_id: str) -> dict:
     The next title is hidden and later ones are left out; the current one is bold and marked.
     """
     reached = level_reached_on(engine, user_id)
-    current = max(reached, default=0)
+    user = engine.users.get(user_id)
+    current = get_level(user.score).number if user and user.results else 0
+    shown = max(reached, default=0)
     rows = [[_cell(_text(label, bold=True)) for label in ("Lv", "ポイント", "かたがき", "達成日")]]
-    for number, (name, _) in enumerate(LEVELS[: current + 1], start=1):
+    for number, (name, _) in enumerate(LEVELS[: shown + 1], start=1):
         start = LEVELS[number - 2][1] if number > 1 else 0
         if number in reached:
             title = _text(f"{name}（いま）" if number == current else name, bold=number == current)
@@ -334,6 +402,34 @@ def title_table(engine: BadgeEngine, user_id: str) -> dict:
         "column_settings": [{"align": "center"}, {"align": "right"}, {"is_wrapped": True}, {"align": "center"}],
         "rows": rows,
     }
+
+
+def rebirth_table(engine: BadgeEngine, user_id: str) -> dict:
+    """Tabulate the user's rebirths: which one, the day, the level it was at and the multiplier after it."""
+    user = engine.users.get(user_id)
+    rows = [[_cell(_text(label, bold=True)) for label in ("回", "日付", "転生したかたがき", "倍率")]]
+    rows += [
+        [
+            _cell(_text(f"{rebirth.number}回目")),
+            _cell(_text(f"{rebirth.time:%y/%m/%d}")),
+            _cell(_text(f"Lv{rebirth.level} {LEVELS[rebirth.level - 1][0]}")),
+            _cell(_text(format_multiplier(rebirth.multiplier))),
+        ]
+        for rebirth in (user.rebirths if user else [])
+    ]
+    return {
+        "type": "table",
+        "column_settings": [{"align": "center"}, {"align": "center"}, {"is_wrapped": True}, {"align": "right"}],
+        "rows": rows,
+    }
+
+
+def rebirth_collection_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
+    """Show the user's rebirths as a table, or that there are none yet."""
+    user = engine.users.get(user_id)
+    if not (user and user.rebirths):
+        return [_context(f"まだ転生していません。Lv{FIRST_REBIRTH_LEVEL} から、マイページで転生できます")]
+    return [rebirth_table(engine, user_id)]
 
 
 def badge_collection_blocks(engine: BadgeEngine, user_id: str) -> list[dict]:
@@ -395,6 +491,9 @@ def collection_blocks(engine: BadgeEngine, user_id: str, _now: datetime) -> list
         _header("かたがき"),
         _context("達成日: はじめて届いた日 ／ まだのかたがきは、届くと名前がわかります"),
         title_table(engine, user_id),
+        DIVIDER,
+        _header("転生の記録"),
+        *rebirth_collection_blocks(engine, user_id),
         DIVIDER,
         _header("バッジ"),
         _context(BADGE_LEGEND),
@@ -523,7 +622,19 @@ def how_to_play_blocks(_engine: BadgeEngine, _user_id: str, _now: datetime) -> l
             "*4. みんなで目標を目指す*\n"
             f"今週の全員の出社が「営業日 × {TEAM_GOAL_PER_BIZDAY}回」に届くと、そのあとの出社にボーナスがつきます。"
         ),
+        _section(
+            "*5. 転生する*\n"
+            f"Lv{FIRST_REBIRTH_LEVEL} から、マイページで転生できます。ポイントとかたがきは0に戻りますが、"
+            "そのあとの出社のポイントに倍率がかかります（転生したときの Lv × 0.1 だけ上がり、切り上げ）。"
+            "2回目からは前回より上のかたがきで転生できます（Lv12 なら何度でも）。"
+            "早めに転生して倍率を上げるか、育ててから大きく上げるかはあなた次第。"
+        ),
+        _section(
+            "*6. 上限のマークを集める*\n"
+            f"ポイントが上限（{LEVELS[-1][1]}pt）に届くたびに、名前の横に {mark_text(1)} が1つ増えます。"
+            "転生しても消えません。"
+        ),
         DIVIDER,
-        _section("*レベル表*  累計ポイントがこの値に届くと次のレベル"),
+        _section("*レベル表*  ポイントがこの値に届くと次のレベル"),
         _context(levels),
     ]
