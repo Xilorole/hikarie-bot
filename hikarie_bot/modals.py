@@ -170,6 +170,7 @@ def registry_message(
 
 MARK = "\N{GLOWING STAR}"
 MARKS_SHOWN = 3  # up to this many marks are repeated; more read "🌟4"
+MARK_NAME = "でんせつのしるし"  # the mark is proof of reaching the top title, でんせつのかいしゃいん
 
 
 def mark_text(marks: int) -> str:
@@ -249,7 +250,7 @@ def point_get_message(arrival: ArrivalResult) -> list[Block]:
         next_level_text = f"*{level.points_to_next}pt*"
         progress_text = f"`{point_rate_text}` | *{experience_rate}%* (*+{experience_add_up_rate}%*)"
     if arrival.earned_mark:
-        level_up_text = f" *上限に到達!* :crown: {MARK}を獲得 "
+        level_up_text = f" *でんせつに到達!* :crown: {MARK_NAME} {MARK} を獲得 "
     elif max_level_reached(arrival.previous_score, arrival.current_score):
         level_up_text = " *上限に到達!* :crown: "
     elif leveled_up(arrival.previous_score, arrival.current_score):

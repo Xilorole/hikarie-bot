@@ -17,6 +17,7 @@ from hikarie_bot.db_data.badges import KIRIBANS
 from hikarie_bot.db_data.items import ITEM_IMAGE_URLS, ITEM_POINT_CAP, Items
 from hikarie_bot.engine import (
     FIRST_REBIRTH_LEVEL,
+    MAX_POINTS,
     TEAM_GOAL_PER_BIZDAY,
     BadgeEngine,
     Outlook,
@@ -29,6 +30,7 @@ from hikarie_bot.modals import (
     BADGES_BY_TYPE,
     ITEMS,
     KIRIBAN_BADGE_TYPE_ID,
+    MARK_NAME,
     _mrkdwn,
     _progress_bar,
     attendance_by_day,
@@ -179,12 +181,22 @@ def status_fields(engine: BadgeEngine, user_id: str, now: datetime) -> dict:
             _mrkdwn(f"*つぎのレベルまで*\n{progress}"),
             _mrkdwn(f"*所持アイテム*\n{item}"),
             _mrkdwn(f"*しゅうかい*\n{lap_name(len(status.rebirths))}（倍率 {format_multiplier(status.multiplier)}）"),
-            _mrkdwn(f"*上限のマーク*\n{mark_text(status.marks) or 'まだありません'}"),
+            _mrkdwn(f"*{MARK_NAME}*\n{marks_status(status)}"),
         ],
     }
 
 
-REBIRTH_RULE = "転生すると、ポイントとかたがきは0から。バッジ・図鑑・アイテム・マークは残ります"
+def marks_status(status: RebirthStatus) -> str:
+    """Say how many marks the user has and how to get the next one: reach the top, or be reborn and reach it again."""
+    if not status.marks:
+        return f"まだなし（{MAX_POINTS}pt に届くと {mark_text(1)}）"
+    text = f"{mark_text(status.marks)}（{status.marks}回 でんせつに到達）"
+    if status.points >= MAX_POINTS:  # this lap's mark is earned: the next one needs another lap
+        text += f"\n次の {mark_text(1)} は、転生してもう一度 {MAX_POINTS}pt へ"
+    return text
+
+
+REBIRTH_RULE = f"転生すると、ポイントとかたがきは0から。バッジ・図鑑・アイテム・{MARK_NAME}は残ります"
 
 
 def rebirth_blocks(status: RebirthStatus) -> list[dict]:
@@ -363,7 +375,7 @@ def collection_summary(engine: BadgeEngine, user_id: str) -> str:
     marks = (mark_text(user.marks) if user else "") or "なし"
     rebirths = len(user.rebirths) if user else 0
     return (
-        f"*かたがき* {level} / {len(LEVELS)}　*転生* {rebirths}回　*上限のマーク* {marks}\n"
+        f"*かたがき* {level} / {len(LEVELS)}　*転生* {rebirths}回　*{MARK_NAME}* {marks}\n"
         f"*バッジ* `{_progress_bar(rate)}` {earned} / {len(badge_ids)}（{rate}%）\n"
         f"*アイテム* {len(picked & set(ITEMS))} / {len(ITEMS)} 種類を獲得"
     )
@@ -630,9 +642,10 @@ def how_to_play_blocks(_engine: BadgeEngine, _user_id: str, _now: datetime) -> l
             "早めに転生して倍率を上げるか、育ててから大きく上げるかはあなた次第。"
         ),
         _section(
-            "*6. 上限のマークを集める*\n"
-            f"ポイントが上限（{LEVELS[-1][1]}pt）に届くたびに、名前の横に {mark_text(1)} が1つ増えます。"
-            "転生しても消えません。"
+            f"*6. {MARK_NAME}を集める*\n"
+            f"ポイントが {MAX_POINTS}pt（でんせつのかいしゃいん）に届くたびに {mark_text(1)} が1つ増え、"
+            "毎朝の投稿やスレッドで名前の横に並びます。1つの周回で増えるのは1つだけ。"
+            "もっと集めるには、転生してもう一度届く必要があります。転生しても消えません。"
         ),
         DIVIDER,
         _section("*レベル表*  ポイントがこの値に届くと次のレベル"),

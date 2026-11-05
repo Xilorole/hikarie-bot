@@ -209,7 +209,7 @@ def test_point_get_message_max_level() -> None:
     # 1398 -> 1403: the upper limit is reached by this arrival
     message = point_get_after(2, 1398)
     assert message[0]["text"]["text"] == (
-        "*07:00* 最速出社登録しました！\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *上限に到達!* :crown: 🌟を獲得 "
+        "*07:00* 最速出社登録しました！\n<@test_user>さんのポイント 1398 → *1403* (*+5*) *でんせつに到達!* :crown: でんせつのしるし 🌟 を獲得 "
     )
     assert message[2]["elements"][0]["text"].startswith(
         "かたがき: *でんせつのかいしゃいん* (Lv12)\nつぎのレベルまで: *上限に到達*\nしんこうど: `██████████` | *100%*\n"
