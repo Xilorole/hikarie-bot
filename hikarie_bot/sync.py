@@ -1,10 +1,10 @@
-"""Read arrival events (and item picks) from the Slack channel into arrival_event (and item_pick_event).
+"""Read arrivals, item picks and rebirths from the Slack channel into arrival_event, item_pick_event, rebirth_event.
 
 A sync always reads the whole channel: every top-level message and every bot thread. The bot stores
 an arrival before it posts it, so a running database never lacks an arrival that Slack has; startup
 syncs only into an empty database (first start, or a lost volume), and the ``sync`` command is the
 manual full read (e.g. after restoring an older backup). Events are keyed by the Slack message ts, so
-syncing is idempotent. Item picks are read from the metadata of their thread posts the same way.
+syncing is idempotent. Item picks and rebirths are read from the metadata of their thread posts the same way.
 
 Slack data comes from a SlackSource: the live API, the API while recording raw
 responses, or a recorded cache (offline). Recorded files have the shape
@@ -27,7 +27,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from hikarie_bot.constants import JST
-from hikarie_bot.models import ArrivalEvent, ItemPickEvent
+from hikarie_bot.models import ArrivalEvent, ItemPickEvent, RebirthEvent
 from hikarie_bot.settings import get_settings
 
 Message = dict[str, Any]
@@ -35,6 +35,7 @@ Message = dict[str, Any]
 PAGE_SIZE = 200
 ARRIVAL_EVENT_TYPE = "hikarie_arrival"
 ITEM_PICK_EVENT_TYPE = "hikarie_item_pick"
+REBIRTH_EVENT_TYPE = "hikarie_rebirth"
 
 # Posts without arrival metadata are read from their text. The retired v1/v2 bots posted only the day's
 # fastest arrival; their history is closed, so its time window identifies them without their bot IDs.
@@ -264,6 +265,42 @@ def parse_item_pick(message: Message) -> ParsedPick | None:
 
 
 @dataclass
+class ParsedRebirth:
+    """A rebirth read from a Slack message."""
+
+    user_id: str
+    day: date
+    occurred_at: datetime
+    slack_ts: str
+
+
+def rebirth_metadata(user_id: str, day: date, occurred_at: datetime) -> dict[str, Any]:
+    """Return the Slack message metadata the bot attaches to a rebirth's thread post."""
+    return {
+        "event_type": REBIRTH_EVENT_TYPE,
+        "event_payload": {
+            "user_id": user_id,
+            "day": day.isoformat(),
+            "occurred_at": occurred_at.astimezone(UTC).isoformat(),
+        },
+    }
+
+
+def parse_rebirth(message: Message) -> ParsedRebirth | None:
+    """Return the rebirth a bot message records, if any (only its metadata counts)."""
+    metadata = message.get("metadata") or {}
+    if message.get("bot_id") != get_settings().bot_id or metadata.get("event_type") != REBIRTH_EVENT_TYPE:
+        return None
+    payload = metadata["event_payload"]
+    return ParsedRebirth(
+        user_id=payload["user_id"],
+        day=date.fromisoformat(payload["day"]),
+        occurred_at=datetime.fromisoformat(payload["occurred_at"]),
+        slack_ts=message["ts"],
+    )
+
+
+@dataclass
 class SyncResult:
     """What one sync read and stored."""
 
@@ -271,6 +308,7 @@ class SyncResult:
     threads: int = 0
     inserted: int = 0
     picks_inserted: int = 0
+    rebirths_inserted: int = 0
 
 
 async def sync_channel(session: Session, source: SlackSource, channel: str) -> SyncResult:
@@ -284,6 +322,7 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
     result = SyncResult()
     arrivals: list[ParsedArrival] = []
     picks: list[ParsedPick] = []
+    rebirths: list[ParsedRebirth] = []
     async for message in source.history(channel):
         result.messages += 1
         if arrival := parse_arrival(message):
@@ -300,6 +339,7 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
                 )
             arrivals += [arrival for reply in replies if (arrival := parse_arrival(reply))]
             picks += [pick for reply in replies if (pick := parse_item_pick(reply))]
+            rebirths += [rebirth for reply in replies if (rebirth := parse_rebirth(reply))]
 
     if arrivals:
         statement = insert(ArrivalEvent).on_conflict_do_nothing(index_elements=["slack_ts"])
@@ -320,6 +360,8 @@ async def sync_channel(session: Session, source: SlackSource, channel: str) -> S
         result.inserted = (session.scalar(count) or 0) - before
     if picks:
         result.picks_inserted = _store_picks(session, picks)
+    if rebirths:
+        result.rebirths_inserted = _store_rebirths(session, rebirths)
     session.commit()
     logger.info("Synced {}: {}", channel, result)
     return result
@@ -342,6 +384,26 @@ def _store_picks(session: Session, picks: list[ParsedPick]) -> int:
         for pick in picks
     ]
     count = select(func.count()).select_from(ItemPickEvent)
+    before = session.scalar(count) or 0
+    session.execute(statement, rows)
+    return (session.scalar(count) or 0) - before
+
+
+def _store_rebirths(session: Session, rebirths: list[ParsedRebirth]) -> int:
+    """Store the rebirths that are not stored yet (by Slack ts, or by user and day); return how many were new."""
+    statement = insert(RebirthEvent).on_conflict_do_nothing()
+    recorded_at = datetime.now(UTC)
+    rows = [
+        {
+            "user_id": rebirth.user_id,
+            "day": rebirth.day,
+            "occurred_at": rebirth.occurred_at,
+            "slack_ts": rebirth.slack_ts,
+            "recorded_at": recorded_at,
+        }
+        for rebirth in rebirths
+    ]
+    count = select(func.count()).select_from(RebirthEvent)
     before = session.scalar(count) or 0
     session.execute(statement, rows)
     return (session.scalar(count) or 0) - before

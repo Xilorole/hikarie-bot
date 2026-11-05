@@ -120,7 +120,7 @@ def describe_sync(result: SyncResult) -> str:
     """Describe what a Slack sync read and stored."""
     return (
         f"whole channel · {result.messages} messages · {result.threads} threads · {result.inserted} new events"
-        f" · {result.picks_inserted} new item picks"
+        f" · {result.picks_inserted} new item picks · {result.rebirths_inserted} new rebirths"
     )
 
 

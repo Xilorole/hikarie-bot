@@ -32,7 +32,7 @@ def test_upgrade_creates_schema_matching_models(tmp_path: Path) -> None:
 
     with engine.connect() as connection:
         assert compare_metadata(MigrationContext.configure(connection), BaseSchema.metadata) == []
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0003",)]
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).all() == [("0004",)]
         assert connection.execute(text("PRAGMA journal_mode")).scalar() == "wal"
     engine.dispose()
 
@@ -65,7 +65,12 @@ def test_upgrade_from_0000_drops_unused_tables_and_keeps_events(tmp_path: Path) 
 
     assert init_database(engine).revision_before == "0000"
 
-    assert set(inspect(engine).get_table_names()) == {"alembic_version", "arrival_event", "item_pick_event"}
+    assert set(inspect(engine).get_table_names()) == {
+        "alembic_version",
+        "arrival_event",
+        "item_pick_event",
+        "rebirth_event",
+    }
     with Session(engine) as session:
         assert session.query(ArrivalEvent).one().user_id == "U1"
     engine.dispose()
@@ -109,6 +114,26 @@ def test_0003_adds_item_picks_one_per_user_and_day_and_downgrade_drops_them(tmp_
     engine.dispose()
 
 
+def test_0004_adds_rebirths_one_per_user_and_day_and_downgrade_drops_them(tmp_path: Path) -> None:
+    """Revision 0004 adds rebirth_event with one rebirth per user and day; downgrading drops it."""
+    engine = _file_engine(tmp_path / "data.db")
+    config = Config()
+    config.set_main_option("script_location", str(SCRIPT_LOCATION))
+    rebirth = text(
+        "INSERT INTO rebirth_event (user_id, day, occurred_at, recorded_at) "
+        "VALUES ('U1', '2026-11-05', '2026-11-05T00:00:00.000000+00:00', '2026-11-05T00:00:00.000000+00:00')"
+    )
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0004")
+        connection.execute(rebirth)
+        with pytest.raises(IntegrityError):
+            connection.execute(rebirth)
+        command.downgrade(config, "0003")
+        assert "rebirth_event" not in inspect(connection).get_table_names()
+    engine.dispose()
+
+
 def test_arrival_event_stores_utc_and_rejects_naive_datetimes() -> None:
     """Event times round-trip as aware UTC, and slack_ts is unique when present."""
     engine = create_engine("sqlite://")
@@ -147,4 +172,4 @@ def test_read_only_open_of_wal_database(tmp_path: Path) -> None:
     engine.dispose()
 
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0003",)
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == ("0004",)
