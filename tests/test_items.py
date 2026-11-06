@@ -34,7 +34,7 @@ from hikarie_bot.db_data.items import (
 from hikarie_bot.engine import BadgeEngine, ItemPick, compute
 from hikarie_bot.modals import ActionID, BlockID, CallbackID, registry_message
 from hikarie_bot.models import ItemPickEvent
-from hikarie_bot.picks import ALREADY_PICKED, NOT_ARRIVED, NOT_OFFERED
+from hikarie_bot.picks import ALREADY_PICKED, NOT_ARRIVED, NOT_ARRIVED_NOTICE, NOT_OFFERED, record_pick
 from hikarie_bot.settings import Settings
 from hikarie_bot.sync import parse_item_pick, sync_channel
 from tests.helpers import only_badge_types
@@ -254,6 +254,11 @@ def submission(user_id: str, item_id: str, private_metadata: str) -> dict[str, A
     return {"user": {"id": user_id}, "view": {"private_metadata": private_metadata, "state": {"values": values}}}
 
 
+def item_texts(view: dict) -> list[str]:
+    """Return the texts of the items of a modal (the sections beside an image)."""
+    return [block["text"]["text"] for block in view["blocks"] if block["type"] == "section" and "accessory" in block]
+
+
 def slack() -> AsyncMock:
     """Return a Slack client whose posts get increasing ts."""
     client = AsyncMock()
@@ -280,14 +285,20 @@ def picks(database: Engine) -> list[tuple[str, date, str, str | None]]:
 
 
 @pytest.mark.asyncio
-async def test_no_item_before_arriving(database: Engine) -> None:
-    """The modal does not open before the user's arrival is announced."""
+async def test_offers_can_be_looked_at_but_not_picked_before_arriving(database: Engine) -> None:
+    """Before the arrival is announced the day's offers open read-only, and a pick is refused."""
     client = slack()
 
     await bot.handle_pick_item(AsyncMock(), press("U1", 2, ActionID.PICK_ITEM), client)
 
-    assert client.chat_postEphemeral.await_args.kwargs["text"] == NOT_ARRIVED
-    client.views_open.assert_not_awaited()
+    view = client.views_open.await_args.kwargs["view"]
+    assert view["callback_id"] == CallbackID.ITEM_REVIEW
+    assert NOT_ARRIVED_NOTICE in json.dumps(view, ensure_ascii=False)
+    client.chat_postEphemeral.assert_not_awaited()
+    with Session(database) as session:
+        gate = record_pick(session, "U1", offers("U1", date(2025, 6, 2))[0].id, datetime(2025, 6, 2, 9, tzinfo=JST))
+    assert gate.refusal == NOT_ARRIVED
+    assert picks(database) == []
 
 
 @pytest.mark.asyncio
@@ -299,11 +310,10 @@ async def test_pick_is_stored_and_announced_quietly_in_the_thread(database: Engi
     offered = [item.id for item in offers("U1", date(2025, 6, 2))]
     view = client.views_open.await_args.kwargs["view"]
     assert view["callback_id"] == CallbackID.ITEM_PICK
-    cards = [block for block in view["blocks"] if block["type"] == "card"]
-    assert [(card["subtitle"]["text"], card["body"]["text"]) for card in cards] == [
-        (ITEMS[item_id].flavor, f"効果: {ITEMS[item_id].effect}") for item_id in offered
-    ]
+    # as the collection shows them, without the story
+    assert item_texts(view) == [f"*{ITEMS[item_id].name}*\n効果: {ITEMS[item_id].effect}" for item_id in offered]
     assert [option["value"] for option in view["blocks"][-1]["element"]["options"]] == offered
+    assert view["submit"]["text"] == "獲得"  # submitting closes the modal
     ack = AsyncMock()
 
     await bot.handle_item_submission(ack, submission("U1", offered[1], metadata), client)
@@ -334,10 +344,24 @@ async def test_one_pick_a_day_and_then_the_offers_are_read_only(database: Engine
 
     view = client.views_open.await_args.kwargs["view"]
     assert view["callback_id"] == CallbackID.ITEM_REVIEW
-    assert view["submit"]["text"] == "OK"
+    assert "submit" not in view  # nothing to submit: "閉じる" is the only button
     assert not any(block["type"] == "input" for block in view["blocks"])
-    titles = [block["title"]["text"] for block in view["blocks"] if block["type"] == "card"]
-    assert [title.endswith("獲得済み") for title in titles] == [True, False, False]
+    # the picked one shows as usual and the others are dimmed into small grey text, with no "獲得済み" label
+    picked = offers("U1", date(2025, 6, 2))[0]
+    assert item_texts(view) == [f"*{picked.name}*\n効果: {picked.effect}"]
+    # first, then each other offer as the small image with its name and, below it, its effect
+    blocks = view["blocks"]
+    first = next(index for index, block in enumerate(blocks) if "accessory" in block)
+    assert all("accessory" not in block for block in blocks[:first])
+    dimmed = [block for block in blocks if block["type"] == "context" and block["elements"][0]["type"] == "image"]
+    assert [block["elements"][1]["text"] for block in dimmed] == [
+        f"*{item.name}*" for item in offers("U1", date(2025, 6, 2))[1:]
+    ]
+    for block in dimmed:
+        effect = blocks[blocks.index(block) + 1]
+        assert effect["type"] == "context"
+        assert effect["elements"][0]["text"].startswith("効果: ")
+    assert "獲得済み" not in json.dumps(view, ensure_ascii=False)
     # a modal left open from before cannot pick a second item either
     ack = AsyncMock()
     await bot.handle_item_submission(ack, submission("U1", offers("U1", date(2025, 6, 2))[1].id, metadata), client)
@@ -361,9 +385,9 @@ async def test_holding_an_item_shows_the_offers_without_a_pick(database: Engine,
     view = client.views_open.await_args.kwargs["view"]
     assert view["callback_id"] == CallbackID.ITEM_REVIEW
     notice = view["blocks"][0]["text"]["text"]
-    assert "週間パス" in notice
+    assert "ウィークリーパス" in notice
     assert "06/09まで" in notice
-    assert len([block for block in view["blocks"] if block["type"] == "card"]) == 3
+    assert len(item_texts(view)) == 3
     # nor can a submission get around it
     ack = AsyncMock()
     metadata = json.dumps({"channel": "C0OUT", "thread_ts": post_ts(3), "day": "2025-06-03"})

@@ -22,9 +22,9 @@ production. Use the dev app instead:
 2. Copy `.env.dev.template` to `.env.dev` and set `ADMIN` to your user ID.
 3. `slack run`
 
-The CLI installs the dev app from `manifest.json` and injects its tokens. `scripts/slack_dev_start.sh` derives
-`BOT_ID` and the workspace from them, creates the `#prd` / `#log` channels if needed, and starts the bot with
-`--dev`, which posts the daily message right away.
+The CLI installs the dev app from `manifest.json` and injects its tokens. `scripts/slack_dev_start.sh`
+creates the `#prd` / `#log` channels if needed, and starts the bot with
+`--dev` (the bot reads its own IDs from Slack), which posts the daily message right away.
 
 ### Message previews
 
@@ -42,6 +42,9 @@ Create `.env` from `.env.template`, then `docker compose up -d`. Compose keeps t
 volume; add `--build` to run the checkout instead of `ghcr.io/xilorole/hikarie-bot:latest`.
 
 On Rancher, see [docs/deploy/rancher.md](docs/deploy/rancher.md) (Japanese).
+
+The production Slack app is configured by hand (the dev app gets its settings from `manifest.json`): what each feature
+needs enabled once is in [docs/deploy/slack-app.md](docs/deploy/slack-app.md) (Japanese).
 
 ## Data
 

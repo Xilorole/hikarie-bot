@@ -10,7 +10,7 @@ if [ ! -f "$DOTENV_PATH" ]; then
     exit 1
 fi
 
-# BOT_ID / SLACK_WORKSPACE_ID / channels belong to the dev app, so derive them from its token
+# the channels belong to the dev app, so derive them from its token
 exports="$(uv run python scripts/slack_dev_bootstrap.py)"
 eval "$exports"
 

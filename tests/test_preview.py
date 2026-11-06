@@ -36,10 +36,9 @@ def test_synthetic_context_renders_every_preview() -> None:
     payloads = {item.name: item.render(context) for item in PREVIEWS}
 
     assert all(payload is not None for payload in payloads.values())
-    assert payloads["achievement_view"]["type"] == "modal"
     assert "LvUP!" in payloads["point_get_level_up"]["blocks"][0]["text"]["text"]
     assert "最速" in payloads["point_get_fastest"]["blocks"][0]["text"]["text"]
-    assert all(len(payload["blocks"]) <= 50 for name, payload in payloads.items() if name != "achievement_view")
+    assert all(len(payload["blocks"]) <= 50 for payload in payloads.values())
 
 
 @pytest.mark.asyncio
@@ -64,7 +63,7 @@ async def test_preview_reads_database_without_writing(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert database.read_bytes() == before
     assert results
-    assert (output_dir / "achievement_view.json").exists()
+    assert (output_dir / "home_my_page.json").exists()
     assert "block-kit-builder/T0123#" in (output_dir / "previews.md").read_text()
 
 

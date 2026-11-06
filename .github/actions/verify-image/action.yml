@@ -1,0 +1,46 @@
+name: Verify image
+description: >-
+  Check a built image offline: it runs as UID 10001 without dev tools, starts the CLI, knows its commit and
+  migrates a fresh database. Used before an image is released and on pull requests.
+
+inputs:
+  image:
+    description: "The local image tag to check (built with load: true)."
+    required: true
+  revision:
+    description: The commit the image was built from (APP_REVISION).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Verify offline runtime
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        docker run --rm --network none -e ENV=test \
+          --entrypoint /opt/.venv/bin/python \
+          "$IMAGE" -c \
+          'import importlib.util, os; import hikarie_bot, aiohttp, slack_bolt; from dateutil.relativedelta import relativedelta; from sqlalchemy import create_engine, text; assert os.getuid() == 10001; assert importlib.util.find_spec("pytest") is None; assert importlib.util.find_spec("ruff") is None; engine = create_engine("sqlite:////opt/.db/smoke.db"); connection = engine.connect(); connection.execute(text("CREATE TABLE smoke (id INTEGER)")); connection.close(); engine.dispose()'
+        docker run --rm --network none -e ENV=test -e SLACK_BOT_TOKEN=xoxb-test \
+          "$IMAGE" /opt/.venv/bin/python -m hikarie_bot --help
+
+    - name: Verify the image knows its commit
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        EXPECTED_REVISION: ${{ inputs.revision }}
+      run: |
+        docker run --rm --network none -e ENV=test -e EXPECTED_REVISION --entrypoint /opt/.venv/bin/python \
+          "$IMAGE" -c \
+          'import os; from hikarie_bot.startup import current_revision; assert current_revision() == os.environ["EXPECTED_REVISION"][:7], current_revision()'
+
+    - name: Verify offline database migration
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        docker run --rm --network none -e ENV=test -e DATABASE_URL=sqlite:////opt/.db/data.db \
+          --entrypoint /opt/.venv/bin/python "$IMAGE" -c \
+          'from sqlalchemy import create_engine, inspect; from hikarie_bot.migrations import init_database; engine = create_engine("sqlite:////opt/.db/data.db"); init_database(engine); init_database(engine); tables = set(inspect(engine).get_table_names()); assert tables == {"alembic_version", "arrival_event", "item_pick_event", "rebirth_event"}, tables'

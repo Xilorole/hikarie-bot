@@ -44,7 +44,8 @@ StorageClass が WaitForFirstConsumer の場合、Pod が付くまで `Pending` 
 Storage → Secrets → Create → Opaque:
 
 - Name: `hikarie-bot`
-- キー: `OUTPUT_CHANNEL` `LOG_CHANNEL` `BOT_ID` `ADMIN` `SLACK_BOT_TOKEN` `SLACK_APP_TOKEN`
+- `BOT_ID` `SLACK_WORKSPACE_ID` `SLACK_APP_ID` は不要（起動時に Slack から取得する）。
+- キー: `OUTPUT_CHANNEL` `LOG_CHANNEL` `ADMIN` `SLACK_BOT_TOKEN` `SLACK_APP_TOKEN`
 
 [`secret.example.yaml`](../../deploy/rancher/secret.example.yaml) を手元でコピーして値を入れ、Import YAML で取り込んでもよい
 （値を入れたファイルはコミットしない）。既存ワークロードの環境変数で渡し続ける場合は、このステップは省略できる。
@@ -98,19 +99,10 @@ kubectl exec deploy/hikarie-bot -- /opt/.venv/bin/python -c "import sqlite3; c =
 bot は `rebooting...` と返してプロセスを終了し、Kubernetes がコンテナを起動し直す（PVC のデータを使い、Slack は読まないので数秒）。
 同じイメージで起動し直すだけなので、新しいバージョンにするにはイメージのタグを変える。
 
-### 出社登録ショートカット
+### Slack アプリの設定
 
-利用者は Slack の **グローバルショートカット「出社した」**（検索欄の左の「+」や `/` メニュー）から、当日の投稿を探さずに出社登録できる。
-本番の Slack アプリには、アプリ設定の **Interactivity & Shortcuts → Shortcuts** で次を一度だけ追加する（dev アプリは `manifest.json` から入る）。
-
-| 項目 | 値 |
-|---|---|
-| 種類 | Global |
-| Name | 出社した |
-| Short Description | 今日の出社を登録する |
-| Callback ID | `arrive` |
-
-追加のスコープは要らない（`commands` と `channels:history` は付与済み）。登録は当日の投稿のスレッドに記録され、結果はモーダルで返る。
+ショートカットや App Home のように Slack アプリ側で有効にするものは、動かす場所によらないので
+[slack-app.md](slack-app.md) にまとめている。
 
 ### 利用状況の週次レポート
 

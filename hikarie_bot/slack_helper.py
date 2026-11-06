@@ -12,7 +12,7 @@ from hikarie_bot.arrivals import compute_arrivals
 from hikarie_bot.constants import JST
 from hikarie_bot.database import get_db
 from hikarie_bot.engine import TeamProgress
-from hikarie_bot.modals import BlockID, initial_message, render, to_text
+from hikarie_bot.modals import BlockID, home_url, initial_message, render, to_text
 from hikarie_bot.settings import get_settings
 from hikarie_bot.usage import describe_usage, last_full_week, usage_report
 from hikarie_bot.utils import is_jp_bizday
@@ -35,7 +35,10 @@ async def send_daily_message(client: AsyncWebClient, channel: str) -> None:
     """Post the daily question on Japanese business days (not weekends, holidays, Dec 31 or Jan 1-3)."""
     if not is_jp_bizday(datetime.now(JST).date()):
         return
-    message = initial_message(await asyncio.to_thread(team_progress_now))
+    settings = get_settings()
+    message = initial_message(
+        await asyncio.to_thread(team_progress_now), home_url(settings.slack_workspace_id, settings.slack_app_id)
+    )
     await client.chat_postMessage(channel=channel, blocks=render(message), text=to_text(message))
 
 

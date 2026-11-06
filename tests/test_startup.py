@@ -71,10 +71,10 @@ async def test_first_start_reports_each_step_without_personal_data(client: Async
     texts = posted(client)
     assert len(texts) == 6  # one message per section
     assert texts[0] == "starting application (rev abc1234)"
-    assert texts[1].startswith("*database*: schema 0003 (migrated from empty) (")
+    assert texts[1].startswith("*database*: schema 0004 (migrated from empty) (")
     assert texts[2].startswith("first start: reading the whole channel")
     assert texts[3].startswith(
-        "*slack sync*: whole channel · 1 messages · 1 threads · 2 new events · 0 new item picks ("
+        "*slack sync*: whole channel · 1 messages · 1 threads · 2 new events · 0 new item picks · 0 new rebirths ("
     )
     assert texts[4].startswith("*scores*: 2 events → 2 arrivals · 2 users · ")
     assert texts[5].startswith(":white_check_mark: application started (rev abc1234) in ")
@@ -95,7 +95,7 @@ async def test_restart_skips_the_sync_and_reports_only_a_count(client: AsyncMock
 
     texts = posted(client)
     assert not any(text.startswith("first start") for text in texts)
-    assert texts[1].startswith("*database*: schema 0003 (up to date)")
+    assert texts[1].startswith("*database*: schema 0004 (up to date)")
     assert texts[2].startswith("*slack sync*: skipped (2 events stored) (")
     assert texts[3].startswith("*scores*: 2 events → 2 arrivals")
     assert not any(user in text for text in texts for user in SECRET_USERS)
@@ -136,3 +136,58 @@ def test_current_revision_prefers_the_build_argument(settings: Settings, monkeyp
     settings.app_revision = ""
     monkeypatch.setattr(startup.subprocess, "run", Mock(side_effect=FileNotFoundError("git")))
     assert startup.current_revision() == "unknown"
+
+
+def slack_ids(*, app_id: str | None = "A0APP") -> AsyncMock:
+    """Return a client answering auth.test and bots.info with fake IDs; no app_id makes bots.info fail."""
+    client = AsyncMock()
+    client.auth_test.return_value = {"team_id": "T0TEAM", "bot_id": "B0AUTH"}
+    if app_id is None:
+        client.bots_info.side_effect = RuntimeError("missing_scope")
+    else:
+        client.bots_info.return_value = {"bot": {"app_id": app_id}}
+    return client
+
+
+@pytest.mark.asyncio
+async def test_slack_ids_are_read_from_slack(settings: Settings) -> None:
+    """The bot, workspace and app IDs come from auth.test and bots.info with the bots own ID."""
+    client = slack_ids()
+
+    await startup.resolve_slack_ids(client)
+
+    assert (settings.bot_id, settings.slack_workspace_id, settings.slack_app_id) == ("B0AUTH", "T0TEAM", "A0APP")
+    client.bots_info.assert_awaited_once_with(bot="B0AUTH")
+
+
+@pytest.mark.asyncio
+async def test_slack_ids_set_in_the_environment_win(settings: Settings) -> None:
+    """A value that is already set is kept, and Slack is not asked for it."""
+    settings.bot_id, settings.slack_workspace_id, settings.slack_app_id = "B0ENV", "T0ENV", "A0ENV"
+    client = slack_ids()
+
+    await startup.resolve_slack_ids(client)
+
+    assert (settings.bot_id, settings.slack_workspace_id, settings.slack_app_id) == ("B0ENV", "T0ENV", "A0ENV")
+    client.auth_test.assert_not_awaited()
+    client.bots_info.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_slack_ids_partly_set_ask_only_for_the_rest(settings: Settings) -> None:
+    """An app ID from the environment is kept while the bot and workspace IDs are read."""
+    settings.slack_app_id = "A0ENV"
+    client = slack_ids()
+
+    await startup.resolve_slack_ids(client)
+
+    assert (settings.bot_id, settings.slack_workspace_id, settings.slack_app_id) == ("B0AUTH", "T0TEAM", "A0ENV")
+    client.bots_info.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_missing_app_id_does_not_stop_startup(settings: Settings) -> None:
+    """If bots.info fails (a missing scope) the bot and workspace IDs are kept and there is no app ID."""
+    await startup.resolve_slack_ids(slack_ids(app_id=None))
+
+    assert (settings.bot_id, settings.slack_workspace_id, settings.slack_app_id) == ("B0AUTH", "T0TEAM", "")

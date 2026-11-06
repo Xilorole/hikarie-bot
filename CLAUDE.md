@@ -1,13 +1,13 @@
 # hikarie-bot
 
 Slack bot that records office arrivals (button presses in one channel) and awards badges and points.
-Why the data works the way it does: `docs/design/data-architecture.md` (Japanese). Deploy: `docs/deploy/rancher.md`.
+Why the data works the way it does: `docs/design/data-architecture.md` (Japanese). Deploy: `docs/deploy/rancher.md`; production Slack app settings (by hand, unlike the dev app's `manifest.json`): `docs/deploy/slack-app.md`.
 
 ## Data model
 
 - `arrival_event` is the source of truth for arrivals: append-only, deduplicated by Slack message ts; the first event of a user's JST day counts. Startup reads Slack only into an empty database (`sync_channel` always reads the whole channel); live arrivals are stored before they are posted, so Slack never has one the database lacks. After restoring an older backup, run `python -m hikarie_bot sync`.
-- Item picks (`item_pick_event`, items defined in `db_data/items.py`) are the one other stored input: a user's choice cannot be derived from arrivals. Like arrivals they are stored before they are announced (in the daily post's thread, with metadata that `sync_channel` reads back). The offers and dice rolls are derived from the user and the day, so they are not stored. A pick acts only on the user's arrivals after its day.
-- Ranks, badges, scores and levels are never stored: `arrivals.compute_arrivals` runs `engine.py` over all events (tens of ms) for each button press and achievement view, and `modals.py` renders the engine's results. Change the rules in `engine.py`.
+- Item picks (`item_pick_event`, items defined in `db_data/items.py`) and rebirths (`rebirth_event`, `docs/design/rebirth.md`) are the other stored inputs: a user's choice cannot be derived from arrivals. Like arrivals they are stored before they are announced (in the daily post's thread, with metadata that `sync_channel` reads back). The offers and dice rolls are derived from the user and the day, so they are not stored. A pick acts only on the user's arrivals after its day; a rebirth resets the points at once and multiplies them from the next day (its level and multiplier are computed, not stored).
+- Ranks, badges, scores and levels are never stored: `arrivals.compute_arrivals` runs `engine.py` over all events (tens of ms) for each button press and Home view, and `modals.py` / `home.py` render the engine's results. Change the rules in `engine.py`.
 - A rule change rewrites everyone's past points and badges on the next deploy. To affect only later arrivals, gate the rule on its badge type's `apply_start`.
 - Badges are defined only in code (`db_data/badges.py`). A new badge type needs its definitions there and a checker in `BadgeEngine.CHECKERS`, which is the list of awarded types and their evaluation order.
 
@@ -28,10 +28,10 @@ uv run alembic upgrade head && uv run alembic revision --autogenerate --rev-id <
 ## Running
 
 - Importing the package needs no configuration: settings (`settings.get_settings()`), the engine (`database.get_engine()`) and the Slack app (`__main__.create_app()`) are created on first use. Read settings where they are used instead of copying them into module constants.
-- `start` checks `settings.REQUIRED` (skipped under `ENV=dev` / `ENV=test`); a database must be a file outside dev/test. pytest sets `ENV=test`; the `settings` fixture gives each test fresh settings to assign to, and `app_database` a fresh database behind `get_db`.
+- `start` checks `settings.REQUIRED` (skipped under `ENV=dev` / `ENV=test`); a database must be a file outside dev/test. It then reads `BOT_ID`, `SLACK_WORKSPACE_ID` and `SLACK_APP_ID` from Slack (`startup.resolve_slack_ids`: `auth.test`, `bots.info`); a value set in the environment wins. pytest sets `ENV=test`; the `settings` fixture gives each test fresh settings to assign to, and `app_database` a fresh database behind `get_db`.
 - Offline commands need no Slack token:
   - `uv run python -m hikarie_bot preview`: message mocks from synthetic data, as Block Kit Builder URLs (without `--workspace-id` they open in the signed-in workspace; a wrong ID makes them fail).
-  - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and `OUTPUT_CHANNEL`).
+  - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot sync --from-cache <dir>`: rebuild a DB from recorded Slack responses (also needs the production `BOT_ID` and `OUTPUT_CHANNEL` as env vars: offline, nothing reads them from Slack).
   - `DATABASE_URL=sqlite:///.db/data.db uv run python -m hikarie_bot stats`: the weekly usage (counts only) that the bot posts to the log channel on Mondays.
 - Never run the bot locally with the production app's tokens: Socket Mode would take button presses away from production. Use `slack run` (dev app, `.env.dev`).
 - CI runs `uv run pytest -n auto`, `uv run ruff check .` and `uv run ruff format --check .`. pyright is installed but not enforced and has existing errors.

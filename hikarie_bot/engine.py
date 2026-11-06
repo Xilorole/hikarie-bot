@@ -8,16 +8,21 @@ implementation's results on synthetic arrivals for comparison.
 Item picks (db_data/items.py) are given to the engine before the arrivals; a pick acts on
 the user's arrivals after the day it was picked, so it never changes the arrival it followed.
 
+Rebirths (docs/design/rebirth.md) are processed with the arrivals in time order: a rebirth starts the
+user's points over from 0, and their arrivals after its day get a multiplier that grows with the level
+they were reborn at. Reaching the upper limit in a lap earns a mark, which is kept.
+
 Nothing computed here is stored: the messages read the engine's results, recomputed from
-arrival_event and item_pick_event when needed. Times are aware datetimes in JST, so dates and
+arrival_event, item_pick_event and rebirth_event when needed. Times are aware datetimes in JST, so dates and
 hours are JST.
 """
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from heapq import merge
 from typing import ClassVar, Self
 
 from dateutil.relativedelta import relativedelta
@@ -36,7 +41,7 @@ from hikarie_bot.db_data.items import (
     WEEKLY_PASS,
     dice_roll,
 )
-from hikarie_bot.utils import is_jp_bizday, list_bizdays
+from hikarie_bot.utils import LEVELS, get_level, is_jp_bizday, list_bizdays
 
 BADGE_SCORES = {badge.id: badge.score for badge in db_data.Badges}
 APPLY_START = {
@@ -54,6 +59,10 @@ WEEKLY_PASS_MAX_USES = 3
 TREAT_RECIPIENTS = 3
 TEAM_GOAL_PER_BIZDAY = 4  # the week's goal for everyone's arrivals, per business day of the week
 TEAM_GOAL_BADGE = 2001
+MAX_LEVEL = len(LEVELS)
+MAX_POINTS = LEVELS[-1][1]  # a lap that reaches this earns a mark
+FIRST_REBIRTH_LEVEL = 5  # the level the first rebirth needs; later ones need a level above the previous one's
+BASE_MULTIPLIER = 10  # multipliers are in tenths: a rebirth at level n adds n
 
 
 @dataclass(frozen=True)
@@ -171,7 +180,11 @@ class Outlook:
 
 @dataclass
 class ArrivalResult:
-    """One counted arrival (the first of a user's day) and what it earned."""
+    """One counted arrival (the first of a user's day) and what it earned.
+
+    The scores are the points of the user's current lap (since their last rebirth). score_sum is the badges'
+    and items' points times the multiplier, rounded up.
+    """
 
     id: int
     user_id: str
@@ -182,6 +195,59 @@ class ArrivalResult:
     previous_score: int
     current_score: int
     item_effects: list[ItemEffect] = field(default_factory=list)  # their points are part of score_sum
+    multiplier: int = BASE_MULTIPLIER  # in tenths
+    marks: int = 0  # the marks the user holds after this arrival
+
+    @property
+    def earned_mark(self) -> bool:
+        """Whether this arrival reached the upper limit of the lap, earning a mark."""
+        return self.previous_score < MAX_POINTS <= self.current_score
+
+
+@dataclass(frozen=True)
+class Rebirth:
+    """A rebirth that took effect: the level it was at and the multiplier after it (in tenths)."""
+
+    user_id: str
+    time: datetime
+    number: int  # 1 for the first rebirth
+    level: int
+    multiplier: int
+
+
+@dataclass(frozen=True)
+class RebirthStatus:
+    """Where a user stands on rebirth at some time.
+
+    required_level is the level the next rebirth needs; can is whether the user may be reborn now (the level
+    is enough and they were not reborn today). multiplier is the one acting on the user's next arrival,
+    next_multiplier the one a rebirth now would give.
+    """
+
+    level: int
+    points: int
+    required_level: int
+    points_to_go: int  # until the required level (0 once reached)
+    reborn_today: bool
+    multiplier: int
+    next_multiplier: int
+    rebirths: list[Rebirth]
+    marks: int
+
+    @property
+    def can(self) -> bool:
+        """Whether the user may be reborn now."""
+        return self.points_to_go == 0 and not self.reborn_today
+
+
+def multiplied(points: int, multiplier: int) -> int:
+    """Return points times a multiplier in tenths, rounded up."""
+    return -(-points * multiplier // BASE_MULTIPLIER)
+
+
+def format_multiplier(multiplier: int) -> str:
+    """Return a multiplier in tenths as "1.5倍"."""
+    return f"{multiplier // BASE_MULTIPLIER}.{multiplier % BASE_MULTIPLIER}倍"
 
 
 @dataclass
@@ -193,11 +259,19 @@ class UserState:
     results: list[ArrivalResult] = field(default_factory=list)
     items: list[HeldItem] = field(default_factory=list)  # in pick order
     forgive_gap: bool = False  # set while an omamori acts on the arrival being checked
+    score: int = 0  # the points of the current lap
+    rebirths: list[Rebirth] = field(default_factory=list)
+    marks: int = 0
 
-    @property
-    def score(self) -> int:
-        """Return the score after the user's latest arrival."""
-        return self.results[-1].current_score if self.results else 0
+    def multiplier_on(self, day: date) -> int:
+        """Return the multiplier (in tenths) on the user's arrivals on a JST day: rebirths act after their day."""
+        return BASE_MULTIPLIER + sum(rebirth.level for rebirth in self.rebirths if rebirth.time.date() < day)
+
+    def required_level(self) -> int:
+        """Return the level the next rebirth needs: above the previous rebirth's, or the top level again."""
+        if not self.rebirths:
+            return FIRST_REBIRTH_LEVEL
+        return min(self.rebirths[-1].level + 1, MAX_LEVEL)
 
 
 @dataclass
@@ -264,10 +338,15 @@ class BadgeEngine:
         badge_ids = [badge_id for checker in self.CHECKERS.values() for badge_id in checker(self, user_id, time)]
         user.forgive_gap = False
         item_effects = self._item_effects(user_id, time, rank, acting)
-        score_sum = sum(BADGE_SCORES[badge_id] for badge_id in badge_ids) + sum(
-            effect.points for effect in item_effects
+        multiplier = user.multiplier_on(time.date())
+        score_sum = multiplied(
+            sum(BADGE_SCORES[badge_id] for badge_id in badge_ids) + sum(effect.points for effect in item_effects),
+            multiplier,
         )
         previous_score = user.score
+        user.score += score_sum
+        if previous_score < MAX_POINTS <= user.score:
+            user.marks += 1
 
         for badge_id in badge_ids:
             tally = self.user_badges.get((user_id, badge_id))
@@ -285,13 +364,49 @@ class BadgeEngine:
             badge_ids=badge_ids,
             score_sum=score_sum,
             previous_score=previous_score,
-            current_score=previous_score + score_sum,
+            current_score=user.score,
             item_effects=item_effects,
+            multiplier=multiplier,
+            marks=user.marks,
         )
         self.results.append(result)
         user.results.append(result)
         day.append(result)
         return result
+
+    def rebirth(self, user_id: str, time: datetime) -> Rebirth | None:
+        """Start the user's points over at `time` (aware) if they may be reborn then; return the rebirth, or None.
+
+        A rebirth the rules no longer allow (after a rule change) is ignored.
+        """
+        status = self.rebirth_status(user_id, time)
+        if not status.can:
+            return None
+        user = self.users[user_id]
+        rebirth = Rebirth(user_id, time.astimezone(JST), len(user.rebirths) + 1, status.level, status.next_multiplier)
+        user.rebirths.append(rebirth)
+        user.score = 0
+        return rebirth
+
+    def rebirth_status(self, user_id: str, now: datetime) -> RebirthStatus:
+        """Return where the user stands on rebirth at `now` (aware; after the events processed so far)."""
+        now = now.astimezone(JST)
+        user = self.users.get(user_id) or UserState()
+        level = get_level(user.score)
+        required = user.required_level()
+        start = 0 if required == 1 else LEVELS[required - 2][1]
+        tomorrow = now.date() + timedelta(days=1)
+        return RebirthStatus(
+            level=level.number,
+            points=user.score,
+            required_level=required,
+            points_to_go=max(0, start - user.score),
+            reborn_today=bool(user.rebirths) and user.rebirths[-1].time.date() == now.date(),
+            multiplier=user.multiplier_on(tomorrow),
+            next_multiplier=user.multiplier_on(tomorrow) + level.number,
+            rebirths=list(user.rebirths),
+            marks=user.marks,
+        )
 
     def _item_effects(self, user_id: str, time: datetime, rank: int, acting: list[HeldItem]) -> list[ItemEffect]:
         """Apply the user's acting items and the day's treats; one-shot items are used up."""
@@ -555,11 +670,30 @@ class BadgeEngine:
     }
 
 
-def compute(arrivals: Iterable[tuple[str, datetime]], picks: Iterable[ItemPick] = ()) -> BadgeEngine:
-    """Run the engine over (user_id, aware time) pairs in time order, with the item picks."""
+def compute(
+    arrivals: Iterable[tuple[str, datetime]],
+    picks: Iterable[ItemPick] = (),
+    rebirths: Iterable[tuple[str, datetime]] = (),
+) -> BadgeEngine:
+    """Run the engine over (user_id, aware time) pairs in time order, with the item picks and the rebirths.
+
+    Arrivals and rebirths are processed together in time order (each iterable in time order).
+    """
     engine = BadgeEngine()
     for pick in sorted(picks, key=lambda pick: pick.day):
         engine.pick(pick.user_id, pick.day, pick.item_id)
-    for user_id, time in arrivals:
-        engine.add(user_id, time)
+    for kind, user_id, time in _in_time_order(arrivals, rebirths):
+        if kind == "arrival":
+            engine.add(user_id, time)
+        else:
+            engine.rebirth(user_id, time)
     return engine
+
+
+def _in_time_order(
+    arrivals: Iterable[tuple[str, datetime]], rebirths: Iterable[tuple[str, datetime]]
+) -> Iterator[tuple[str, str, datetime]]:
+    """Merge the arrivals and the rebirths by time; an arrival comes before a rebirth at the same time."""
+    tagged_arrivals = (("arrival", user_id, time) for user_id, time in arrivals)
+    tagged_rebirths = (("rebirth", user_id, time) for user_id, time in rebirths)
+    return merge(tagged_arrivals, tagged_rebirths, key=lambda event: event[2])

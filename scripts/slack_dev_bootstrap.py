@@ -1,7 +1,7 @@
 """Prepare the dev workspace for `slack run` and print the derived settings as shell exports.
 
-Uses the dev app's bot token injected by the Slack CLI to resolve BOT_ID / SLACK_WORKSPACE_ID,
-and to find or create the output / log channels, join them and invite ADMIN.
+Uses the dev app's bot token injected by the Slack CLI to find or create the output / log channels,
+join them and invite ADMIN. (The bot, workspace and app IDs are read from Slack by the bot itself.)
 """
 
 import os
@@ -49,9 +49,7 @@ def main() -> None:
     """Print `export KEY=value` lines for the dev settings."""
     load_dotenv(os.environ.get("DOTENV_PATH", ".env.dev"), override=True)
     client = WebClient(token=os.environ["SLACK_BOT_TOKEN"])
-    auth = client.auth_test()
-
-    exports = {"BOT_ID": auth["bot_id"], "SLACK_WORKSPACE_ID": auth["team_id"]}
+    exports = {}
     for key, name in CHANNEL_NAMES.items():
         exports[key] = ensure_channel(client, name, os.environ.get("ADMIN", ""))
 

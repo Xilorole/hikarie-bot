@@ -80,7 +80,7 @@ async def test_second_press_on_the_same_day_is_rejected(database: Engine) -> Non
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
     assert client.chat_postMessage.await_count == 1
-    assert "既に出社申告" in client.chat_postEphemeral.await_args.kwargs["text"]
+    assert client.chat_postEphemeral.await_args.kwargs["text"] == bot.ALREADY_ARRIVED
     with Session(database) as session:
         assert session.query(ArrivalEvent).count() == 1
 
@@ -93,7 +93,7 @@ async def test_press_outside_the_window_is_rejected(database: Engine, clock: Fro
 
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
-    assert "6時から18時" in client.chat_postEphemeral.await_args.kwargs["text"]
+    assert client.chat_postEphemeral.await_args.kwargs["text"] == bot.OUTSIDE_WINDOW
     with Session(database) as session:
         assert session.query(ArrivalEvent).count() == 0
 
@@ -130,8 +130,7 @@ async def test_press_again_retries_an_arrival_that_was_not_announced(
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
-    # no refusal: the only ephemeral message is the next goals
-    assert "つぎのもくひょう" in client.chat_postEphemeral.await_args.kwargs["text"]
+    client.chat_postEphemeral.assert_not_awaited()  # no refusal
     with Session(database) as session:
         event = session.query(ArrivalEvent).one()
         assert (event.occurred_at, event.slack_ts) == (PRESSED, "1748822999.000100")
@@ -167,12 +166,17 @@ def test_create_app_routes_actions_to_the_handlers(settings: Settings) -> None:
     handlers = {listener.ack_function for listener in app._async_listeners}  # noqa: SLF001
     assert handlers == {
         bot.handle_button_click,
-        bot.handle_check_achievement,
+        bot.handle_status_moved,
+        bot.handle_open_my_page,
         bot.handle_pick_item,
         bot.handle_item_submission,
         bot.handle_item_review,
         bot.handle_reboot,
         bot.handle_arrive_shortcut,
+        bot.handle_app_home_opened,
+        bot.handle_home_tab,
+        bot.handle_home_pick_item,
+        bot.handle_home_rebirth,
     }
 
 
@@ -208,8 +212,8 @@ async def test_shortcut_records_the_arrival_on_todays_post(database: Engine, set
     assert (post["channel"], post["thread_ts"]) == ("C0OUT", f"{DAILY_POST.timestamp():.6f}")
     client.chat_update.assert_awaited_once()
     reply = client.views_update.await_args.kwargs["view"]["blocks"][0]["text"]["text"]
-    assert reply.startswith("出社登録しました")
-    assert "*つぎのもくひょう*\n「出社登録ビギナー」まで あと4回" in reply
+    assert reply.startswith("*09:10* に出社登録しました")
+    assert "つぎのもくひょう" not in reply
     client.chat_postEphemeral.assert_not_awaited()  # the modal says it all
     with Session(database) as session:
         assert session.query(ArrivalEvent).one().user_id == "U1"
@@ -243,26 +247,13 @@ async def test_shortcut_tells_a_second_arrival_it_is_already_recorded(database: 
 
 
 @pytest.mark.asyncio
-async def test_next_goals_go_to_the_user_alone_not_the_thread(database: Engine) -> None:
-    """The thread post has no goals; the user gets them in an ephemeral message after the announcement."""
+async def test_a_press_sends_no_goals(database: Engine) -> None:
+    """A press only announces the arrival: no goals in the thread, nothing to the user alone (my page has them)."""
     client = AsyncMock()
     client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
 
     await bot.handle_button_click(AsyncMock(), click("U1"), client)
 
     assert "つぎのもくひょう" not in client.chat_postMessage.await_args.kwargs["text"]
-    ephemeral = client.chat_postEphemeral.await_args.kwargs
-    assert (ephemeral["channel"], ephemeral["user"]) == ("C0OUT", "U1")
-    assert "「出社登録ビギナー」まで あと4回" in ephemeral["text"]
-
-
-@pytest.mark.asyncio
-async def test_a_failed_goals_message_does_not_fail_the_press(database: Engine) -> None:
-    """The arrival is announced before the goals, so a failure to send them is only logged."""
-    client = AsyncMock()
-    client.chat_postMessage.return_value = {"ok": True, "ts": "1748822999.000100"}
-    client.chat_postEphemeral.side_effect = RuntimeError("slack is down")
-
-    await bot.handle_button_click(AsyncMock(), click("U1"), client)
-
-    client.chat_update.assert_awaited_once()
+    client.chat_postEphemeral.assert_not_awaited()
+    client.views_open.assert_not_awaited()  # a press is all it takes

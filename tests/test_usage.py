@@ -61,4 +61,4 @@ def test_a_week_without_arrivals_still_draws_one_cell() -> None:
 
     text = describe_usage(usage_report(engine, WEEK, weeks=2))
 
-    assert f"`{WEEK - timedelta(weeks=1):%m/%d}` `█         ` 0回 / 0人" in text
+    assert f"`{WEEK - timedelta(weeks=1):%m/%d}` `░░░░░░░░░░` 0回 / 0人" in text
