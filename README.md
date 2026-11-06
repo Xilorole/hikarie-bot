@@ -26,6 +26,14 @@ The CLI installs the dev app from `manifest.json` and injects its tokens. `scrip
 creates the `#prd` / `#log` channels if needed, and starts the bot with
 `--dev` (the bot reads its own IDs from Slack), which posts the daily message right away.
 
+To try what needs points (a rebirth needs Lv5, でんせつのしるし 1400pt), fill the dev database with synthetic
+arrivals for `ADMIN` before `slack run` (only a database file whose name contains `dev` is written to):
+
+```bash
+uv run python scripts/seed_dev_db.py                # up to Lv5 (111pt)
+uv run python scripts/seed_dev_db.py --points 1400  # up to the upper limit
+```
+
 ### Message previews
 
 ```bash
