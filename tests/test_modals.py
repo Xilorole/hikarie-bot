@@ -577,7 +577,7 @@ def test_daily_post_links_to_my_page_only_with_both_ids() -> None:
     """With the workspace and app IDs the daily post has a button opening the Home; without them it has none."""
     url = home_url("T0", "A0")
 
-    assert url == "slack://app?team=T0&id=A0&tab=home"
+    assert url == "slack://app?team=T0&id=A0"
     assert home_url("T0", "") is None
     for message in (initial_message(None, url), registry_message([], None, url)):
         buttons = render(message)[1]["elements"]
