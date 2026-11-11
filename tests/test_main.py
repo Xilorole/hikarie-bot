@@ -24,6 +24,6 @@ async def test_an_old_status_button_points_to_my_page(app_database: Engine, sett
 
     ephemeral = client.chat_postEphemeral.await_args.kwargs
     assert (ephemeral["channel"], ephemeral["user"]) == ("C0OUT", "U1")
-    assert ephemeral["text"] == bot.STATUS_MOVED + "（<slack://app?team=T0&id=A0&tab=home|マイページを開く>）"
+    assert ephemeral["text"] == bot.STATUS_MOVED + "（<slack://app?team=T0&id=A0|マイページを開く>）"
     published = client.views_publish.await_args.kwargs
     assert (published["user_id"], published["view"]["type"]) == ("U1", "home")

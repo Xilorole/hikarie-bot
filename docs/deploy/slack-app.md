@@ -40,5 +40,5 @@ Socket Mode なので Request URL は要らない。設定を保存したら、�
 - `bots.info` には Bot Token Scope の `users:read` が要る（**OAuth & Permissions → Scopes** に追加して再インストール）。
   足りなければ警告を出してボタンなしで起動する。
 
-ボタンは `slack://app?team=…&id=…&tab=home` でホームタブを開き、押した人のホームをマイページにする。
+ボタンは `slack://app?team=…&id=…` でアプリを開き、押した人のホームをマイページにする。`&tab=home` を付けてもホームタブは選ばれず、`https://slack.com/app_redirect` はブラウザを経由し、`https://app.slack.com/client/…` は Web 版で開くので使わない。
 ワークスペースとアプリの ID のどちらかが取れなければボタンは出ない。前の「ステータス」ボタンは、押すとマイページに移ったことを伝える。

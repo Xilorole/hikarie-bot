@@ -113,8 +113,8 @@ def _team_context(team: TeamProgress | None) -> list[Block]:
 
 
 def home_url(team_id: str, app_id: str) -> str | None:
-    """Return the deep link that opens the app's Home tab, or None without both IDs."""
-    return f"slack://app?team={team_id}&id={app_id}&tab=home" if team_id and app_id else None
+    """Return the deep link that opens the app in Slack, or None without both IDs (a tab parameter is ignored)."""
+    return f"slack://app?team={team_id}&id={app_id}" if team_id and app_id else None
 
 
 def _my_page_button(url: str | None) -> list[block_elements.ButtonElement]:
